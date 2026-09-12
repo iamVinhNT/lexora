@@ -1,0 +1,28 @@
+{
+  "name": "@lexora/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "test": "vitest run",
+    "verify:runtime": "npm run build && node scripts/runtime-smoke.mjs"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "better-sqlite3": "^11.1.2",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.12.3",
+    "pino": "^9.3.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^20.14.10",
+    "drizzle-kit": "^0.24.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

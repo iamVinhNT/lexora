@@ -1,0 +1,832 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import Database from 'better-sqlite3';
+import { eq } from 'drizzle-orm';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+
+import {
+  users,
+  words,
+  wordFamilies,
+  collocations,
+  examples,
+  contexts,
+  contextWords,
+  learningProgress,
+  reviewStates,
+  reviewLogs,
+  tags,
+  wordTags,
+  learningSessions,
+  learningSessionItems,
+} from '../../src/db/schema.js';
+import { getDb, createTables } from '../../src/db/client.js';
+
+describe('Database Schema & Client', () => {
+  describe('Schema Table Exports', () => {
+    it('exports all 12 core tables and 2 learning session tables', () => {
+      expect(users).toBeDefined();
+      expect(words).toBeDefined();
+      expect(wordFamilies).toBeDefined();
+      expect(collocations).toBeDefined();
+      expect(examples).toBeDefined();
+      expect(contexts).toBeDefined();
+      expect(contextWords).toBeDefined();
+      expect(learningProgress).toBeDefined();
+      expect(reviewStates).toBeDefined();
+      expect(reviewLogs).toBeDefined();
+      expect(tags).toBeDefined();
+      expect(wordTags).toBeDefined();
+      expect(learningSessions).toBeDefined();
+      expect(learningSessionItems).toBeDefined();
+    });
+  });
+
+  describe('Database Client & Pragmas', () => {
+    it('creates an in-memory database by default with foreign_keys enabled', () => {
+      const db = getDb(':memory:');
+      const sqlite = db.sqlite ?? db.session.client;
+      const fkPragma = sqlite.pragma('foreign_keys', { simple: true });
+      expect(fkPragma).toBe(1);
+    });
+
+    it('enables WAL mode on persistent file databases', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lexora-test-'));
+      const dbFile = path.join(tempDir, 'test.db');
+
+      try {
+        const db = getDb(dbFile);
+        const sqlite = db.sqlite ?? db.session.client;
+        const journalMode = sqlite.pragma('journal_mode', { simple: true });
+        expect(journalMode).toBe('wal');
+        sqlite.close();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('allows passing an existing better-sqlite3 instance', () => {
+      const sqlite = new Database(':memory:');
+      const db = getDb(sqlite);
+      const fkPragma = sqlite.pragma('foreign_keys', { simple: true });
+      expect(fkPragma).toBe(1);
+
+      // Tables should be created
+      const tables = sqlite
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        .all() as { name: string }[];
+      const tableNames = tables.map((t) => t.name);
+
+      expect(tableNames).toContain('users');
+      expect(tableNames).toContain('words');
+      expect(tableNames).toContain('contexts');
+      expect(tableNames).toContain('learning_sessions');
+      sqlite.close();
+    });
+
+    it('enables WAL mode when an existing persistent better-sqlite3 instance is passed to getDb', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lexora-existing-wal-'));
+      const dbFile = path.join(tempDir, 'existing.db');
+
+      try {
+        const rawSqlite = new Database(dbFile);
+        // Initially default journal_mode (usually delete)
+        const db = getDb(rawSqlite);
+        const sqlite = db.sqlite ?? db.session.client;
+        const journalMode = sqlite.pragma('journal_mode', { simple: true });
+        expect(journalMode).toBe('wal');
+        sqlite.close();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('throws clear startup error when legacy duplicate words exist in database', () => {
+      const rawSqlite = new Database(':memory:');
+      // Create words table without unique lower index and insert duplicate words
+      rawSqlite.exec(`
+        CREATE TABLE words (
+          id TEXT PRIMARY KEY,
+          word TEXT NOT NULL,
+          definition TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        INSERT INTO words (id, word, definition, created_at) VALUES ('w1', 'ephemeral', 'def1', '2026-01-01T00:00:00.000Z');
+        INSERT INTO words (id, word, definition, created_at) VALUES ('w2', 'Ephemeral', 'def2', '2026-01-01T00:00:00.000Z');
+      `);
+
+      expect(() => {
+        getDb(rawSqlite);
+      }).toThrow(/canonical case-insensitive uniqueness/i);
+
+      rawSqlite.close();
+    });
+
+    it('enforces canonical case-insensitive uniqueness on words at DB level', () => {
+      const db = getDb(':memory:');
+      db.insert(words)
+        .values({
+          id: 'w-uniq-1',
+          word: 'Serendipity',
+          definition: 'def1',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      expect(() => {
+        db.insert(words)
+          .values({
+            id: 'w-uniq-2',
+            word: 'serendipity',
+            definition: 'def2',
+            createdAt: new Date().toISOString(),
+          })
+          .run();
+      }).toThrow(/UNIQUE constraint failed/);
+
+      db.sqlite.close();
+    });
+
+    it('createTables is idempotent when called multiple times', () => {
+      const sqlite = new Database(':memory:');
+      expect(() => {
+        createTables(sqlite);
+        createTables(sqlite);
+      }).not.toThrow();
+      sqlite.close();
+    });
+
+    it('transactionally adds exposure columns to legacy context_words table with postcondition verification', () => {
+      const rawSqlite = new Database(':memory:');
+      // Create minimal tables with legacy context_words
+      rawSqlite.exec(`
+        CREATE TABLE contexts (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE words (
+          id TEXT PRIMARY KEY,
+          word TEXT NOT NULL,
+          definition TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE context_words (
+          context_id TEXT NOT NULL REFERENCES contexts(id) ON DELETE CASCADE,
+          word_id TEXT NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+          PRIMARY KEY (context_id, word_id)
+        );
+      `);
+
+      // Verify missing columns before migration
+      const colsBefore = rawSqlite.prepare("PRAGMA table_info('context_words')").all() as Array<{ name: string }>;
+      const namesBefore = new Set(colsBefore.map((c) => c.name));
+      expect(namesBefore.has('exposure_count')).toBe(false);
+      expect(namesBefore.has('first_seen_at')).toBe(false);
+      expect(namesBefore.has('last_seen_at')).toBe(false);
+
+      // Run createTables
+      createTables(rawSqlite);
+
+      // Verify postcondition
+      const colsAfter = rawSqlite.prepare("PRAGMA table_info('context_words')").all() as Array<{ name: string }>;
+      const namesAfter = new Set(colsAfter.map((c) => c.name));
+      expect(namesAfter.has('exposure_count')).toBe(true);
+      expect(namesAfter.has('first_seen_at')).toBe(true);
+      expect(namesAfter.has('last_seen_at')).toBe(true);
+
+      // Running createTables again is idempotent
+      expect(() => createTables(rawSqlite)).not.toThrow();
+
+      rawSqlite.close();
+    });
+  });
+
+  describe('CRUD Operations & Relations', () => {
+    let db: ReturnType<typeof getDb>;
+    let sqlite: Database.Database;
+
+    beforeEach(() => {
+      db = getDb(':memory:');
+      sqlite = db.sqlite ?? db.session.client;
+    });
+
+    afterEach(() => {
+      sqlite.close();
+    });
+
+    it('inserts and selects a user', () => {
+      db.insert(users)
+        .values({
+          id: 'user-1',
+          name: 'Alice',
+          email: 'alice@example.com',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      const [user] = db.select().from(users).where(eq(users.id, 'user-1')).all();
+      expect(user).toBeDefined();
+      expect(user.name).toBe('Alice');
+      expect(user.email).toBe('alice@example.com');
+    });
+
+    it('inserts and selects a word with collocations, examples, and families', () => {
+      db.insert(words)
+        .values({
+          id: 'word-1',
+          word: 'reliable',
+          phonetic: '/rɪˈlaɪəbl/',
+          partOfSpeech: 'adjective',
+          definition: 'Able to be trusted or believed',
+          translation: 'đáng tin cậy',
+          difficulty: 'B2',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(words)
+        .values({
+          id: 'word-2',
+          word: 'reliability',
+          phonetic: '/rɪˌlaɪəˈbɪləti/',
+          partOfSpeech: 'noun',
+          definition: 'The quality of being trustworthy',
+          translation: 'sự đáng tin cậy',
+          difficulty: 'B2',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(wordFamilies)
+        .values({
+          id: 'wf-1',
+          wordId: 'word-1',
+          relatedWordId: 'word-2',
+          relationship: 'noun',
+        })
+        .run();
+
+      db.insert(collocations)
+        .values({
+          id: 'col-1',
+          wordId: 'word-1',
+          phrase: 'reliable source',
+        })
+        .run();
+
+      db.insert(examples)
+        .values({
+          id: 'ex-1',
+          wordId: 'word-1',
+          sentence: 'We need a reliable partner for this project.',
+          translation: 'Chúng tôi cần một đối tác đáng tin cậy cho dự án này.',
+          source: 'PROFESSIONAL',
+        })
+        .run();
+
+      const [w] = db.select().from(words).where(eq(words.id, 'word-1')).all();
+      expect(w.word).toBe('reliable');
+      expect(w.difficulty).toBe('B2');
+
+      const [wf] = db.select().from(wordFamilies).where(eq(wordFamilies.wordId, 'word-1')).all();
+      expect(wf.relatedWordId).toBe('word-2');
+      expect(wf.relationship).toBe('noun');
+
+      const [col] = db.select().from(collocations).where(eq(collocations.wordId, 'word-1')).all();
+      expect(col.phrase).toBe('reliable source');
+
+      const [ex] = db.select().from(examples).where(eq(examples.wordId, 'word-1')).all();
+      expect(ex.sentence).toBe('We need a reliable partner for this project.');
+    });
+
+    it('inserts and queries contexts and context_words', () => {
+      db.insert(words)
+        .values({
+          id: 'word-1',
+          word: 'scalable',
+          definition: 'Able to be changed in size or scale',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(contexts)
+        .values({
+          id: 'ctx-1',
+          title: 'System Architecture',
+          content: 'The architecture must be scalable and robust.',
+          sourceType: 'ARTICLE',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(contextWords)
+        .values({
+          contextId: 'ctx-1',
+          wordId: 'word-1',
+        })
+        .run();
+
+      const [cw] = db
+        .select()
+        .from(contextWords)
+        .where(eq(contextWords.contextId, 'ctx-1'))
+        .all();
+      expect(cw.wordId).toBe('word-1');
+    });
+
+    it('inserts and queries learning progress, review states, and review logs', () => {
+      db.insert(words)
+        .values({
+          id: 'word-1',
+          word: 'resilient',
+          definition: 'Able to withstand or recover quickly from difficult conditions',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(learningProgress)
+        .values({
+          id: 'lp-1',
+          wordId: 'word-1',
+          status: 'LEARNING',
+          recognitionScore: 80,
+          recallScore: 60,
+          productionScore: 40,
+        })
+        .run();
+
+      db.insert(reviewStates)
+        .values({
+          id: 'rs-1',
+          wordId: 'word-1',
+          interval: 6,
+          easeFactor: 2.5,
+          repetitions: 2,
+          lapses: 0,
+          dueAt: new Date(Date.now() + 86400000 * 6).toISOString(),
+        })
+        .run();
+
+      db.insert(reviewLogs)
+        .values({
+          id: 'rl-1',
+          wordId: 'word-1',
+          reviewType: 'RECALL',
+          rating: 'GOOD',
+          responseTime: 1450,
+          answer: 'resilient',
+          correct: true,
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      const [lp] = db.select().from(learningProgress).where(eq(learningProgress.wordId, 'word-1')).all();
+      expect(lp.status).toBe('LEARNING');
+      expect(lp.recognitionScore).toBe(80);
+
+      const [rs] = db.select().from(reviewStates).where(eq(reviewStates.wordId, 'word-1')).all();
+      expect(rs.interval).toBe(6);
+      expect(rs.easeFactor).toBe(2.5);
+
+      const [rl] = db.select().from(reviewLogs).where(eq(reviewLogs.wordId, 'word-1')).all();
+      expect(rl.rating).toBe('GOOD');
+      expect(rl.responseTime).toBe(1450);
+      expect(rl.correct).toBe(true);
+    });
+
+    it('inserts and queries tags and word_tags join table', () => {
+      db.insert(words)
+        .values({
+          id: 'word-1',
+          word: 'concurrent',
+          definition: 'Existing, happening, or done at the same time',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(tags)
+        .values({
+          id: 'tag-1',
+          name: 'Computer Science',
+        })
+        .run();
+
+      db.insert(wordTags)
+        .values({
+          wordId: 'word-1',
+          tagId: 'tag-1',
+        })
+        .run();
+
+      const [wt] = db.select().from(wordTags).where(eq(wordTags.wordId, 'word-1')).all();
+      expect(wt.tagId).toBe('tag-1');
+    });
+
+    it('inserts and queries learning sessions and session items', () => {
+      db.insert(words)
+        .values({
+          id: 'word-1',
+          word: 'optimize',
+          definition: 'Make the best or most effective use of',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(learningSessions)
+        .values({
+          id: 'sess-1',
+          sessionType: 'NEW_WORDS',
+          totalWords: 1,
+          startedAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(learningSessionItems)
+        .values({
+          id: 'item-1',
+          sessionId: 'sess-1',
+          wordId: 'word-1',
+          completedStep: 'OUTPUT',
+          recallResult: 'CORRECT',
+          outputSentence: 'We must optimize database queries.',
+          reviewRating: 'EASY',
+        })
+        .run();
+
+      const [sess] = db.select().from(learningSessions).where(eq(learningSessions.id, 'sess-1')).all();
+      expect(sess.sessionType).toBe('NEW_WORDS');
+      expect(sess.totalWords).toBe(1);
+
+      const [item] = db
+        .select()
+        .from(learningSessionItems)
+        .where(eq(learningSessionItems.sessionId, 'sess-1'))
+        .all();
+      expect(item.wordId).toBe('word-1');
+      expect(item.recallResult).toBe('CORRECT');
+      expect(item.outputSentence).toBe('We must optimize database queries.');
+    });
+  });
+
+  describe('Foreign Key Constraints Enforcement', () => {
+    let db: ReturnType<typeof getDb>;
+    let sqlite: Database.Database;
+
+    beforeEach(() => {
+      db = getDb(':memory:');
+      sqlite = db.sqlite ?? db.session.client;
+    });
+
+    afterEach(() => {
+      sqlite.close();
+    });
+
+    it('throws when inserting collocation with non-existent wordId', () => {
+      expect(() => {
+        db.insert(collocations)
+          .values({
+            id: 'col-orphan',
+            wordId: 'non-existent-word',
+            phrase: 'some phrase',
+          })
+          .run();
+      }).toThrow(/FOREIGN KEY/i);
+    });
+
+    it('throws when inserting example with non-existent wordId', () => {
+      expect(() => {
+        db.insert(examples)
+          .values({
+            id: 'ex-orphan',
+            wordId: 'non-existent-word',
+            sentence: 'Non-existent sentence.',
+          })
+          .run();
+      }).toThrow(/FOREIGN KEY/i);
+    });
+
+    it('throws when inserting context_words with non-existent contextId or wordId', () => {
+      db.insert(words)
+        .values({
+          id: 'word-1',
+          word: 'valid',
+          definition: 'legally or officially acceptable',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      expect(() => {
+        db.insert(contextWords)
+          .values({
+            contextId: 'non-existent-context',
+            wordId: 'word-1',
+          })
+          .run();
+      }).toThrow(/FOREIGN KEY/i);
+    });
+
+    it('throws when inserting learning_progress with non-existent wordId', () => {
+      expect(() => {
+        db.insert(learningProgress)
+          .values({
+            id: 'lp-orphan',
+            wordId: 'non-existent-word',
+          })
+          .run();
+      }).toThrow(/FOREIGN KEY/i);
+    });
+
+    it('throws on duplicate word_id in learning_progress (unique constraint)', () => {
+      db.insert(words)
+        .values({
+          id: 'word-1',
+          word: 'unique-test',
+          definition: 'testing unique constraint',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(learningProgress)
+        .values({
+          id: 'lp-1',
+          wordId: 'word-1',
+        })
+        .run();
+
+      expect(() => {
+        db.insert(learningProgress)
+          .values({
+            id: 'lp-2',
+            wordId: 'word-1',
+          })
+          .run();
+      }).toThrow(/UNIQUE/i);
+    });
+
+    it('throws on duplicate word_id in review_states (unique constraint)', () => {
+      db.insert(words)
+        .values({
+          id: 'word-1',
+          word: 'unique-review-test',
+          definition: 'testing unique constraint on review_states',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(reviewStates)
+        .values({
+          id: 'rs-1',
+          wordId: 'word-1',
+          dueAt: new Date().toISOString(),
+        })
+        .run();
+
+      expect(() => {
+        db.insert(reviewStates)
+          .values({
+            id: 'rs-2',
+            wordId: 'word-1',
+            dueAt: new Date().toISOString(),
+          })
+          .run();
+      }).toThrow(/UNIQUE/i);
+    });
+  });
+
+  describe('Cascading Deletions', () => {
+    let db: ReturnType<typeof getDb>;
+    let sqlite: Database.Database;
+
+    beforeEach(() => {
+      db = getDb(':memory:');
+      sqlite = db.sqlite ?? db.session.client;
+    });
+
+    afterEach(() => {
+      sqlite.close();
+    });
+
+    it('deleting a word cascades to collocations, examples, word_families, progress, review_states, review_logs, word_tags, context_words, and session_items', () => {
+      // 1. Setup word and related entities
+      db.insert(words)
+        .values([
+          {
+            id: 'word-main',
+            word: 'persist',
+            definition: 'Continue firmly or obstinately',
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: 'word-related',
+            word: 'persistence',
+            definition: 'Firm or obstinate continuance',
+            createdAt: new Date().toISOString(),
+          },
+        ])
+        .run();
+
+      db.insert(wordFamilies)
+        .values({
+          id: 'wf-1',
+          wordId: 'word-main',
+          relatedWordId: 'word-related',
+          relationship: 'noun',
+        })
+        .run();
+
+      db.insert(collocations)
+        .values({
+          id: 'col-1',
+          wordId: 'word-main',
+          phrase: 'persist in',
+        })
+        .run();
+
+      db.insert(examples)
+        .values({
+          id: 'ex-1',
+          wordId: 'word-main',
+          sentence: 'He will persist despite obstacles.',
+        })
+        .run();
+
+      db.insert(contexts)
+        .values({
+          id: 'ctx-1',
+          title: 'Article on Persistence',
+          content: 'You must persist to succeed.',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(contextWords)
+        .values({
+          contextId: 'ctx-1',
+          wordId: 'word-main',
+        })
+        .run();
+
+      db.insert(tags)
+        .values({
+          id: 'tag-1',
+          name: 'Mindset',
+        })
+        .run();
+
+      db.insert(wordTags)
+        .values({
+          wordId: 'word-main',
+          tagId: 'tag-1',
+        })
+        .run();
+
+      db.insert(learningProgress)
+        .values({
+          id: 'lp-1',
+          wordId: 'word-main',
+          status: 'LEARNING',
+        })
+        .run();
+
+      db.insert(reviewStates)
+        .values({
+          id: 'rs-1',
+          wordId: 'word-main',
+          dueAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(reviewLogs)
+        .values({
+          id: 'rl-1',
+          wordId: 'word-main',
+          reviewType: 'RECALL',
+          rating: 'GOOD',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(learningSessions)
+        .values({
+          id: 'sess-1',
+          sessionType: 'NEW_WORDS',
+          startedAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(learningSessionItems)
+        .values({
+          id: 'item-1',
+          sessionId: 'sess-1',
+          wordId: 'word-main',
+        })
+        .run();
+
+      // 2. Delete word-main
+      db.delete(words).where(eq(words.id, 'word-main')).run();
+
+      // 3. Assert cascade deletions
+      expect(db.select().from(collocations).where(eq(collocations.wordId, 'word-main')).all()).toHaveLength(0);
+      expect(db.select().from(examples).where(eq(examples.wordId, 'word-main')).all()).toHaveLength(0);
+      expect(db.select().from(wordFamilies).where(eq(wordFamilies.wordId, 'word-main')).all()).toHaveLength(0);
+      expect(db.select().from(contextWords).where(eq(contextWords.wordId, 'word-main')).all()).toHaveLength(0);
+      expect(db.select().from(wordTags).where(eq(wordTags.wordId, 'word-main')).all()).toHaveLength(0);
+      expect(db.select().from(learningProgress).where(eq(learningProgress.wordId, 'word-main')).all()).toHaveLength(0);
+      expect(db.select().from(reviewStates).where(eq(reviewStates.wordId, 'word-main')).all()).toHaveLength(0);
+      expect(db.select().from(reviewLogs).where(eq(reviewLogs.wordId, 'word-main')).all()).toHaveLength(0);
+      expect(db.select().from(learningSessionItems).where(eq(learningSessionItems.wordId, 'word-main')).all()).toHaveLength(0);
+
+      // 4. Assert independent parent records are NOT deleted
+      const relatedWord = db.select().from(words).where(eq(words.id, 'word-related')).all();
+      expect(relatedWord).toHaveLength(1);
+
+      const ctx = db.select().from(contexts).where(eq(contexts.id, 'ctx-1')).all();
+      expect(ctx).toHaveLength(1);
+
+      const tag = db.select().from(tags).where(eq(tags.id, 'tag-1')).all();
+      expect(tag).toHaveLength(1);
+
+      const sess = db.select().from(learningSessions).where(eq(learningSessions.id, 'sess-1')).all();
+      expect(sess).toHaveLength(1);
+    });
+
+    it('deleting a context removes context_words but does NOT delete words', () => {
+      db.insert(words)
+        .values({
+          id: 'word-keep',
+          word: 'resilient',
+          definition: 'recovers quickly',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(contexts)
+        .values({
+          id: 'ctx-delete',
+          title: 'Context to delete',
+          content: 'Some context content.',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(contextWords)
+        .values({
+          contextId: 'ctx-delete',
+          wordId: 'word-keep',
+        })
+        .run();
+
+      // Delete the context
+      db.delete(contexts).where(eq(contexts.id, 'ctx-delete')).run();
+
+      // Join entry should be gone
+      const cw = db.select().from(contextWords).where(eq(contextWords.contextId, 'ctx-delete')).all();
+      expect(cw).toHaveLength(0);
+
+      // Word MUST still exist
+      const remainingWord = db.select().from(words).where(eq(words.id, 'word-keep')).all();
+      expect(remainingWord).toHaveLength(1);
+      expect(remainingWord[0].word).toBe('resilient');
+    });
+
+    it('deleting a tag removes word_tags but does NOT delete words', () => {
+      db.insert(words)
+        .values({
+          id: 'word-tag-keep',
+          word: 'immutable',
+          definition: 'unchanging over time',
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      db.insert(tags)
+        .values({
+          id: 'tag-delete',
+          name: 'To Delete',
+        })
+        .run();
+
+      db.insert(wordTags)
+        .values({
+          wordId: 'word-tag-keep',
+          tagId: 'tag-delete',
+        })
+        .run();
+
+      // Delete the tag
+      db.delete(tags).where(eq(tags.id, 'tag-delete')).run();
+
+      // Join entry should be gone
+      const wt = db.select().from(wordTags).where(eq(wordTags.tagId, 'tag-delete')).all();
+      expect(wt).toHaveLength(0);
+
+      // Word MUST still exist
+      const remainingWord = db.select().from(words).where(eq(words.id, 'word-tag-keep')).all();
+      expect(remainingWord).toHaveLength(1);
+      expect(remainingWord[0].word).toBe('immutable');
+    });
+  });
+});

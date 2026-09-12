@@ -1,0 +1,45 @@
+/**
+ * @file common.ts
+ * @description Bản dịch tiếng Việt dùng chung cho điều khiển, trạng thái, lỗi và nhãn trợ năng của Lexora.
+ */
+export default {
+  appName: 'Lexora',
+  actions: {
+    addWord: 'Thêm từ', addContext: 'Thêm ngữ cảnh', save: 'Lưu', saveWord: 'Lưu từ', saveContext: 'Lưu ngữ cảnh',
+    cancel: 'Hủy', retry: 'Thử lại', previous: 'Trước', next: 'Sau', editWord: 'Sửa từ', editContext: 'Sửa ngữ cảnh',
+    deleteWord: 'Xóa từ', deleteContext: 'Xóa ngữ cảnh', confirmDelete: 'Xác nhận xóa', confirmDeletion: 'Xác nhận xóa',
+    completeSession: 'Hoàn tất phiên', startSession: 'Bắt đầu phiên', startNextSession: 'Bắt đầu phiên tiếp theo', returnOverview: 'Về tổng quan',
+    learnNewWords: 'Học từ mới', linkWords: 'Liên kết từ', saveLinks: 'Lưu liên kết', unlink: 'Bỏ liên kết', openSource: 'Mở nguồn',
+    show: 'Hiện', hide: 'Ẩn', viewDetails: 'Xem chi tiết', exportVocabulary: 'Xuất từ vựng', downloadFullBackup: 'Tải bản sao lưu đầy đủ',
+    openRestoreConfirmation: 'Mở xác nhận khôi phục', resetLearningProgress: 'Đặt lại tiến độ học', deleteAllData: 'Xóa toàn bộ dữ liệu',
+    confirmReset: 'Xác nhận đặt lại', importItems: 'Nhập {{count}} mục', importItems_other: 'Nhập {{count}} mục', restoreBackup: 'Khôi phục bản sao lưu',
+    working: 'Đang xử lý…', revealAnswer: 'Hiện đáp án', continue: 'Tiếp tục', continueTo: 'Tiếp tục đến {{step}}', retryDashboard: 'Thử lại bảng tổng quan',
+    retryQuery: 'Thử lại {{query}}',
+  },
+  status: {
+    noData: 'Chưa có dữ liệu', unavailable: 'Không khả dụng', noReviews: 'Không có lượt ôn', noTimingData: 'Không có dữ liệu thời gian', loading: 'Đang tải…',
+    saving: 'Đang lưu…', deleting: 'Đang xóa…', exporting: 'Đang xuất…', preparingBackup: 'Đang chuẩn bị bản sao lưu…', preparingImport: 'Đang chuẩn bị bản xem trước nhập…',
+    preparingRestore: 'Đang chuẩn bị bản xem trước khôi phục…', imported: 'Đã nhập {{count}} mục.', imported_other: 'Đã nhập {{count}} mục.',
+    exportDownloaded: 'Đã tải bản xuất từ vựng.', backupDownloaded: 'Đã tải bản sao lưu đầy đủ.', restoreCompleted: 'Đã khôi phục.',
+    progressReset: 'Đã đặt lại tiến độ học.', allDataDeleted: 'Đã xóa toàn bộ dữ liệu.',
+  },
+  labels: {
+    word: 'Từ', definition: 'Định nghĩa', translation: 'Bản dịch', phonetic: 'Phiên âm', partOfSpeech: 'Từ loại', difficulty: 'Độ khó',
+    tags: 'Thẻ', collocations: 'Cụm từ', examples: 'Ví dụ', contexts: 'Ngữ cảnh', sourceType: 'Loại nguồn', sourceUrl: 'URL nguồn',
+    date: 'Ngày', reviews: 'Lượt ôn', correct: 'Đúng', accuracy: 'Độ chính xác', averageResponse: 'Phản hồi TB', count: 'Số lượng', state: 'Trạng thái', percentage: 'Phần trăm',
+    language: 'Ngôn ngữ', theme: 'Giao diện', selected: 'Đã chọn: {{name}}',
+  },
+  hints: {
+    commaSeparated: 'Phân tách bằng dấu phẩy', onePhrasePerLine: 'Mỗi cụm từ một dòng', oneSentencePerLine: 'Mỗi câu một dòng',
+  },
+  errors: {
+    VALIDATION_ERROR: 'Vui lòng kiểm tra thông tin đã gửi.', BAD_REQUEST: 'Không thể hoàn thành yêu cầu này.', NOT_FOUND: 'Không tìm thấy dữ liệu yêu cầu.',
+    CONFLICT: 'Thao tác này xung đột với dữ liệu hiện có.', INTERNAL_ERROR: 'Đã xảy ra lỗi trên máy chủ.', INVALID_RESPONSE: 'Máy chủ trả về phản hồi không hợp lệ.',
+    HTTP_ERROR: 'Không thể hoàn thành yêu cầu.', generic: 'Đã xảy ra lỗi. Vui lòng thử lại.',
+  },
+  language: { label: 'Ngôn ngữ', vietnamese: 'Tiếng Việt', english: 'English' },
+  theme: { light: 'sáng', dark: 'tối', switchToLight: 'Chuyển sang giao diện sáng', switchToDark: 'Chuyển sang giao diện tối' },
+  dialog: { close: 'Đóng {{title}}' },
+  confirmation: { restore: 'Nhập RESTORE để xác nhận', resetProgress: 'Nhập RESET PROGRESS để xác nhận', deleteAll: 'Nhập DELETE ALL DATA để xác nhận' },
+  pagination: { pageOf: 'Trang {{page}} trên {{totalPages}}' },
+} as const;
