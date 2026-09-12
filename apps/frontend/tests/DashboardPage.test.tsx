@@ -130,7 +130,7 @@ describe('DashboardPage', () => {
 
     renderDashboard();
 
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Dashboard unavailable'));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Something went wrong. Please try again.'));
     fireEvent.click(screen.getByRole('button', { name: 'Retry dashboard' }));
     await waitFor(() => expect(screen.getByText('No learning data yet')).toBeTruthy());
     expect(fetchMock).toHaveBeenCalledTimes(2);

@@ -5,7 +5,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError } from '../../api/client';
 import type { Word } from '../../api/vocabulary.api';
 import { formatDate, formatPercent } from '../../i18n/formatters';
 import { getLocalizedErrorMessage } from '../../i18n/presentation';
@@ -41,7 +40,7 @@ function DeleteWordDialog({ word, onClose, onDeleted, mutation }: { word: Word; 
   const { t: tCommon } = useTranslation('common');
   const confirm = () => mutation.mutateAsync(word.id).then(onDeleted).catch(() => undefined);
   const error = mutation.error;
-  return <Dialog title={t('deleteTitle')} onClose={onClose}><div className="space-y-5"><p className="text-sm leading-6 text-muted">{t('deleteDescription', { word: word.word })}</p>{error && <p role="alert" className="text-sm text-foreground">{error instanceof ApiError ? getLocalizedErrorMessage(error, tCommon) : error.message}</p>}<div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onClose}>{t('cancel')}</Button><Button type="button" onClick={confirm} disabled={mutation.isPending}>{mutation.isPending ? t('deleting') : t('confirmDelete')}</Button></div></div></Dialog>;
+  return <Dialog title={t('deleteTitle')} onClose={onClose}><div className="space-y-5"><p className="text-sm leading-6 text-muted">{t('deleteDescription', { word: word.word })}</p>{error && <p role="alert" className="text-sm text-foreground">{getLocalizedErrorMessage(error, tCommon)}</p>}<div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onClose}>{t('cancel')}</Button><Button type="button" onClick={confirm} disabled={mutation.isPending}>{mutation.isPending ? t('deleting') : t('confirmDelete')}</Button></div></div></Dialog>;
 }
 
 function DetailList({ title, items, empty }: { title: string; items: string[]; empty: string }) {

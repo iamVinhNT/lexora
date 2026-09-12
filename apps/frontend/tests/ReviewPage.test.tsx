@@ -109,7 +109,7 @@ describe('ReviewPage', () => {
 
     resolveInitial?.(await errorJson('Queue unavailable'));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Queue unavailable'));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Something went wrong. Please try again.'));
     fetchMock.mockResolvedValueOnce(json(queue()));
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByRole('heading', { name: 'Review' })).toBeTruthy();

@@ -3,22 +3,28 @@
  * @description Focused SM-2 due-review queue with accessible reveal and rating flow.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import type { ReviewRating } from '../api/review.api';
 import { useReviewQueue, useSubmitReview } from '../hooks/useReviewQueue';
 import { ReviewCard } from '../components/review/ReviewCard';
 import { ReviewCompletion } from '../components/review/ReviewCompletion';
 import { PageHeader } from '../components/layout/PageHeader';
+import { formatIntervalDays, formatNumber } from '../i18n/formatters';
+import { getLocalizedErrorMessage } from '../i18n/presentation';
 
 const reviewLimit = 50;
 
 export function ReviewPage() {
+  const { t } = useTranslation('review');
+  const { t: tCommon } = useTranslation('common');
   const queue = useReviewQueue({ limit: reviewLimit });
   const submitMutation = useSubmitReview();
   const [isRevealed, setIsRevealed] = useState(false);
   const [lastReview, setLastReview] = useState<{ rating: ReviewRating; interval: number }>();
   const isSubmittingRef = useRef(false);
   const item = queue.data?.items[0];
+  const dueCount = queue.data?.counts.total ?? queue.data?.total ?? 0;
 
   useEffect(() => {
     setIsRevealed(false);
@@ -51,22 +57,22 @@ export function ReviewPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Review" subtitle="Recall due words, then rate how well you remembered them." />
-      <div aria-live="polite" className="sr-only">
-        {queue.isLoading ? 'Loading review queue.' : queue.isError ? 'Review queue failed to load.' : item ? `${queue.data?.total ?? 0} reviews due.` : 'Review complete. No reviews are due right now.'}
-      </div>
-      {lastReview && <p role="status" aria-live="polite" className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-primary-subtle px-4 py-3 text-sm text-foreground">{lastReview.rating[0] + lastReview.rating.slice(1).toLowerCase()} saved. Next review in {lastReview.interval} {lastReview.interval === 1 ? 'day' : 'days'}.</p>}
+       <PageHeader title={t('title')} subtitle={t('subtitle')} />
+       <div aria-live="polite" className="sr-only">
+         {queue.isLoading ? t('loadingAnnouncement') : queue.isError ? getLocalizedErrorMessage(queue.error, tCommon) : item ? t('dueToday', { count: dueCount, formattedCount: formatNumber(dueCount) }) : t('completeAnnouncement')}
+       </div>
+       {lastReview && <p role="status" aria-live="polite" className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-primary-subtle px-4 py-3 text-sm text-foreground">{t('saved', { rating: t(`rating.${lastReview.rating}`), interval: formatIntervalDays(lastReview.interval) })}</p>}
 
       {queue.isLoading && <LoadingState />}
-      {queue.isError && <ErrorState message={queue.error instanceof Error ? queue.error.message : 'Could not load review queue.'} onRetry={() => void queue.refetch()} />}
+       {queue.isError && <ErrorState message={getLocalizedErrorMessage(queue.error, tCommon)} onRetry={() => void queue.refetch()} />}
       {!queue.isLoading && !queue.isError && item && <>
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
-          <span><strong className="text-foreground">{queue.data?.counts.total ?? queue.data?.total ?? 0}</strong> due today</span>
-          <span>SM-2 recall</span>
+           <span>{t('dueToday', { count: dueCount, formattedCount: formatNumber(dueCount) })}</span>
+           <span>{t('recallMode')}</span>
         </div>
         <ReviewCard item={item} isRevealed={isRevealed} isPending={submitMutation.isPending} onReveal={() => setIsRevealed(true)} onRate={(rating) => void submitRating(rating)} />
-        {submitMutation.isError && <p role="alert" className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-secondary px-4 py-3 text-sm text-foreground">{submitMutation.error instanceof Error ? submitMutation.error.message : 'Could not save review.'}</p>}
-        {submitMutation.isPending && <p className="mx-auto w-full max-w-3xl text-sm text-muted">Saving review…</p>}
+         {submitMutation.isError && <p role="alert" className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-secondary px-4 py-3 text-sm text-foreground">{getLocalizedErrorMessage(submitMutation.error, tCommon)}</p>}
+         {submitMutation.isPending && <p className="mx-auto w-full max-w-3xl text-sm text-muted">{t('saving')}</p>}
       </>}
       {!queue.isLoading && !queue.isError && !item && <ReviewCompletion lastReview={lastReview} />}
     </div>
@@ -74,9 +80,11 @@ export function ReviewPage() {
 }
 
 function LoadingState() {
-  return <div role="status" className="mx-auto w-full max-w-3xl rounded-2xl border border-border bg-surface p-8 text-center text-sm text-muted">Loading review queue…</div>;
+  const { t } = useTranslation('review');
+  return <div role="status" className="mx-auto w-full max-w-3xl rounded-2xl border border-border bg-surface p-8 text-center text-sm text-muted">{t('loading')}</div>;
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <div role="alert" className="mx-auto w-full max-w-3xl space-y-4 rounded-2xl border border-border bg-secondary p-6 text-foreground"><p>{message}</p><button type="button" onClick={onRetry} className="min-h-11 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Retry</button></div>;
+  const { t } = useTranslation('review');
+  return <div role="alert" className="mx-auto w-full max-w-3xl space-y-4 rounded-2xl border border-border bg-secondary p-6 text-foreground"><p>{message}</p><button type="button" onClick={onRetry} className="min-h-11 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('retry')}</button></div>;
 }

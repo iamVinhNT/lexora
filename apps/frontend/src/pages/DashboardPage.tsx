@@ -6,7 +6,6 @@ import { ArrowRight, RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
-import { ApiError } from '../api/client';
 import { getLocalizedErrorMessage } from '../i18n/presentation';
 import { formatNumber, formatPercent } from '../i18n/formatters';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -73,6 +72,6 @@ function DashboardSkeleton() {
 function ErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   const { t } = useTranslation('dashboard');
   const { t: tCommon } = useTranslation('common');
-  const message = error instanceof ApiError ? getLocalizedErrorMessage(error, tCommon) : error instanceof Error ? error.message : t('couldNotLoad');
+  const message = getLocalizedErrorMessage(error, tCommon);
   return <div role="alert" className="space-y-4 rounded-2xl border border-border bg-secondary p-6 text-foreground"><p>{message}</p><Button type="button" variant="secondary" aria-label={t('retry')} onClick={onRetry}>{t('retry')}</Button></div>;
 }

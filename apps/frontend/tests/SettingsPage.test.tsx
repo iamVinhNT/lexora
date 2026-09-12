@@ -238,7 +238,7 @@ describe('SettingsPage', () => {
     fireEvent.change(screen.getByLabelText('Type RESTORE to confirm'), { target: { value: 'RESTORE' } });
     fireEvent.click(screen.getByRole('button', { name: 'Restore backup' }));
 
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('did not confirm completion'));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Something went wrong. Please try again.'));
     expect(screen.queryByText('Restore completed.')).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Restore backup' })).toBeTruthy();
   });

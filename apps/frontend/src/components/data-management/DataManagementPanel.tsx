@@ -5,7 +5,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError } from '../../api/client';
 import type { BackupPayload, ExportResult, ImportFormat, ImportPreview, RestorePreview } from '../../api/data.api';
 import { getLocalizedErrorMessage } from '../../i18n/presentation';
 import {
@@ -95,8 +94,7 @@ export function DataManagementPanel() {
   }, [i18n.language]);
 
   function operationError(error: unknown, fallbackKey: 'errors.previewImport' | 'errors.import' | 'errors.previewRestore' | 'errors.restore'): string {
-    if (error instanceof ApiError) return getLocalizedErrorMessage(error, tCommon);
-    if (error instanceof Error) return error.message;
+    if (error) return getLocalizedErrorMessage(error, tCommon);
     return t(fallbackKey);
   }
 

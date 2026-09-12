@@ -59,7 +59,7 @@ describe('ContextPage', () => {
     fireEvent.change(screen.getByRole('textbox', { name: /search contexts/i }), { target: { value: 'scalable' } });
     const sourceTrigger = screen.getByRole('combobox', { name: /source type/i });
     fireEvent.pointerDown(sourceTrigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
-    const sourceOption = screen.getByRole('option', { name: 'ARTICLE' });
+    const sourceOption = screen.getByRole('option', { name: 'Article' });
     fireEvent.click(sourceOption);
     await waitFor(() => {
       const calls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
@@ -77,7 +77,7 @@ describe('ContextPage', () => {
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Title' }), { target: { value: 'Reliable systems' } });
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Content' }), { target: { value: 'Reliable systems scale.' } });
     fireEvent.pointerDown(within(dialog).getByRole('combobox', { name: /source type/i }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
-    const sourceOption = screen.getByRole('option', { name: 'ARTICLE' });
+    const sourceOption = screen.getByRole('option', { name: 'Article' });
     fireEvent.click(sourceOption);
     const saveButton = within(dialog).getByRole('button', { name: /save context/i });
     fireEvent.submit(saveButton.closest('form')!);
@@ -90,7 +90,7 @@ describe('ContextPage', () => {
   it('opens detail, exposes exposure data, and links then unlinks words', async () => {
     renderPage();
     await screen.findByText('Building a scalable API');
-    fireEvent.click(screen.getByRole('button', { name: /details for building/i }));
+    fireEvent.click(screen.getByRole('button', { name: /details for building a scalable api/i }));
 
     const dialog = await screen.findByRole('dialog', { name: /building a scalable api/i });
     expect(within(dialog).getByText(/exposure count: 3/i)).toBeTruthy();
@@ -117,9 +117,9 @@ describe('ContextPage', () => {
     expect(within(dialog).getByText('Content is required')).toBeTruthy();
 
     fireEvent.click(within(dialog).getByRole('button', { name: /cancel/i }));
-    fireEvent.click(screen.getByRole('button', { name: /details for building/i }));
+    fireEvent.click(screen.getByRole('button', { name: /details for building a scalable api/i }));
     const detail = await screen.findByRole('dialog', { name: /building a scalable api/i });
-    fireEvent.click(within(detail).getByRole('button', { name: /delete building/i }));
+    fireEvent.click(within(detail).getByRole('button', { name: /delete context building a scalable api/i }));
     const confirmation = screen.getByRole('dialog', { name: /delete context/i });
     expect(within(confirmation).getByText(/vocabulary words will be kept/i)).toBeTruthy();
   });

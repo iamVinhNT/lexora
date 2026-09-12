@@ -5,7 +5,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AnalyticsPage } from '../src/pages/AnalyticsPage';
 import { i18n } from '../src/i18n/config';
@@ -29,6 +29,10 @@ describe('AnalyticsPage i18n', () => {
     }));
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('renders Vietnamese analytics copy and translates stable insight IDs', async () => {
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -45,5 +49,21 @@ describe('AnalyticsPage i18n', () => {
     expect(screen.getByText('Nhận diện')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Có lượt ôn đang chờ' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Bắt đầu ôn' })).toBeTruthy();
+  });
+
+  it('uses Vietnamese loading names without English fragments', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)));
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={['/analytics']}>
+          <AnalyticsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const loadingNames = screen.getAllByRole('status').map((element) => element.getAttribute('aria-label') ?? '');
+    expect(loadingNames).toEqual(expect.arrayContaining(['Đang tải Từ vựng', 'Đang tải Trạng thái từ vựng', 'Đang tải Xu hướng ghi nhớ', 'Đang tải Insight học tập']));
+    expect(loadingNames.every((name) => !/\bloading\b/i.test(name))).toBe(true);
   });
 });

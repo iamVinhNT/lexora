@@ -84,7 +84,7 @@ describe('VocabularyPage', () => {
     fireEvent.pointerDown(screen.getByRole('combobox', { name: /cefr difficulty/i }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(screen.getByRole('option', { name: 'B2' }));
     fireEvent.pointerDown(screen.getByRole('combobox', { name: /vocabulary status/i }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
-    fireEvent.click(screen.getByRole('option', { name: 'LEARNING' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Learning' }));
     fireEvent.change(screen.getByRole('textbox', { name: /tag filter/i }), { target: { value: 'work' } });
 
     await waitFor(() => {
@@ -109,7 +109,7 @@ describe('VocabularyPage', () => {
     fetchMock.mockImplementationOnce(() => response({ code: 'FAIL', message: 'Network unavailable' }, 500));
     renderPage();
 
-    expect(await screen.findByText('Network unavailable')).toBeTruthy();
+    expect(await screen.findByText('Something went wrong. Please try again.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     expect(await screen.findByText('reliable')).toBeTruthy();
   });
@@ -172,7 +172,7 @@ describe('VocabularyPage', () => {
     renderPage();
     await screen.findByText('reliable');
     fireEvent.click(screen.getByRole('button', { name: /details for reliable/i }));
-    fireEvent.click(screen.getByRole('button', { name: /delete reliable/i }));
+    fireEvent.click(screen.getByRole('button', { name: /delete word reliable/i }));
 
     const confirmation = screen.getByRole('dialog', { name: /delete word/i });
     expect(within(confirmation).getByText(/reliable/i)).toBeTruthy();

@@ -43,3 +43,12 @@ export function formatIntervalDays(days: number, locale?: SupportedLocale): stri
   if (days < 365) return new Intl.NumberFormat(getIntlLocale(locale), { style: 'unit', unit: 'month', unitDisplay: 'long' }).format(Math.round(days / 30));
   return new Intl.NumberFormat(getIntlLocale(locale), { style: 'unit', unit: 'year', unitDisplay: 'long', maximumFractionDigits: 1 }).format(days / 365);
 }
+
+export function formatIntervalPreview(value: string | null | undefined, locale?: SupportedLocale): string {
+  if (!value) return '—';
+  const match = /^(\d+(?:\.\d+)?)([dmy])$/.exec(value);
+  if (!match) return value;
+  const amount = Number(match[1]);
+  const unit = { d: 'day', m: 'month', y: 'year' }[match[2]] as Intl.RelativeTimeFormatUnit;
+  return new Intl.NumberFormat(getIntlLocale(locale), { style: 'unit', unit, unitDisplay: 'long', maximumFractionDigits: 1 }).format(amount);
+}

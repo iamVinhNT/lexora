@@ -162,7 +162,7 @@ export function MoreNavigationSheet({ triggerRef }: MoreNavigationSheetProps) {
       >
         <div className="flex items-center justify-between">
           <h2 id="more-navigation-title" className="text-lg font-semibold text-foreground">
-             {t('more')}
+             {t('moreTitle')}
           </h2>
           <button
             ref={closeButtonRef}

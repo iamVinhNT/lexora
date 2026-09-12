@@ -6,7 +6,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
-import { ApiError } from '../api/client';
 import type { ProgressOverview } from '../api/analytics.api';
 import { getLocalizedErrorMessage, getLocalizedInsight } from '../i18n/presentation';
 import { formatNumber, formatPercent } from '../i18n/formatters';
@@ -30,7 +29,7 @@ export function AnalyticsPage() {
 
   return <div className="space-y-8">
     <PageHeader title={t('title')} subtitle={t('subtitle')} action={<div className="flex min-h-11 items-center gap-2 text-sm font-semibold text-foreground"><label htmlFor="trend-range">{t('trendRange')}</label><Select value={String(days)} onValueChange={(value) => setDays(Number(value))}><SelectTrigger id="trend-range" aria-label={t('trendRange')} className="min-h-11 rounded-lg border border-border bg-surface px-3 py-2 text-foreground"><SelectValue /></SelectTrigger><SelectContent>{[7, 14, 30, 90].map((value) => <SelectItem key={value} value={String(value)}>{t('days', { count: value })}</SelectItem>)}</SelectContent></Select></div>} />
-    <section aria-labelledby="kpi-title" className="space-y-4"><h2 id="kpi-title" className="text-xl font-semibold text-foreground">{t('keyMeasures')}</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><KpiCard label={t('vocabulary')} value={progress.data ? formatNumber(progress.data.totalWords) : undefined} loading={progress.isLoading} error={progress.isError} loadingLabel={t('vocabulary')} unavailableLabel={t('unavailable')} /><KpiCard label={t('reviewsToday')} value={dashboard.data ? formatNumber(dashboard.data.todayReviews) : undefined} loading={dashboard.isLoading} error={dashboard.isError} loadingLabel={t('reviewsToday')} unavailableLabel={t('unavailable')} /><KpiCard label={t('accuracy')} value={dashboard.data ? dashboard.data.overallAccuracy === null ? t('accuracyUnavailable') : formatPercent(dashboard.data.overallAccuracy) : undefined} loading={dashboard.isLoading} error={dashboard.isError} loadingLabel={t('accuracy')} unavailableLabel={t('unavailable')} /><KpiCard label={t('currentStreak')} value={dashboard.data ? t('days', { count: dashboard.data.currentStreak }) : undefined} loading={dashboard.isLoading} error={dashboard.isError} loadingLabel={t('currentStreak')} unavailableLabel={t('unavailable')} /></div>{progress.isError && <QueryError queryKey="vocabularyStatistics" error={progress.error} onRetry={() => void progress.refetch()} />}{dashboard.isError && <QueryError queryKey="dashboardStatistics" error={dashboard.error} onRetry={() => void dashboard.refetch()} />}</section>
+     <section aria-labelledby="kpi-title" className="space-y-4"><h2 id="kpi-title" className="text-xl font-semibold text-foreground">{t('keyMeasures')}</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><KpiCard label={t('vocabulary')} value={progress.data ? formatNumber(progress.data.totalWords) : undefined} loading={progress.isLoading} error={progress.isError} loadingLabel={t('loading', { label: t('vocabulary') })} unavailableLabel={t('unavailable')} /><KpiCard label={t('reviewsToday')} value={dashboard.data ? formatNumber(dashboard.data.todayReviews) : undefined} loading={dashboard.isLoading} error={dashboard.isError} loadingLabel={t('loading', { label: t('reviewsToday') })} unavailableLabel={t('unavailable')} /><KpiCard label={t('accuracy')} value={dashboard.data ? dashboard.data.overallAccuracy === null ? t('accuracyUnavailable') : formatPercent(dashboard.data.overallAccuracy) : undefined} loading={dashboard.isLoading} error={dashboard.isError} loadingLabel={t('loading', { label: t('accuracy') })} unavailableLabel={t('unavailable')} /><KpiCard label={t('currentStreak')} value={dashboard.data ? t('days', { count: dashboard.data.currentStreak }) : undefined} loading={dashboard.isLoading} error={dashboard.isError} loadingLabel={t('loading', { label: t('currentStreak') })} unavailableLabel={t('unavailable')} /></div>{progress.isError && <QueryError queryKey="vocabularyStatistics" error={progress.error} onRetry={() => void progress.refetch()} />}{dashboard.isError && <QueryError queryKey="dashboardStatistics" error={dashboard.error} onRetry={() => void dashboard.refetch()} />}</section>
     {progress.data && <DimensionSummary progress={progress.data} />}
     {progress.data ? <StateChart progress={progress.data} /> : progress.isLoading ? <LoadingCard label={t('states')} /> : null}
     {trends.data ? <TrendChart trends={trends.data.trends} /> : trends.isLoading ? <LoadingCard label={t('retentionTrend')} /> : trends.isError ? <QueryError queryKey="retentionTrend" error={trends.error} onRetry={() => void trends.refetch()} /> : null}
@@ -49,18 +48,19 @@ function DimensionSummary({ progress }: { progress: ProgressOverview }) {
 }
 
 function KpiCard({ label, value, loading, error, loadingLabel, unavailableLabel }: { label: string; value?: string; loading: boolean; error: boolean; loadingLabel: string; unavailableLabel: string }) {
-  return <Card className="p-5"><p className="text-sm font-medium text-muted">{label}</p>{loading ? <div role="status" aria-label={`${loadingLabel} loading`} className="mt-3 h-8 w-20 animate-pulse rounded bg-secondary" /> : error ? <p className="mt-3 text-sm text-muted">{unavailableLabel}</p> : <p className="mt-3 text-2xl font-bold text-foreground">{value}</p>}</Card>;
+  return <Card className="p-5"><p className="text-sm font-medium text-muted">{label}</p>{loading ? <div role="status" aria-label={loadingLabel} className="mt-3 h-8 w-20 animate-pulse rounded bg-secondary" /> : error ? <p className="mt-3 text-sm text-muted">{unavailableLabel}</p> : <p className="mt-3 text-2xl font-bold text-foreground">{value}</p>}</Card>;
 }
 
 function LoadingCard({ label }: { label: string }) {
-  return <Card role="status" aria-label={`${label} loading`} className="h-64 animate-pulse bg-secondary" />;
+  const { t } = useTranslation('analytics');
+  return <Card role="status" aria-label={t('loading', { label })} className="h-64 animate-pulse bg-secondary" />;
 }
 
 function QueryError({ queryKey, error, onRetry }: { queryKey: QueryKey; error: unknown; onRetry: () => void }) {
   const { t } = useTranslation('analytics');
   const { t: tCommon } = useTranslation('common');
   const query = t(`query.${queryKey}`);
-  const message = error instanceof ApiError ? getLocalizedErrorMessage(error, tCommon) : error instanceof Error ? error.message : t('failedToLoad', { query });
+  const message = getLocalizedErrorMessage(error, tCommon);
   return <div role="alert" className="flex flex-col gap-3 rounded-xl border border-border bg-secondary p-4 text-sm text-foreground sm:flex-row sm:items-center sm:justify-between"><span>{message}</span><Button type="button" variant="secondary" onClick={onRetry}>{t('retry', { query })}</Button></div>;
 }
 

@@ -172,7 +172,7 @@ describe('LearningSessionPage', () => {
     await waitFor(() => expect(continueButton.hasAttribute('disabled')).toBe(true));
     expect(screen.getByRole('heading', { name: 'Context' })).toBeTruthy();
     resolveStep?.(new Response(JSON.stringify({ success: false, error: { code: 'FAILED', message: 'Step failed' } }), { status: 400 }));
-    expect(await screen.findByText('Step failed')).toBeTruthy();
+    expect(await screen.findByText('Something went wrong. Please try again.')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Context' })).toBeTruthy();
   });
 
