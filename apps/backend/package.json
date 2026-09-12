@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "test": "vitest run",
-    "verify:runtime": "npm run build && node scripts/runtime-smoke.mjs"
+    "verify:runtime": "pnpm run build && node scripts/runtime-smoke.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
