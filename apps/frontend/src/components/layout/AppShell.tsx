@@ -43,7 +43,11 @@ export function AppShell() {
       <div ref={appBackgroundRef} data-app-background>
         <SkipLink />
         <Sidebar />
-        <div className="min-h-screen lg:pl-60">
+        <div
+          className={`min-h-screen transition-[padding] duration-200 ease-in-out ${
+            isSidebarOpen ? 'lg:pl-64' : 'lg:pl-16'
+          }`}
+        >
           <MobileTopBar />
           <main
             ref={mainRef}

@@ -251,4 +251,62 @@ describe('AppShell', () => {
 
     expect(config).toContain("darkMode: ['variant', '&:where([data-theme=\"dark\"], [data-theme=\"dark\"] *)']");
   });
+
+  it('toggles sidebar collapse state and synchronizes desktop padding following sidebar-07 architecture', () => {
+    renderApp();
+
+    const sidebar = screen.getAllByRole('complementary')[0];
+    const trigger = within(sidebar).getByRole('button', { name: /collapse sidebar/i });
+    const contentContainer = sidebar.parentElement?.querySelector('div.min-h-screen');
+
+    // Initial expanded state
+    expect(sidebar.getAttribute('data-state')).toBe('expanded');
+    expect(sidebar.className).toContain('w-64');
+    expect(sidebar.className).toContain('lg:flex');
+    expect(contentContainer?.className).toContain('lg:pl-64');
+    expect(within(sidebar).getByRole('link', { name: 'Overview' })).toBeTruthy();
+    expect(within(sidebar).getByText('Appearance')).toBeTruthy();
+
+    // Collapse sidebar
+    fireEvent.click(trigger);
+
+    expect(useUiStore.getState().isSidebarOpen).toBe(false);
+    expect(sidebar.getAttribute('data-state')).toBe('collapsed');
+    expect(sidebar.className).toContain('w-16');
+    expect(contentContainer?.className).toContain('lg:pl-16');
+
+    // NavMain links still accessible with title tooltips
+    const overviewLink = within(sidebar).getByRole('link', { name: 'Overview' });
+    expect(overviewLink.getAttribute('title')).toBe('Overview');
+    expect(within(overviewLink).getByText('Overview').className).toContain('sr-only');
+
+    // Expand sidebar back
+    const expandTrigger = within(sidebar).getByRole('button', { name: /expand sidebar/i });
+    fireEvent.click(expandTrigger);
+
+    expect(useUiStore.getState().isSidebarOpen).toBe(true);
+    expect(sidebar.getAttribute('data-state')).toBe('expanded');
+    expect(sidebar.className).toContain('w-64');
+    expect(contentContainer?.className).toContain('lg:pl-64');
+  });
+
+  it('renders accessible touch targets and controls in sidebar footer', () => {
+    renderApp();
+
+    const sidebar = screen.getAllByRole('complementary')[0];
+    const trigger = within(sidebar).getByRole('button', { name: /collapse sidebar/i });
+    const languageCombobox = within(sidebar).getByRole('combobox', { name: 'Language' });
+    const themeButton = within(sidebar).getByRole('button', { name: /switch to dark theme/i });
+
+    expect(languageCombobox.className).toContain('min-h-11');
+    expect(themeButton.className).toContain('min-h-11');
+    expect(themeButton.className).toContain('min-w-11');
+
+    // Collapse sidebar and verify compact controls
+    fireEvent.click(trigger);
+
+    const compactLanguage = within(sidebar).getByRole('combobox', { name: 'Language' });
+    expect(compactLanguage.className).toContain('w-11');
+    expect(compactLanguage.className).toContain('min-w-11');
+  });
 });

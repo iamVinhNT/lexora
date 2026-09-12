@@ -1,52 +1,81 @@
 /**
  * @file Sidebar.tsx
- * @description Persistent desktop navigation for the Lexora application shell.
+ * @description Persistent desktop navigation for the Lexora application shell following ShadCN sidebar-07 architecture.
  */
-import { NavLink, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-import { primaryNavigation } from './navigation';
+import { useUiStore } from '../../stores/ui.store';
+import { NavMain } from './NavMain';
+import { SidebarTrigger } from './SidebarTrigger';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { LanguageSelector } from '../ui/LanguageSelector';
 
 export function Sidebar() {
   const { t } = useTranslation('navigation');
+  const isSidebarOpen = useUiStore((state) => state.isSidebarOpen);
+
   return (
     <aside
+      role="complementary"
       aria-label={t('primary')}
-      className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-surface lg:flex"
+      data-state={isSidebarOpen ? 'expanded' : 'collapsed'}
+      data-collapsible="icon"
+      className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-border bg-surface transition-[width] duration-200 ease-in-out lg:flex ${
+        isSidebarOpen ? 'w-64' : 'w-16'
+      }`}
     >
-      <div className="flex h-20 items-center border-b border-border px-6">
-        <Link
-          to="/"
-          className="text-xl font-bold tracking-tight text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-        >
-          Lexora
-        </Link>
-      </div>
-
-      <nav aria-label={t('desktop')} className="flex-1 space-y-1 overflow-y-auto px-3 py-6">
-        {primaryNavigation.map(({ labelKey, path, icon: Icon }) => (
-          <NavLink
-            key={path}
-            to={path}
-            end={path === '/'}
-            className={({ isActive }) =>
-              `flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
-                isActive ? 'bg-primary-subtle text-primary' : 'text-muted hover:bg-secondary hover:text-foreground'
-              }`
-            }
+      {isSidebarOpen ? (
+        <div className="flex h-16 items-center justify-between border-b border-border px-4">
+          <Link
+            to="/"
+            className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
           >
-            <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
-            {t(labelKey)}
-          </NavLink>
-        ))}
-      </nav>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary font-bold text-white shadow-sm">
+              L
+            </span>
+            <span className="truncate">Lexora</span>
+          </Link>
+          <SidebarTrigger />
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2 border-b border-border px-2 py-3">
+          <Link
+            to="/"
+            title="Lexora"
+            aria-label="Lexora"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary font-bold text-white shadow-sm">
+              L
+            </span>
+            <span className="sr-only">Lexora</span>
+          </Link>
+          <SidebarTrigger />
+        </div>
+      )}
 
-      <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-4">
-        <span className="text-sm font-medium text-muted">{t('appearance')}</span>
-        <div className="flex items-center gap-1"><LanguageSelector /><ThemeToggle /></div>
-      </div>
+      <NavMain isSidebarOpen={isSidebarOpen} />
+
+      {isSidebarOpen ? (
+        <div className="border-t border-border px-3 py-4">
+          <div className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
+            {t('appearance')}
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <LanguageSelector />
+            </div>
+            <ThemeToggle />
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2 border-t border-border px-2 py-4">
+          <span className="sr-only">{t('appearance')}</span>
+          <LanguageSelector compact />
+          <ThemeToggle />
+        </div>
+      )}
     </aside>
   );
 }

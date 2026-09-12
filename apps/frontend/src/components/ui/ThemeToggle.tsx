@@ -23,6 +23,7 @@ export function ThemeToggle() {
     <button
       type="button"
       aria-label={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
+      title={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
       aria-pressed={isDark}
       onClick={toggleTheme}
       className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"

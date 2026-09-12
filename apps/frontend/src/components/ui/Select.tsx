@@ -10,19 +10,28 @@ export const Select = SelectPrimitive.Root;
 export const SelectGroup = SelectPrimitive.Group;
 export const SelectValue = SelectPrimitive.Value;
 
+export interface SelectTriggerProps
+  extends React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger> {
+  hideChevron?: boolean;
+}
+
 export const SelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className = '', children, ...props }, ref) => (
+  SelectTriggerProps
+>(({ className = '', hideChevron = false, children, ...props }, ref) => (
   <SelectPrimitive.Trigger
     ref={ref}
-    className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60 data-[placeholder]:text-muted ${className}`}
+    className={`flex min-h-11 items-center justify-between gap-2 rounded-lg border border-border bg-surface text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60 data-[placeholder]:text-muted ${
+      hideChevron ? 'px-2 py-2' : 'w-full px-3 py-2'
+    } ${className}`}
     {...props}
   >
     {children}
-    <SelectPrimitive.Icon asChild>
-      <ChevronDown aria-hidden="true" size={16} />
-    </SelectPrimitive.Icon>
+    {!hideChevron && (
+      <SelectPrimitive.Icon asChild>
+        <ChevronDown aria-hidden="true" size={16} />
+      </SelectPrimitive.Icon>
+    )}
   </SelectPrimitive.Trigger>
 ));
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
