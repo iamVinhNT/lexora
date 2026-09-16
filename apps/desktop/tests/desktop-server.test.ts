@@ -2,7 +2,7 @@
  * @file desktop-server.test.ts
  * @description Proves the embedded desktop server uses loopback and an ephemeral port.
  */
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -15,6 +15,76 @@ describe('startDesktopServer', () => {
   afterEach(async () => {
     await server?.close();
     server = undefined;
+  });
+
+  it('repairs owner-write permissions on an existing database before opening it', async () => {
+    const rendererRoot = await mkdtemp(join(tmpdir(), 'lexora-desktop-spa-'));
+    const databasePath = join(rendererRoot, 'data', 'lexora.db');
+    const databaseFiles = [databasePath, `${databasePath}-wal`, `${databasePath}-shm`];
+    await mkdir(join(rendererRoot, 'data'), { recursive: true });
+
+    try {
+      await Promise.all(databaseFiles.map((filePath) => writeFile(filePath, '')));
+      await Promise.all(databaseFiles.map((filePath) => chmod(filePath, 0o444)));
+
+      server = await startDesktopServer({ databasePath, rendererRoot });
+
+      for (const filePath of databaseFiles) {
+        expect((await stat(filePath)).mode & 0o777).toBe(0o644);
+      }
+
+      const response = await fetch(`${server.origin}/api/words`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ word: 'persist', definition: 'to save' }),
+      });
+      expect(response.status).toBe(201);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      expect(body.data.learningProgress).toMatchObject({
+        status: 'NEW',
+        recognitionScore: 0,
+        recallScore: 0,
+        productionScore: 0,
+      });
+      expect(body.data.reviewState).toMatchObject({
+        interval: 0,
+        easeFactor: 2.5,
+        repetitions: 0,
+        lapses: 0,
+      });
+      expect(body.data.reviewState.dueAt).toBeDefined();
+    } finally {
+      await rm(rendererRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a database path whose parent cannot be used as a directory', async () => {
+    const rendererRoot = await mkdtemp(join(tmpdir(), 'lexora-desktop-spa-'));
+    const blockedDirectory = join(rendererRoot, 'blocked');
+    await writeFile(blockedDirectory, 'not a directory');
+
+    try {
+      await expect(startDesktopServer({
+        databasePath: join(blockedDirectory, 'lexora.db'),
+        rendererRoot,
+      })).rejects.toThrow(`Desktop database storage is not writable (${blockedDirectory})`);
+    } finally {
+      await rm(rendererRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves missing database sidecars for SQLite to create', async () => {
+    const rendererRoot = await mkdtemp(join(tmpdir(), 'lexora-desktop-spa-'));
+    const dataDirectory = join(rendererRoot, 'data');
+    const databasePath = join(dataDirectory, 'lexora.db');
+
+    try {
+      server = await startDesktopServer({ databasePath, rendererRoot });
+      expect(new Set(await readdir(dataDirectory))).toEqual(new Set(['lexora.db', 'lexora.db-wal', 'lexora.db-shm']));
+    } finally {
+      await rm(rendererRoot, { recursive: true, force: true });
+    }
   });
 
   it('listens on loopback with an operating-system-assigned port', async () => {
