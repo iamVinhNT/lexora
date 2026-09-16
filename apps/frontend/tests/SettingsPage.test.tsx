@@ -125,7 +125,11 @@ describe('SettingsPage', () => {
     Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:download') });
     Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    delete window.lexoraDesktop;
+  });
 
   it('previews import before enabling commit and displays API counts', async () => {
     const fetchMock = vi.fn()
@@ -182,6 +186,122 @@ describe('SettingsPage', () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain('format=CSV');
     expect(anchorClick).toHaveBeenCalled();
     expect(screen.getByRole('status').textContent).toContain('Vocabulary export downloaded.');
+  });
+
+  it('uses desktop open dialog for import when bridge exists', async () => {
+    const openImportFile = vi.fn().mockResolvedValue({ canceled: false, name: 'words.txt', content: 'lucid' });
+    Object.defineProperty(window, 'lexoraDesktop', {
+      configurable: true,
+      value: { openImportFile, openBackupFile: vi.fn(), saveExportFile: vi.fn(), saveBackupFile: vi.fn() },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({
+      validItems: [{ index: 0, word: 'lucid', definition: '' }],
+      duplicates: [],
+      invalidItems: [],
+      validCount: 1,
+      duplicateCount: 0,
+      invalidCount: 0,
+      previewToken: 'desktop-token',
+    })));
+
+    renderSettings();
+    fireEvent.click(screen.getByRole('button', { name: 'Import file' }));
+
+    await waitFor(() => expect(openImportFile).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Selected: words.txt')).toBeTruthy();
+  });
+
+  it('associates desktop import and restore buttons with their visible labels', () => {
+    Object.defineProperty(window, 'lexoraDesktop', {
+      configurable: true,
+      value: { openImportFile: vi.fn(), openBackupFile: vi.fn(), saveExportFile: vi.fn(), saveBackupFile: vi.fn() },
+    });
+
+    renderSettings();
+
+    const importButton = screen.getByRole('button', { name: 'Import file' });
+    const restoreButton = screen.getByRole('button', { name: 'Restore backup file' });
+    expect(screen.getByLabelText('Import file')).toBe(importButton);
+    expect(screen.getByLabelText('Restore backup file')).toBe(restoreButton);
+    expect(importButton.getAttribute('id')).toBe('import-file');
+    expect(restoreButton.getAttribute('id')).toBe('restore-file');
+  });
+
+  it('uses desktop save dialog for vocabulary export when bridge exists', async () => {
+    const saveExportFile = vi.fn().mockResolvedValue({ canceled: false });
+    Object.defineProperty(window, 'lexoraDesktop', {
+      configurable: true,
+      value: { openImportFile: vi.fn(), openBackupFile: vi.fn(), saveExportFile, saveBackupFile: vi.fn() },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ format: 'CSV', scope: 'words', content: 'word,definition\nlucid,clear' })));
+
+    renderSettings();
+    fireEvent.click(screen.getByRole('button', { name: 'Export vocabulary' }));
+
+    await waitFor(() => expect(saveExportFile).toHaveBeenCalledWith({
+      suggestedName: 'lexora-vocabulary.csv',
+      content: 'word,definition\nlucid,clear',
+      format: 'CSV',
+    }));
+  });
+
+  it('shows a localized error when desktop export saving fails', async () => {
+    const saveExportFile = vi.fn().mockRejectedValue(new Error('permission denied: /private/secret'));
+    Object.defineProperty(window, 'lexoraDesktop', {
+      configurable: true,
+      value: { openImportFile: vi.fn(), openBackupFile: vi.fn(), saveExportFile, saveBackupFile: vi.fn() },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ format: 'CSV', scope: 'words', content: 'word,definition\nlucid,clear' })));
+
+    renderSettings();
+    fireEvent.click(screen.getByRole('button', { name: 'Export vocabulary' }));
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Something went wrong. Please try again.'));
+    expect(screen.queryByText('Vocabulary export downloaded.')).toBeNull();
+  });
+
+  it('shows a localized error when desktop backup saving fails', async () => {
+    const saveBackupFile = vi.fn().mockRejectedValue(new Error('disk full: /private/secret'));
+    Object.defineProperty(window, 'lexoraDesktop', {
+      configurable: true,
+      value: { openImportFile: vi.fn(), openBackupFile: vi.fn(), saveExportFile: vi.fn(), saveBackupFile },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(emptyBackup)));
+
+    renderSettings();
+    fireEvent.click(screen.getByRole('button', { name: 'Download full backup' }));
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Something went wrong. Please try again.'));
+    expect(screen.queryByText('Full backup downloaded.')).toBeNull();
+  });
+
+  it('keeps native file-operation cancellations silent', async () => {
+    const desktop = {
+      openImportFile: vi.fn().mockResolvedValue({ canceled: true }),
+      openBackupFile: vi.fn().mockResolvedValue({ canceled: true }),
+      saveExportFile: vi.fn().mockResolvedValue({ canceled: true }),
+      saveBackupFile: vi.fn().mockResolvedValue({ canceled: true }),
+    };
+    Object.defineProperty(window, 'lexoraDesktop', { configurable: true, value: desktop });
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/export/vocabulary')) return Promise.resolve(response({ format: 'CSV', scope: 'words', content: 'word,definition' }));
+      if (url.includes('/api/backup')) return Promise.resolve(response(emptyBackup));
+      return Promise.resolve(response({}));
+    }));
+
+    renderSettings();
+    fireEvent.click(screen.getByRole('button', { name: 'Import file' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Restore backup file' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Export vocabulary' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Download full backup' }));
+
+    await waitFor(() => expect(desktop.saveBackupFile).toHaveBeenCalledTimes(1));
+    expect(desktop.openImportFile).toHaveBeenCalledTimes(1);
+    expect(desktop.openBackupFile).toHaveBeenCalledTimes(1);
+    expect(desktop.saveExportFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('previews restore, locks confirmation until typed phrase, then restores with confirm true', async () => {
@@ -353,6 +473,46 @@ describe('SettingsPage', () => {
       expect(screen.queryByRole('button', { name: 'Import 1 item' })).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('uses desktop save dialog for a full backup with exact name and content', async () => {
+    const saveBackupFile = vi.fn().mockResolvedValue({ canceled: false });
+    const expectedName = `lexora-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    Object.defineProperty(window, 'lexoraDesktop', {
+      configurable: true,
+      value: { openImportFile: vi.fn(), openBackupFile: vi.fn(), saveExportFile: vi.fn(), saveBackupFile },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(emptyBackup)));
+
+    renderSettings();
+    fireEvent.click(screen.getByRole('button', { name: 'Download full backup' }));
+
+    await waitFor(() => expect(saveBackupFile).toHaveBeenCalledWith({
+      suggestedName: expectedName,
+      content: JSON.stringify(emptyBackup, null, 2),
+    }));
+  });
+
+  it('opens a native backup and sends its exact content to restore preview', async () => {
+    const backup = { ...emptyBackup, data: { ...emptyBackup.data, words: [{ id: 'word-1' }] } };
+    const openBackupFile = vi.fn().mockResolvedValue({ canceled: false, name: 'native-backup.json', content: JSON.stringify(backup) });
+    const fetchMock = vi.fn().mockResolvedValue(response({ valid: true, version: 1, application: 'Lexora', exportedAt: now, tableCounts: { words: 1 }, totalRecords: 1, previewToken: 'native-restore-token', conflictSummary: { existingRecordsCount: 0, willOverwrite: false, existingTableCounts: {} } }));
+    Object.defineProperty(window, 'lexoraDesktop', {
+      configurable: true,
+      value: { openImportFile: vi.fn(), openBackupFile, saveExportFile: vi.fn(), saveBackupFile: vi.fn() },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSettings();
+    fireEvent.click(screen.getByRole('button', { name: 'Restore backup file' }));
+
+    await waitFor(() => expect(openBackupFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      const previewCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/api/restore/preview'));
+      expect(previewCall).toBeDefined();
+      expect(previewCall?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify({ backup }) });
+    });
+    expect(screen.getByText('No existing records will be overwritten.')).toBeTruthy();
   });
 
   it('suppresses stale import preview responses after a newer file selection', async () => {

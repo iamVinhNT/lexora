@@ -1,0 +1,36 @@
+{
+  "name": "@lexora/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lexora desktop English vocabulary learning system",
+  "homepage": "https://github.com/iamVinhNT/lexora",
+  "author": {
+    "name": "trungvinh2102",
+    "email": "trungvinhh21202@gmail.com"
+  },
+  "desktopName": "lexora",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc && cp src/preload.cjs dist/preload.cjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "pnpm run build && electron dist/main.js",
+    "icons": "node scripts/generate-icons.mjs",
+    "dist:linux": "pnpm run icons && electron-builder --linux AppImage deb --x64",
+    "packaged-smoke": "node scripts/packaged-smoke.mjs",
+    "acceptance": "node scripts/packaged-acceptance.mjs"
+  },
+  "dependencies": {
+    "@lexora/backend": "workspace:*",
+    "better-sqlite3": "13.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3",
+    "sharp": "^0.34.5",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

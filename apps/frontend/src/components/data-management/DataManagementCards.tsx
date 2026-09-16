@@ -21,6 +21,8 @@ export type DataManagementCardsProps = {
   onFormatChange: (value: ImportFormat) => void;
   importName: string;
   onImportFile: (file?: File) => void;
+  desktopFiles: boolean;
+  onSelectImport: () => void;
   importLoading: boolean;
   importPreview: ImportPreview | null;
   importConfirmed: boolean;
@@ -34,6 +36,7 @@ export type DataManagementCardsProps = {
   backupPending: boolean;
   exportError: Error | null;
   onRestoreFile: (file?: File) => void;
+  onSelectRestore: () => void;
   restorePreview: RestorePreview | null;
   restoreLoading: boolean;
   onOpenRestore: () => void;
@@ -43,9 +46,9 @@ export type DataManagementCardsProps = {
 
 export function DataManagementCards(props: DataManagementCardsProps) {
   return <>
-    <ImportCard format={props.format} onFormatChange={props.onFormatChange} importName={props.importName} onFile={props.onImportFile} loading={props.importLoading} preview={props.importPreview} confirmed={props.importConfirmed} setConfirmed={props.setImportConfirmed} onCommit={props.onImportCommit} pending={props.importPending} error={props.importError} />
+    <ImportCard format={props.format} onFormatChange={props.onFormatChange} importName={props.importName} onFile={props.onImportFile} desktopFiles={props.desktopFiles} onSelect={props.onSelectImport} loading={props.importLoading} preview={props.importPreview} confirmed={props.importConfirmed} setConfirmed={props.setImportConfirmed} onCommit={props.onImportCommit} pending={props.importPending} error={props.importError} />
     <ExportCard onExport={props.onExport} onBackup={props.onBackup} exportPending={props.exportPending} backupPending={props.backupPending} error={props.exportError} />
-    <RestoreCard onFile={props.onRestoreFile} preview={props.restorePreview} loading={props.restoreLoading} onOpen={props.onOpenRestore} />
+    <RestoreCard onFile={props.onRestoreFile} desktopFiles={props.desktopFiles} onSelect={props.onSelectRestore} preview={props.restorePreview} loading={props.restoreLoading} onOpen={props.onOpenRestore} />
     <DangerCard onProgress={props.onResetProgress} onAll={props.onDeleteAll} />
   </>;
 }
@@ -55,6 +58,8 @@ export type ImportCardProps = {
   onFormatChange: (value: ImportFormat) => void;
   importName: string;
   onFile: (file?: File) => void;
+  desktopFiles: boolean;
+  onSelect: () => void;
   loading: boolean;
   preview: ImportPreview | null;
   confirmed: boolean;
@@ -64,7 +69,7 @@ export type ImportCardProps = {
   error: string;
 };
 
-export function ImportCard({ format, onFormatChange, importName, onFile, loading, preview, confirmed, setConfirmed, onCommit, pending, error }: ImportCardProps) {
+export function ImportCard({ format, onFormatChange, importName, onFile, desktopFiles, onSelect, loading, preview, confirmed, setConfirmed, onCommit, pending, error }: ImportCardProps) {
   const { t } = useTranslation('settings');
   const { t: tCommon } = useTranslation('common');
   const importButtonLabel = tCommon('actions.importItems', { count: preview?.validCount ?? 0 });
@@ -82,7 +87,11 @@ export function ImportCard({ format, onFormatChange, importName, onFile, loading
         </div>
         <div>
           <label htmlFor="import-file" className="text-sm font-semibold text-foreground">{t('importFile')}</label>
-          <input id="import-file" type="file" accept=".txt,.csv,.json" onChange={(event) => onFile(event.target.files?.[0])} className={`${inputClass} mt-2 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2`} />
+          {desktopFiles ? (
+            <Button id="import-file" type="button" variant="secondary" className="mt-2" onClick={onSelect}>{t('importFile')}</Button>
+          ) : (
+            <input id="import-file" type="file" accept=".txt,.csv,.json" onChange={(event) => onFile(event.target.files?.[0])} className={`${inputClass} mt-2 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2`} />
+          )}
         </div>
       </div>
       {importName && <p className="text-sm text-muted">{t('selected', { name: importName })}</p>}
@@ -122,15 +131,19 @@ export function ExportCard({ onExport, onBackup, exportPending, backupPending, e
   </Card>;
 }
 
-export type RestoreCardProps = { onFile: (file?: File) => void; preview: RestorePreview | null; loading: boolean; onOpen: () => void };
+export type RestoreCardProps = { onFile: (file?: File) => void; desktopFiles: boolean; onSelect: () => void; preview: RestorePreview | null; loading: boolean; onOpen: () => void };
 
-export function RestoreCard({ onFile, preview, loading, onOpen }: RestoreCardProps) {
+export function RestoreCard({ onFile, desktopFiles, onSelect, preview, loading, onOpen }: RestoreCardProps) {
   const { t } = useTranslation('settings');
   const { t: tCommon } = useTranslation('common');
   return <Card className="space-y-5 p-5">
     <CardHeading icon={<FileUp aria-hidden="true" size={20} />} title={t('restore')} description={t('restoreDescription')} />
     <label htmlFor="restore-file" className="text-sm font-semibold text-foreground">{t('restoreFile')}</label>
-    <input id="restore-file" type="file" accept=".json,application/json" onChange={(event) => onFile(event.target.files?.[0])} className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2`} />
+    {desktopFiles ? (
+      <Button id="restore-file" type="button" variant="secondary" onClick={onSelect}>{t('restoreFile')}</Button>
+    ) : (
+      <input id="restore-file" type="file" accept=".json,application/json" onChange={(event) => onFile(event.target.files?.[0])} className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2`} />
+    )}
      {loading && <p role="status" className="text-sm text-muted">{tCommon('status.preparingRestore')}</p>}
     {preview && <div className="space-y-3 rounded-xl border border-border bg-secondary p-4">
       <h4 className="font-semibold text-foreground">{t('restorePreview')}</h4>

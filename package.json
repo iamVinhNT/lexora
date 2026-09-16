@@ -6,7 +6,13 @@
   "scripts": {
     "dev": "concurrently --kill-others-on-fail --names backend,frontend \"pnpm --filter @lexora/backend dev\" \"pnpm --filter @lexora/frontend dev\"",
     "build": "pnpm -r --if-present build",
-    "test": "pnpm -r --if-present test"
+    "test": "pnpm -r --if-present test",
+    "desktop:dev": "pnpm --filter @lexora/backend build && pnpm --filter @lexora/frontend build && pnpm --filter @lexora/desktop dev",
+    "desktop:build": "pnpm --filter @lexora/backend build && pnpm --filter @lexora/frontend build && pnpm --filter @lexora/desktop build",
+    "desktop:dist": "pnpm run desktop:build && pnpm --filter @lexora/desktop dist:linux",
+    "desktop:smoke": "node apps/desktop/scripts/artifact-smoke.mjs",
+    "desktop:packaged-smoke": "pnpm --filter @lexora/desktop packaged-smoke",
+    "desktop:acceptance": "pnpm run desktop:dist && pnpm --filter @lexora/desktop acceptance"
   },
   "devDependencies": {
     "concurrently": "^10.0.5"

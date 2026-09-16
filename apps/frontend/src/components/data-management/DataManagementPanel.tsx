@@ -17,6 +17,13 @@ import {
   useRestoreBackup,
   useRestorePreview,
 } from '../../hooks/useDataManagement';
+import {
+  hasDesktopFileApi,
+  openDesktopBackupFile,
+  openDesktopImportFile,
+  saveDesktopBackup,
+  saveDesktopExport,
+} from '../../desktop/desktop-files';
 import { DataManagementCards, type DataManagementCardsProps } from './DataManagementCards';
 import { TypedConfirmDialog } from './TypedConfirmDialog';
 
@@ -98,24 +105,42 @@ export function DataManagementPanel() {
     return t(fallbackKey);
   }
 
-  async function handleImportFile(file?: File) {
-    if (!file) return;
-    const requestId = ++importRequestId.current;
+  async function handleImportContent(name: string, content: string, requestId = ++importRequestId.current) {
     setFileError(''); setImportPreviewPending(true); setStatus(''); setImportPreview(null); setImportCommitState({ pending: false, error: '' });
-    importPreviewIdentity.current = { requestId, previewToken: null }; setConfirmImport(false); setImportName(file.name);
-    const extension = file.name.toLowerCase().split('.').pop();
+    importPreviewIdentity.current = { requestId, previewToken: null }; setConfirmImport(false); setImportName(name);
+    const extension = name.toLowerCase().split('.').pop();
     const detectedFormat = extension === 'csv' || extension === 'json' || extension === 'txt' ? extension.toUpperCase() as ImportFormat : format;
     setFormat(detectedFormat);
+    setImportContent(content);
     try {
-      const content = await readFileText(file);
-      if (requestId !== importRequestId.current) return;
-      setImportContent(content);
       const preview = await importPreviewMutation.mutateAsync({ format: detectedFormat, content });
       if (requestId === importRequestId.current) {
         setImportPreviewPending(false); importPreviewIdentity.current = { requestId, previewToken: preview.previewToken }; setImportPreview(preview);
       }
     } catch (error) {
       if (requestId === importRequestId.current) { setImportPreviewPending(false); setFileError(operationError(error, 'errors.previewImport')); }
+    }
+  }
+
+  async function handleImportFile(file?: File) {
+    if (!file) return;
+    const requestId = ++importRequestId.current;
+    try {
+      const content = await readFileText(file);
+      if (requestId !== importRequestId.current) return;
+      await handleImportContent(file.name, content, requestId);
+    } catch (error) {
+      if (requestId === importRequestId.current) setFileError(operationError(error, 'errors.previewImport'));
+    }
+  }
+
+  async function handleDesktopImport() {
+    try {
+      const selected = await openDesktopImportFile();
+      if (!selected || selected.canceled) return;
+      await handleImportContent(selected.name, selected.content);
+    } catch (error) {
+      setFileError(operationError(error, 'errors.previewImport'));
     }
   }
 
@@ -141,27 +166,78 @@ export function DataManagementPanel() {
 
   async function handleExport() {
     if (exportMutation.isPending) return;
-     try { const result = serializeExport(await exportMutation.mutateAsync('CSV')); downloadData(result.content, 'lexora-vocabulary.csv', result.type); setStatus(tCommon('status.exportDownloaded')); } catch { /* Mutation error remains beside action. */ }
+    setFileError('');
+    try {
+      const result = serializeExport(await exportMutation.mutateAsync('CSV'));
+      const file = {
+        suggestedName: 'lexora-vocabulary.csv',
+        content: result.content,
+        format: 'CSV' as const,
+      };
+      let desktopResult;
+      try {
+        desktopResult = await saveDesktopExport(file);
+      } catch (error) {
+        setFileError(getLocalizedErrorMessage(error, tCommon));
+        return;
+      }
+      if (desktopResult?.canceled) return;
+      if (desktopResult === null) downloadData(file.content, file.suggestedName, result.type);
+      setStatus(tCommon('status.exportDownloaded'));
+    } catch { /* Mutation error remains beside action. */ }
   }
 
   async function handleBackup() {
     if (backupMutation.isPending) return;
-     try { const result = await backupMutation.mutateAsync(); downloadData(JSON.stringify(result, null, 2), `lexora-backup-${new Date().toISOString().slice(0, 10)}.json`, 'application/json;charset=utf-8'); setStatus(tCommon('status.backupDownloaded')); } catch { /* Mutation error remains beside action. */ }
+    setFileError('');
+    try {
+      const content = JSON.stringify(await backupMutation.mutateAsync(), null, 2);
+      const file = { suggestedName: `lexora-backup-${new Date().toISOString().slice(0, 10)}.json`, content };
+      let desktopResult;
+      try {
+        desktopResult = await saveDesktopBackup(file);
+      } catch (error) {
+        setFileError(getLocalizedErrorMessage(error, tCommon));
+        return;
+      }
+      if (desktopResult?.canceled) return;
+      if (desktopResult === null) downloadData(file.content, file.suggestedName, 'application/json;charset=utf-8');
+      setStatus(tCommon('status.backupDownloaded'));
+    } catch { /* Mutation error remains beside action. */ }
   }
 
-  async function handleRestoreFile(file?: File) {
-    if (!file) return;
-    const requestId = ++restoreRequestId.current;
+  async function handleRestoreContent(_name: string, content: string, requestId = ++restoreRequestId.current) {
     setFileError(''); setStatus(''); setRestoreBackup(null); setRestorePreview(null); setRestoreOpen(false); setRestorePreviewPending(true); setRestoreCommitState({ pending: false, error: '' }); restorePreviewIdentity.current = { requestId, previewToken: null }; restorePreviewMutation.reset(); restoreMutation.reset();
     try {
-      const backup = JSON.parse(await readFileText(file)) as BackupPayload;
-      if (requestId !== restoreRequestId.current) return;
+      const backup = JSON.parse(content) as BackupPayload;
       setRestoreBackup(backup);
       const preview = await restorePreviewMutation.mutateAsync(backup);
       if (requestId !== restoreRequestId.current) return;
       setRestorePreviewPending(false); setRestorePreview(preview); restorePreviewIdentity.current = { requestId, previewToken: preview.previewToken }; setRestorePhrase(''); setRestoreOpen(true);
     } catch (error) {
       if (requestId === restoreRequestId.current) { setRestorePreviewPending(false); setFileError(operationError(error, 'errors.previewRestore')); }
+    }
+  }
+
+  async function handleRestoreFile(file?: File) {
+    if (!file) return;
+    const requestId = ++restoreRequestId.current;
+    try {
+      const content = await readFileText(file);
+      if (requestId !== restoreRequestId.current) return;
+      await handleRestoreContent(file.name, content, requestId);
+    } catch (error) {
+      if (requestId === restoreRequestId.current) setFileError(operationError(error, 'errors.previewRestore'));
+    }
+  }
+
+  async function handleDesktopRestore() {
+    try {
+      const selected = await openDesktopBackupFile();
+      if (!selected || selected.canceled) return;
+      await handleRestoreContent(selected.name, selected.content);
+    } catch (error) {
+      setFileError(operationError(error, 'errors.previewRestore'));
     }
   }
 
@@ -192,9 +268,9 @@ export function DataManagementPanel() {
   }
 
   const cards: DataManagementCardsProps = {
-    format, onFormatChange: handleImportFormatChange, importName, onImportFile: handleImportFile, importLoading: importPreviewPending, importPreview, importConfirmed: confirmImport, setImportConfirmed: setConfirmImport, onImportCommit: handleImportCommit, importPending: importCommitState.pending, importError: importCommitState.error,
+    format, onFormatChange: handleImportFormatChange, importName, onImportFile: handleImportFile, desktopFiles: hasDesktopFileApi(), onSelectImport: () => void handleDesktopImport(), importLoading: importPreviewPending, importPreview, importConfirmed: confirmImport, setImportConfirmed: setConfirmImport, onImportCommit: handleImportCommit, importPending: importCommitState.pending, importError: importCommitState.error,
     onExport: handleExport, onBackup: handleBackup, exportPending: exportMutation.isPending, backupPending: backupMutation.isPending, exportError: exportMutation.error ?? backupMutation.error,
-    onRestoreFile: handleRestoreFile, restorePreview, restoreLoading: restorePreviewPending, onOpenRestore: () => { setRestorePhrase(''); setRestoreOpen(true); },
+    onRestoreFile: handleRestoreFile, onSelectRestore: () => void handleDesktopRestore(), restorePreview, restoreLoading: restorePreviewPending, onOpenRestore: () => { setRestorePhrase(''); setRestoreOpen(true); },
     onResetProgress: () => { setProgressPhrase(''); setProgressOpen(true); }, onDeleteAll: () => { setAllPhrase(''); setAllOpen(true); },
   };
 

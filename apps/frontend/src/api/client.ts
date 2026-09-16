@@ -23,7 +23,16 @@ type ApiEnvelope<T> =
   | { success: true; data: T }
   | { success: false; error: { code: string; message: string; details?: unknown } };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+export function resolveApiBaseUrl(
+  configuredUrl = import.meta.env.VITE_API_BASE_URL,
+  isProduction = import.meta.env.PROD,
+  currentOrigin = window.location.origin,
+): string {
+  if (configuredUrl) return configuredUrl;
+  return isProduction ? currentOrigin : 'http://localhost:3001';
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const url = new URL(path, API_BASE_URL);

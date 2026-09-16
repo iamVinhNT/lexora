@@ -3,6 +3,9 @@
  * @description Integration coverage for the composed Lexora Fastify application.
  */
 
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -119,6 +122,73 @@ describe('buildApp', () => {
     });
   });
 
+  it('serves static assets and React history routes when spaRoot is configured', async () => {
+    const spaRoot = await mkdtemp(join(tmpdir(), 'lexora-spa-'));
+    await writeFile(join(spaRoot, 'index.html'), '<!doctype html><div id="root">Lexora</div>');
+    await writeFile(join(spaRoot, 'asset.txt'), 'asset');
+
+    try {
+      app = await buildApp({
+        dbPath: ':memory:',
+        logger: false,
+        spaRoot,
+        spaContentSecurityPolicy: "default-src 'self'",
+      });
+
+      const asset = await app.inject({ method: 'GET', url: '/asset.txt' });
+      const route = await app.inject({ method: 'GET', url: '/settings' });
+
+      expect(asset.statusCode).toBe(200);
+      expect(asset.payload).toBe('asset');
+      expect(route.statusCode).toBe(200);
+      expect(route.headers['content-type']).toContain('text/html');
+      expect(route.headers['content-security-policy']).toBe("default-src 'self'");
+      expect(route.payload).toContain('Lexora');
+    } finally {
+      await rm(spaRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps unknown API routes as JSON when spaRoot is configured', async () => {
+    const spaRoot = await mkdtemp(join(tmpdir(), 'lexora-spa-'));
+    await writeFile(join(spaRoot, 'index.html'), '<!doctype html><div>Lexora</div>');
+
+    try {
+      app = await buildApp({ dbPath: ':memory:', logger: false, spaRoot });
+
+      const missing = await app.inject({ method: 'GET', url: '/api/not-real' });
+
+      expect(missing.statusCode).toBe(404);
+      expect(missing.headers['content-type']).toContain('application/json');
+      expect(JSON.parse(missing.payload)).toEqual({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Route not found' },
+      });
+    } finally {
+      await rm(spaRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the API namespace as JSON at its root when spaRoot is configured', async () => {
+    const spaRoot = await mkdtemp(join(tmpdir(), 'lexora-spa-'));
+    await writeFile(join(spaRoot, 'index.html'), '<!doctype html><div>Lexora</div>');
+
+    try {
+      app = await buildApp({ dbPath: ':memory:', logger: false, spaRoot });
+
+      const missing = await app.inject({ method: 'GET', url: '/api' });
+
+      expect(missing.statusCode).toBe(404);
+      expect(missing.headers['content-type']).toContain('application/json');
+      expect(JSON.parse(missing.payload)).toEqual({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Route not found' },
+      });
+    } finally {
+      await rm(spaRoot, { recursive: true, force: true });
+    }
+  });
+
   it('sanitizes unexpected errors from a composed route plugin', async () => {
     app = await buildApp({ dbPath: ':memory:', logger: false });
     app.db.sqlite.exec(`
@@ -141,5 +211,35 @@ describe('buildApp', () => {
       error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
     });
     expect(response.payload).not.toContain('sensitive internal database detail');
+  });
+
+  it('closes the acquired database when post-acquisition initialization fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'lexora-build-app-'));
+    const dbPath = join(root, 'lexora.db');
+    const initializationError = new Error('post-db initialization failed');
+
+    try {
+      await expect(buildApp({
+        dbPath,
+        logger: false,
+        afterDbAcquired: () => { throw initializationError; },
+      })).rejects.toThrow(initializationError);
+
+      const Database = (await import('better-sqlite3')).default;
+      const probe = new Database(dbPath);
+      expect(probe.open).toBe(true);
+      probe.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('closes the database exactly once on normal app shutdown', async () => {
+    app = await buildApp({ dbPath: ':memory:', logger: false });
+    const close = vi.spyOn(app.db.sqlite, 'close');
+
+    await app.close();
+
+    expect(close).toHaveBeenCalledTimes(1);
   });
 });

@@ -5,6 +5,7 @@
 
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import staticPlugin from '@fastify/static';
 import { createTables, getDb, type AppDatabase } from './db/client.js';
 import { vocabularyRoutes } from './routes/vocabulary.routes.js';
 import { contextRoutes } from './routes/context.routes.js';
@@ -24,6 +25,10 @@ export interface BuildAppOptions {
   dbPath?: string;
   logger?: boolean;
   corsOrigins?: string;
+  spaRoot?: string;
+  spaContentSecurityPolicy?: string;
+  /** @internal Test seam for failures after database acquisition. */
+  afterDbAcquired?: (app: FastifyInstance, db: AppDatabase) => void | Promise<void>;
 }
 
 const DEFAULT_CORS_ORIGINS = new Set([
@@ -39,41 +44,67 @@ function getCorsOrigins(value: string | undefined): Set<string> {
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: options.logger ?? true });
   const db = getDb(options.dbPath ?? ':memory:');
-  createTables(db.sqlite);
-  app.decorate('db', db);
 
-  const allowedOrigins = getCorsOrigins(options.corsOrigins ?? process.env.CORS_ORIGINS);
-  await app.register(cors, {
-    origin: (origin, callback) => {
-      if (!origin) {
-        callback(null, true);
-        return;
+  try {
+    createTables(db.sqlite);
+    app.decorate('db', db);
+    await options.afterDbAcquired?.(app, db);
+
+    const allowedOrigins = getCorsOrigins(options.corsOrigins ?? process.env.CORS_ORIGINS);
+    await app.register(cors, {
+      origin: (origin, callback) => {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        callback(null, allowedOrigins.has(origin) ? origin : false);
+      },
+    });
+
+    registerApiErrorHandler(app);
+
+    app.get('/api/health', async () => ({
+      success: true,
+      data: { status: 'ok', app: 'Lexora API' },
+    }));
+
+    await app.register(vocabularyRoutes, { db });
+    await app.register(contextRoutes, { db });
+    await app.register(sessionRoutes, { db });
+    await app.register(reviewRoutes, { db });
+    await app.register(analyticsRoutes, { db });
+    await app.register(dataRoutes, { db });
+
+    if (options.spaRoot) {
+      await app.register(staticPlugin, {
+        root: options.spaRoot,
+        wildcard: false,
+        setHeaders: (reply) => {
+          if (options.spaContentSecurityPolicy) {
+            reply.header('Content-Security-Policy', options.spaContentSecurityPolicy);
+          }
+        },
+      });
+    }
+
+    app.setNotFoundHandler((request, reply) => {
+      const pathname = request.url.split('?', 1)[0];
+      const isApiNamespace = pathname === '/api' || pathname.startsWith('/api/');
+      if (options.spaRoot && request.method === 'GET' && !isApiNamespace) {
+        return reply.type('text/html; charset=utf-8').sendFile('index.html');
       }
-      callback(null, allowedOrigins.has(origin) ? origin : false);
-    },
-  });
+      return reply.status(404).send({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Route not found' },
+      });
+    });
+    app.addHook('onClose', async () => {
+      if (db.sqlite.open) db.sqlite.close();
+    });
 
-  registerApiErrorHandler(app);
-
-  app.get('/api/health', async () => ({
-    success: true,
-    data: { status: 'ok', app: 'Lexora API' },
-  }));
-
-  await app.register(vocabularyRoutes, { db });
-  await app.register(contextRoutes, { db });
-  await app.register(sessionRoutes, { db });
-  await app.register(reviewRoutes, { db });
-  await app.register(analyticsRoutes, { db });
-  await app.register(dataRoutes, { db });
-
-  app.setNotFoundHandler((_request, reply) => reply.status(404).send({
-    success: false,
-    error: { code: 'NOT_FOUND', message: 'Route not found' },
-  }));
-  app.addHook('onClose', async () => {
+    return app;
+  } catch (error) {
     if (db.sqlite.open) db.sqlite.close();
-  });
-
-  return app;
+    throw error;
+  }
 }

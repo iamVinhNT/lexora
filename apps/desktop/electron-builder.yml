@@ -1,0 +1,32 @@
+appId: com.lexora.app
+productName: Lexora
+executableName: lexora
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: ../frontend/dist
+    to: frontend
+  - from: build/icons/512x512.png
+    to: icon.png
+asar: true
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+npmRebuild: true
+linux:
+  category: Education
+  icon: build/icons
+  syncDesktopName: true
+  publish: null
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+appImage:
+  artifactName: Lexora-${version}-x86_64.${ext}
+deb:
+  artifactName: lexora_${version}_amd64.${ext}
