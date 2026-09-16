@@ -125,6 +125,32 @@ describe('Dialog', () => {
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 
+  it('focuses the first eligible form field in DOM order', () => {
+    render(
+      <Dialog title="Initial Focus Dialog" onClose={vi.fn()}>
+        <input data-testid="first-input" placeholder="First" />
+        <select data-testid="second-select" aria-label="Second" />
+        <textarea data-testid="third-textarea" aria-label="Third" />
+      </Dialog>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByTestId('first-input'));
+  });
+
+  it('skips hidden and disabled fields when choosing initial focus', () => {
+    render(
+      <Dialog title="Eligible Field Dialog" onClose={vi.fn()}>
+        <input data-testid="hidden-input" type="hidden" />
+        <input data-testid="hidden-attribute-input" hidden />
+        <input data-testid="hidden-style-input" style={{ display: 'none' }} />
+        <input data-testid="disabled-input" disabled />
+        <select data-testid="eligible-select" aria-label="Eligible" />
+      </Dialog>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByTestId('eligible-select'));
+  });
+
   it('traps focus with Tab and Shift+Tab within the dialog', () => {
     render(
       <Dialog title="Focus Trap Dialog" onClose={vi.fn()}>
@@ -137,8 +163,8 @@ describe('Dialog', () => {
     const firstInput = screen.getByTestId('first-input');
     const lastBtn = screen.getByTestId('last-button');
 
-    // Initially focused on close button
-    expect(document.activeElement).toBe(closeBtn);
+    // Initially focused on first eligible form field
+    expect(document.activeElement).toBe(firstInput);
 
     // Shift+Tab from first focusable wraps to last focusable
     closeBtn.focus();
@@ -164,7 +190,7 @@ describe('Dialog', () => {
       </Dialog>,
     );
 
-    expect(document.activeElement).not.toBe(trigger);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /close focus restore dialog/i }));
 
     unmount();
     expect(document.activeElement).toBe(trigger);

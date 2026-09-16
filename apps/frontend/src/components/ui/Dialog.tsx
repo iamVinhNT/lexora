@@ -31,7 +31,15 @@ export function Dialog({ title, children, onClose, wide = false }: DialogProps) 
     document.body.style.overflow = 'hidden';
 
     previousFocusRef.current = document.activeElement as HTMLElement;
-    closeRef.current?.focus();
+    const firstFormField = Array.from(
+      dialogRef.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+        'input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)',
+      ) ?? [],
+    ).find((field) => {
+      const styles = getComputedStyle(field);
+      return !field.hidden && styles.display !== 'none' && styles.visibility !== 'hidden';
+    });
+    (firstFormField ?? closeRef.current)?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
