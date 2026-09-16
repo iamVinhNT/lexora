@@ -72,6 +72,45 @@ describe('VocabularyPage', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it('renders the initial list view inside a local results viewport', async () => {
+    renderPage();
+
+    const results = screen.getByTestId('vocabulary-results');
+    expect(results.className).toContain('min-h-0');
+    expect(results.className).toContain('overflow-y-auto');
+    expect(await within(results).findByRole('article', { name: /reliable/i })).toBeTruthy();
+    expect(within(results).getByRole('button', { name: /details for reliable/i })).toBeTruthy();
+  });
+
+  it('switches between accessible list, card, and table modes', async () => {
+    renderPage();
+    await screen.findByText('reliable');
+
+    const modeSelector = screen.getByRole('group', { name: /vocabulary view/i });
+    const listMode = within(modeSelector).getByRole('button', { name: /list view/i });
+    const cardMode = within(modeSelector).getByRole('button', { name: /card view/i });
+    const tableMode = within(modeSelector).getByRole('button', { name: /table view/i });
+    expect(listMode.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(cardMode);
+    expect(cardMode.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('region', { name: /card view/i })).toBeTruthy();
+    expect(screen.getByRole('article', { name: /reliable/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /details for reliable/i })).toBeTruthy();
+
+    fireEvent.click(tableMode);
+    expect(tableMode.getAttribute('aria-pressed')).toBe('true');
+    const table = screen.getByRole('table', { name: /vocabulary table/i });
+    expect(table).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /word/i })).toBeTruthy();
+    expect(screen.getByRole('row', { name: /reliable/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /details for reliable/i })).toBeTruthy();
+
+    fireEvent.click(listMode);
+    expect(listMode.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('article', { name: /reliable/i })).toBeTruthy();
+  });
+
   it('shows loading then renders word rows and applies filters to request URL', async () => {
     renderPage();
 

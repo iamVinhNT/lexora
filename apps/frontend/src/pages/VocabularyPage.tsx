@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/Select';
-import { VocabularyList } from '../components/vocabulary/VocabularyList';
+import { VocabularyViews } from '../components/vocabulary/VocabularyViews';
 import { WordDetailDialog } from '../components/vocabulary/WordDetailDialog';
 import { WordFormDialog } from '../components/vocabulary/WordFormDialog';
 import { useWords } from '../hooks/useVocabulary';
@@ -33,15 +33,15 @@ export function VocabularyPage() {
   const wordsQuery = useWords(query);
   const totalPages = wordsQuery.data ? Math.max(1, Math.ceil(wordsQuery.data.total / wordsQuery.data.limit)) : 1;
 
-  return <div className="space-y-8">
-     <PageHeader title={t('title')} subtitle={t('subtitle')} action={<Button type="button" onClick={() => setFormOpen(true)}><Plus aria-hidden="true" size={17} />{t('addWord')}</Button>} />
-     <CardFilters search={search} difficulty={difficulty} status={status} tag={tag} onSearch={(value) => { setSearch(value); setPage(1); }} onDifficulty={(value) => { setDifficulty(value); setPage(1); }} onStatus={(value) => { setStatus(value); setPage(1); }} onTag={(value) => { setTag(value); setPage(1); }} />
-    <VocabularyList isLoading={wordsQuery.isLoading} error={wordsQuery.error} words={wordsQuery.data?.items ?? []} onRetry={() => wordsQuery.refetch()} onDetails={setSelectedWord} />
-    {wordsQuery.data && wordsQuery.data.total > 0 && <Pagination page={page} totalPages={totalPages} onPage={setPage} />}
-    {formOpen && <WordFormDialog onClose={() => setFormOpen(false)} />}
-    {selectedWord && !editingWord && <WordDetailDialog word={selectedWord} onClose={() => setSelectedWord(null)} onEdit={() => setEditingWord(selectedWord)} onDeleted={() => { setSelectedWord(null); }} />}
-    {editingWord && <WordFormDialog word={editingWord} onClose={() => { setEditingWord(null); setSelectedWord(null); }} />}
-  </div>;
+  return <div className="flex h-[calc(100dvh-13rem)] min-h-0 flex-col gap-8 lg:h-[calc(100dvh-6rem)]">
+      <PageHeader title={t('title')} subtitle={t('subtitle')} action={<Button type="button" onClick={() => setFormOpen(true)}><Plus aria-hidden="true" size={17} />{t('addWord')}</Button>} />
+      <CardFilters search={search} difficulty={difficulty} status={status} tag={tag} onSearch={(value) => { setSearch(value); setPage(1); }} onDifficulty={(value) => { setDifficulty(value); setPage(1); }} onStatus={(value) => { setStatus(value); setPage(1); }} onTag={(value) => { setTag(value); setPage(1); }} />
+      <VocabularyViews isLoading={wordsQuery.isLoading} error={wordsQuery.error} words={wordsQuery.data?.items ?? []} onRetry={() => wordsQuery.refetch()} onDetails={setSelectedWord} />
+      {wordsQuery.data && wordsQuery.data.total > 0 && <Pagination page={page} totalPages={totalPages} onPage={setPage} />}
+      {formOpen && <WordFormDialog onClose={() => setFormOpen(false)} />}
+      {selectedWord && !editingWord && <WordDetailDialog word={selectedWord} onClose={() => setSelectedWord(null)} onEdit={() => setEditingWord(selectedWord)} onDeleted={() => { setSelectedWord(null); }} />}
+      {editingWord && <WordFormDialog word={editingWord} onClose={() => { setEditingWord(null); setSelectedWord(null); }} />}
+   </div>;
 }
 
 function CardFilters({ search, difficulty, status, tag, onSearch, onDifficulty, onStatus, onTag }: { search: string; difficulty: string; status: string; tag: string; onSearch: (value: string) => void; onDifficulty: (value: string) => void; onStatus: (value: string) => void; onTag: (value: string) => void }) {
