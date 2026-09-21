@@ -30,8 +30,7 @@ describe('LanguageSelector', () => {
     );
 
     const selector = screen.getAllByRole('combobox', { name: 'Language' })[0];
-    fireEvent.pointerDown(selector, { button: 0, ctrlKey: false, pointerType: 'mouse' });
-    fireEvent.click(screen.getByRole('option', { name: 'Tiếng Việt', hidden: true }));
+    fireEvent.change(selector, { target: { value: 'vi' } });
 
     await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Cài đặt' })).toBeTruthy());
     expect(document.documentElement.lang).toBe('vi');
@@ -44,8 +43,7 @@ describe('LanguageSelector', () => {
     render(<><LanguageSelector /><LanguageSelector /></>);
     expect(screen.getAllByRole('combobox', { name: 'Language' })).toHaveLength(2);
 
-    fireEvent.pointerDown(screen.getAllByRole('combobox', { name: 'Language' })[0], { button: 0, ctrlKey: false, pointerType: 'mouse' });
-    fireEvent.click(screen.getByRole('option', { name: 'Tiếng Việt', hidden: true }));
+    fireEvent.change(screen.getAllByRole('combobox', { name: 'Language' })[0], { target: { value: 'vi' } });
 
     await waitFor(() => expect(screen.getAllByRole('combobox', { name: 'Ngôn ngữ' })).toHaveLength(2));
   });
