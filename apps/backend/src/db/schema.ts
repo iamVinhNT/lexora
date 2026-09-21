@@ -1,4 +1,5 @@
-import { sqliteTable, text, integer, real, primaryKey, index } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+import { sqliteTable, text, integer, real, primaryKey, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 
 // 1. Users table
@@ -167,6 +168,7 @@ export const reviewLogs = sqliteTable(
     responseTime: integer('response_time'),
     answer: text('answer'),
     correct: integer('correct', { mode: 'boolean' }),
+    performanceScore: integer('performance_score'),
     createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
   },
   (table) => ({
@@ -205,9 +207,14 @@ export const learningSessions = sqliteTable('learning_sessions', {
   id: text('id').primaryKey(),
   sessionType: text('session_type').notNull(),
   totalWords: integer('total_words').notNull().default(0),
+  status: text('status').notNull().default('IN_PROGRESS'),
   startedAt: text('started_at').notNull().$defaultFn(() => new Date().toISOString()),
   completedAt: text('completed_at'),
-});
+}, (table) => ({
+  statusIdx: index('idx_learning_sessions_status').on(table.status),
+  startedAtIdx: index('idx_learning_sessions_started_at').on(table.startedAt),
+  oneActiveUnique: uniqueIndex('uq_learning_sessions_one_active').on(table.status).where(sql`${table.status} = 'IN_PROGRESS'`),
+}));
 
 // 14. Learning Session Items table
 export const learningSessionItems = sqliteTable(
@@ -220,6 +227,8 @@ export const learningSessionItems = sqliteTable(
     wordId: text('word_id')
       .notNull()
       .references(() => words.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull().default(0),
+    groupIndex: integer('group_index').notNull().default(0),
     completedStep: text('completed_step'),
     recallResult: text('recall_result'),
     outputSentence: text('output_sentence'),
@@ -229,8 +238,29 @@ export const learningSessionItems = sqliteTable(
   (table) => ({
     sessionIdIdx: index('idx_learning_session_items_session_id').on(table.sessionId),
     wordIdIdx: index('idx_learning_session_items_word_id').on(table.wordId),
+    groupPositionIdx: index('idx_learning_session_items_group_position').on(table.sessionId, table.groupIndex, table.position),
+    sessionPositionUnique: uniqueIndex('uq_learning_session_items_position').on(table.sessionId, table.position),
+    sessionWordUnique: uniqueIndex('uq_learning_session_items_word').on(table.sessionId, table.wordId),
   })
 );
+
+export const learningAttempts = sqliteTable('learning_attempts', {
+  id: text('id').primaryKey(),
+  sessionItemId: text('session_item_id').notNull().references(() => learningSessionItems.id, { onDelete: 'cascade' }),
+  requestId: text('request_id').notNull().unique(),
+  type: text('type').notNull(),
+  attemptNumber: integer('attempt_number').notNull(),
+  answer: text('answer').notNull(),
+  result: text('result').notNull(),
+  performanceScore: integer('performance_score').notNull(),
+  feedbackCodes: text('feedback_codes'),
+  source: text('source').notNull().default('LOCAL'),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+}, (table) => ({
+  itemIdx: index('idx_learning_attempts_session_item_id').on(table.sessionItemId),
+  itemTypeIdx: index('idx_learning_attempts_item_type').on(table.sessionItemId, table.type),
+  itemTypeAttemptUnique: uniqueIndex('uq_learning_attempts_item_type_attempt').on(table.sessionItemId, table.type, table.attemptNumber),
+}));
 
 // Relations definitions for Drizzle Relational Queries
 export const wordsRelations = relations(words, ({ many, one }) => ({

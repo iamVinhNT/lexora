@@ -16,6 +16,7 @@ import {
   contextWords,
   learningSessions,
   learningSessionItems,
+  learningAttempts,
   reviewLogs,
   collocations,
   examples,
@@ -23,9 +24,11 @@ import {
   users,
 } from '../db/schema.js';
 import { normalizeWord } from '../domain/text/normalization.js';
+import { groupSessionItems } from '../domain/learning/grouping.js';
 import { AppError, ValidationError } from './vocabulary.service.js';
 import {
   backupSchema,
+  backupV2Schema,
   type ImportPreviewInput,
   type ImportCommitInput,
   type ExportQuery,
@@ -623,16 +626,17 @@ export class ImportExportService {
       wordTags: tx.select().from(wordTags).all(),
       learningSessions: tx.select().from(learningSessions).all(),
       learningSessionItems: tx.select().from(learningSessionItems).all(),
+      learningAttempts: tx.select().from(learningAttempts).all(),
     }));
 
     const backup = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       application: 'Lexora',
       data,
     };
 
-    return backupSchema.parse(backup);
+    return backupV2Schema.parse(backup);
   }
 
   previewRestore(backupPayload: unknown): RestorePreviewResult {
@@ -652,8 +656,9 @@ export class ImportExportService {
       reviewLogs: data.reviewLogs.length,
       tags: data.tags.length,
       wordTags: data.wordTags.length,
-      learningSessions: data.learningSessions.length,
-      learningSessionItems: data.learningSessionItems.length,
+       learningSessions: data.learningSessions.length,
+       learningSessionItems: data.learningSessionItems.length,
+       learningAttempts: 'learningAttempts' in data ? data.learningAttempts.length : 0,
     };
 
     const totalRecords = Object.values(tableCounts).reduce((acc, count) => acc + count, 0);
@@ -671,8 +676,9 @@ export class ImportExportService {
       reviewLogs: this.db.select().from(reviewLogs).all().length,
       tags: this.db.select().from(tags).all().length,
       wordTags: this.db.select().from(wordTags).all().length,
-      learningSessions: this.db.select().from(learningSessions).all().length,
-      learningSessionItems: this.db.select().from(learningSessionItems).all().length,
+       learningSessions: this.db.select().from(learningSessions).all().length,
+       learningSessionItems: this.db.select().from(learningSessionItems).all().length,
+       learningAttempts: this.db.select().from(learningAttempts).all().length,
     };
 
     const existingRecordsCount = Object.values(existingTableCounts).reduce((acc, count) => acc + count, 0);
@@ -705,6 +711,7 @@ export class ImportExportService {
 
     this.db.transaction((tx) => {
       // Reverse dependency deletion order
+      tx.delete(learningAttempts).run();
       tx.delete(learningSessionItems).run();
       tx.delete(learningSessions).run();
       tx.delete(reviewLogs).run();
@@ -733,8 +740,24 @@ export class ImportExportService {
       for (const lp of data.learningProgress) tx.insert(learningProgress).values(lp).run();
       for (const rs of data.reviewStates) tx.insert(reviewStates).values(rs).run();
       for (const rl of data.reviewLogs) tx.insert(reviewLogs).values(rl).run();
-      for (const ls of data.learningSessions) tx.insert(learningSessions).values(ls).run();
-      for (const lsi of data.learningSessionItems) tx.insert(learningSessionItems).values(lsi).run();
+      for (const ls of data.learningSessions) tx.insert(learningSessions).values({ ...ls, status: ls.status ?? (ls.completedAt ? 'COMPLETED' : 'IN_PROGRESS') }).run();
+      const wordsById = new Map(data.words.map((word) => [word.id, word]));
+      const sessionItemsBySession = new Map<string, typeof data.learningSessionItems>();
+      for (const item of data.learningSessionItems) {
+        const items = sessionItemsBySession.get(item.sessionId) ?? [];
+        items.push(item);
+        sessionItemsBySession.set(item.sessionId, items);
+      }
+      for (const [sessionId, items] of sessionItemsBySession) {
+        const legacyItems = items.map((item) => ({ id: item.id, difficulty: wordsById.get(item.wordId)?.difficulty }));
+        const assignments = groupSessionItems(legacyItems).flat();
+        const assignmentsById = new Map(assignments.map((assignment) => [assignment.id, assignment]));
+        for (const item of items) {
+          const assignment = assignmentsById.get(item.id);
+          tx.insert(learningSessionItems).values({ ...item, position: item.position ?? assignment?.position ?? 0, groupIndex: item.groupIndex ?? assignment?.groupIndex ?? 0 }).run();
+        }
+      }
+      for (const attempt of ('learningAttempts' in data ? data.learningAttempts : [])) tx.insert(learningAttempts).values(attempt).run();
     });
 
     return { restored: true };

@@ -297,6 +297,15 @@ describe('Knowledge Assessment Service', () => {
     });
   });
 
+  describe('objective performance scoring', () => {
+    it('averages persisted performance scores instead of binary correctness', () => {
+      expect(calculateDimensionScores([
+        { reviewType: 'RECALL', correct: true, performanceScore: 100 },
+        { reviewType: 'RECALL', correct: true, performanceScore: 70 },
+      ]).recallScore).toBe(85);
+    });
+  });
+
   describe('Comprehensive KnowledgeAssessmentService method', () => {
     it('assesses complete knowledge profile from review logs and review state', () => {
       const assessment = service.assess({

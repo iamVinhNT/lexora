@@ -16,6 +16,7 @@ export interface ReviewLogEntry {
   reviewType: ReviewType | string;
   rating?: string | null;
   correct?: boolean | null;
+  performanceScore?: number | null;
   responseTime?: number | null;
   createdAt?: string | Date;
 }

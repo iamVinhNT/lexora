@@ -1,111 +1,33 @@
 /**
  * @file session.routes.ts
- * @description Fastify route plugin for learning session lifecycle and step progression.
+ * @description Fastify routes for learning options, sessions, actions, completion, and abandonment.
  */
-
 import type { FastifyPluginAsync } from 'fastify';
 import { getDb, type AppDatabase } from '../db/client.js';
 import { registerApiErrorHandler } from './vocabulary.routes.js';
 import { SessionRepository } from '../repositories/session.repository.js';
-import {
-  SessionService,
-} from '../services/session.service.js';
-import {
-  startSessionSchema,
-  submitStepSchema,
-} from '../schemas/session.schema.js';
+import { SessionService } from '../services/session.service.js';
+import { startSessionSchema, submitStepSchema } from '../schemas/session.schema.js';
 
-export interface SessionRouteOptions {
-  db?: AppDatabase;
-  service?: SessionService;
-}
-
-export const sessionRoutes: FastifyPluginAsync<SessionRouteOptions> = async (
-  fastify,
-  opts
-) => {
+export interface SessionRouteOptions { db?: AppDatabase; service?: SessionService; }
+export const sessionRoutes: FastifyPluginAsync<SessionRouteOptions> = async (fastify, opts) => {
   const db = opts.db ?? (fastify as any).db ?? getDb();
   const service = opts.service ?? new SessionService(new SessionRepository(db));
-
-  // Determine base route path based on fastify.prefix
-  let basePath = '/api/learning/session';
-  if (fastify.prefix) {
-    if (fastify.prefix === '/api/learning/session' || fastify.prefix.endsWith('/api/learning/session')) {
-      basePath = '';
-    } else if (fastify.prefix === '/api' || fastify.prefix.endsWith('/api')) {
-      basePath = '/learning/session';
-    }
-  }
-
-  const sessionPath = basePath || '/';
-  const sessionIdPath = `${basePath}/:id`;
-  const sessionStepPath = `${basePath}/:id/step`;
-  const sessionCompletePath = `${basePath}/:id/complete`;
-
+  let base = '/api/learning/session';
+  if (fastify.prefix === '/api' || fastify.prefix?.endsWith('/api')) base = '/learning/session';
+  if (fastify.prefix === '/api/learning/session' || fastify.prefix?.endsWith('/api/learning/session')) base = '';
+  const sessionPath = base || '/';
   registerApiErrorHandler(fastify);
-
-  // POST /api/learning/session (201 Created)
-  fastify.post(sessionPath, async (request, reply) => {
-    const validated = startSessionSchema.parse(request.body);
-    const result = service.startSession(validated);
-    return reply.status(201).send({
-      success: true,
-      data: result,
-    });
-  });
-
-  // GET /api/learning/session (200 OK - active or latest sessions)
-  fastify.get(sessionPath, async (request, reply) => {
+  const optionsPath = base === '/api/learning/session' ? '/api/learning/options' : '/learning/options';
+  fastify.get(optionsPath, async (_request, reply) => reply.send({ success: true, data: service.getOptions() }));
+  fastify.post(sessionPath, async (request, reply) => reply.status(201).send({ success: true, data: service.startSession(startSessionSchema.parse(request.body)) }));
+  fastify.get(sessionPath, async (_request, reply) => {
     const active = service.findActiveSession();
-    const recent = service.getRecentSessions();
-    const latest = recent[0] ?? null;
-
-    return reply.status(200).send({
-      success: true,
-      data: {
-        activeSession: active,
-        latestSession: latest,
-        sessions: recent,
-        ...(active
-          ? {
-              id: active.id,
-              totalWords: active.totalWords,
-              items: active.items,
-              sessionType: active.sessionType,
-            }
-          : {}),
-      },
-    });
+    const sessions = service.getRecentSessions();
+    return reply.send({ success: true, data: { activeSession: active, latestSession: sessions[0] ?? null, sessions } });
   });
-
-  // GET /api/learning/session/:id (200 OK or 404)
-  fastify.get(sessionIdPath, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const result = service.getSessionById(id);
-    return reply.status(200).send({
-      success: true,
-      data: result,
-    });
-  });
-
-  // POST /api/learning/session/:id/step (200 OK or 400/404)
-  fastify.post(sessionStepPath, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const validated = submitStepSchema.parse(request.body);
-    const result = service.submitStep(id, validated);
-    return reply.status(200).send({
-      success: true,
-      data: result,
-    });
-  });
-
-  // POST /api/learning/session/:id/complete (200 OK or 400/404)
-  fastify.post(sessionCompletePath, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const result = service.completeSession(id);
-    return reply.status(200).send({
-      success: true,
-      data: result,
-    });
-  });
+  fastify.get(`${base}/:id`, async (request, reply) => reply.send({ success: true, data: service.getSessionById((request.params as { id: string }).id) }));
+  fastify.post(`${base}/:id/step`, async (request, reply) => reply.send({ success: true, data: service.submitStep((request.params as { id: string }).id, submitStepSchema.parse(request.body)) }));
+  fastify.post(`${base}/:id/complete`, async (request, reply) => reply.send({ success: true, data: service.completeSession((request.params as { id: string }).id) }));
+  fastify.post(`${base}/:id/abandon`, async (request, reply) => reply.send({ success: true, data: service.abandonSession((request.params as { id: string }).id) }));
 };

@@ -10,7 +10,15 @@ import type {
 /**
  * Checks if a single review log is considered correct.
  */
+function logScore(log: ReviewLogEntry): number {
+  if (log.performanceScore !== undefined && log.performanceScore !== null) return Math.max(0, Math.min(100, log.performanceScore));
+  if (log.correct !== undefined && log.correct !== null) return log.correct ? 100 : 0;
+  if (log.rating) return log.rating.toUpperCase() !== 'AGAIN' ? 100 : 0;
+  return 0;
+}
+
 function isLogCorrect(log: ReviewLogEntry): boolean {
+  if (log.performanceScore !== undefined && log.performanceScore !== null) return log.performanceScore > 0;
   if (log.correct !== undefined && log.correct !== null) {
     return Boolean(log.correct);
   }
@@ -42,8 +50,7 @@ export function calculateDimensionScores(reviewLogs: ReviewLogEntry[] = []): Dim
 
   const calcScore = (logs: ReviewLogEntry[]): number => {
     if (logs.length === 0) return 0;
-    const correctCount = logs.filter(isLogCorrect).length;
-    const percentage = Math.round((correctCount / logs.length) * 100);
+    const percentage = Math.round(logs.reduce((sum, log) => sum + logScore(log), 0) / logs.length);
     return Math.min(100, Math.max(0, percentage));
   };
 

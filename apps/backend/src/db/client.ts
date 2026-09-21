@@ -1,16 +1,66 @@
 import Database from 'better-sqlite3';
 import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
+import { groupSessionItems } from '../domain/learning/grouping.js';
 
 export type AppDatabase = BetterSQLite3Database<typeof schema> & {
   sqlite: Database.Database;
 };
 
 /**
+ * Upgrades the pre-redesign learning tables without deleting historical rows.
+ */
+export function assertLearningSchemaDowngradeSafe(sqlite: Database.Database): void {
+  const tableExists = (name: string) => Boolean(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
+  const attempts = tableExists('learning_attempts')
+    ? Number((sqlite.prepare('SELECT count(*) AS count FROM learning_attempts').get() as { count: number }).count ?? 0)
+    : 0;
+  const sessionHasStatus = tableExists('learning_sessions') && Boolean(sqlite.prepare("SELECT 1 FROM pragma_table_info('learning_sessions') WHERE name = 'status'").get());
+  const v2Status = sessionHasStatus
+    ? Number((sqlite.prepare("SELECT count(*) AS count FROM learning_sessions WHERE status != 'IN_PROGRESS'").get() as { count: number }).count ?? 0)
+    : 0;
+  if (attempts > 0 || v2Status > 0) throw new Error('Learning schema downgrade refused: version-2 evidence would be lost');
+}
+
+function migrateLearningSchema(sqlite: Database.Database): void {
+  const tableExists = (name: string) => Boolean(sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name));
+  const columns = (name: string) => new Set((sqlite.prepare(`PRAGMA table_info('${name}')`).all() as Array<{ name: string }>).map((column) => column.name));
+  const migration = sqlite.transaction(() => {
+    if (tableExists('review_logs') && !columns('review_logs').has('performance_score')) sqlite.exec('ALTER TABLE review_logs ADD COLUMN performance_score INTEGER');
+    if (tableExists('learning_sessions') && !columns('learning_sessions').has('status')) sqlite.exec("ALTER TABLE learning_sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'IN_PROGRESS'");
+    if (tableExists('learning_session_items') && tableExists('learning_sessions')) {
+      const itemColumns = columns('learning_session_items');
+      if (!itemColumns.has('position')) sqlite.exec('ALTER TABLE learning_session_items ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
+      if (!itemColumns.has('group_index')) sqlite.exec('ALTER TABLE learning_session_items ADD COLUMN group_index INTEGER NOT NULL DEFAULT 0');
+      const sessions = sqlite.prepare('SELECT id FROM learning_sessions ORDER BY started_at DESC, id DESC').all() as Array<{ id: string }>;
+      const hasDifficulty = tableExists('words') && columns('words').has('difficulty');
+      const findDifficulty = hasDifficulty ? sqlite.prepare('SELECT difficulty FROM words WHERE id = ?') : null;
+      const updateItem = sqlite.prepare('UPDATE learning_session_items SET position = ?, group_index = ? WHERE id = ?');
+      for (const session of sessions) {
+        const items = sqlite.prepare('SELECT id, word_id FROM learning_session_items WHERE session_id = ? ORDER BY created_at, id').all(session.id) as Array<{ id: string; word_id: string }>;
+        const assignments = groupSessionItems(items.map((item) => ({ id: item.id, difficulty: findDifficulty ? (findDifficulty.get(item.word_id) as { difficulty?: string | null } | undefined)?.difficulty : null })));
+        for (const group of assignments) for (const assignment of group) updateItem.run(assignment.position, assignment.groupIndex, assignment.id);
+      }
+    }
+    if (tableExists('learning_sessions')) {
+      sqlite.exec("UPDATE learning_sessions SET status = CASE WHEN completed_at IS NOT NULL THEN 'COMPLETED' ELSE status END");
+      const active = sqlite.prepare("SELECT id FROM learning_sessions WHERE status = 'IN_PROGRESS' ORDER BY started_at DESC, id DESC").all() as Array<{ id: string }>;
+      active.slice(1).forEach((session) => sqlite.prepare("UPDATE learning_sessions SET status = 'ABANDONED' WHERE id = ?").run(session.id));
+      sqlite.exec("CREATE INDEX IF NOT EXISTS idx_learning_sessions_status ON learning_sessions(status)");
+      sqlite.exec("CREATE INDEX IF NOT EXISTS idx_learning_sessions_started_at ON learning_sessions(started_at)");
+      sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_learning_sessions_one_active ON learning_sessions(status) WHERE status = 'IN_PROGRESS'");
+    }
+  });
+  migration();
+}
+
+/**
  * Creates all application tables, constraints, and indexes on the given SQLite database.
  * This operation is idempotent (IF NOT EXISTS).
  */
 export function createTables(sqlite: Database.Database): void {
+  sqlite.pragma('foreign_keys = ON');
+  migrateLearningSchema(sqlite);
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -117,8 +167,9 @@ export function createTables(sqlite: Database.Database): void {
       rating TEXT NOT NULL,
       response_time INTEGER,
       answer TEXT,
-      correct INTEGER,
-      created_at TEXT NOT NULL
+       correct INTEGER,
+       performance_score INTEGER,
+       created_at TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_review_logs_word_id ON review_logs(word_id);
@@ -139,28 +190,53 @@ export function createTables(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_word_tags_word_id ON word_tags(word_id);
     CREATE INDEX IF NOT EXISTS idx_word_tags_tag_id ON word_tags(tag_id);
 
-    CREATE TABLE IF NOT EXISTS learning_sessions (
-      id TEXT PRIMARY KEY,
-      session_type TEXT NOT NULL,
-      total_words INTEGER NOT NULL DEFAULT 0,
-      started_at TEXT NOT NULL,
-      completed_at TEXT
-    );
+     CREATE TABLE IF NOT EXISTS learning_sessions (
+       id TEXT PRIMARY KEY,
+       session_type TEXT NOT NULL,
+       total_words INTEGER NOT NULL DEFAULT 0,
+       status TEXT NOT NULL DEFAULT 'IN_PROGRESS',
+       started_at TEXT NOT NULL,
+       completed_at TEXT
+     );
 
     CREATE TABLE IF NOT EXISTS learning_session_items (
       id TEXT PRIMARY KEY,
-      session_id TEXT NOT NULL REFERENCES learning_sessions(id) ON DELETE CASCADE,
-      word_id TEXT NOT NULL REFERENCES words(id) ON DELETE CASCADE,
-      completed_step TEXT,
+       session_id TEXT NOT NULL REFERENCES learning_sessions(id) ON DELETE CASCADE,
+       word_id TEXT NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+       position INTEGER NOT NULL DEFAULT 0,
+       group_index INTEGER NOT NULL DEFAULT 0,
+       completed_step TEXT,
       recall_result TEXT,
       output_sentence TEXT,
       review_rating TEXT,
       created_at TEXT
     );
 
-    CREATE INDEX IF NOT EXISTS idx_learning_session_items_session_id ON learning_session_items(session_id);
-    CREATE INDEX IF NOT EXISTS idx_learning_session_items_word_id ON learning_session_items(word_id);
-  `);
+     CREATE INDEX IF NOT EXISTS idx_learning_session_items_session_id ON learning_session_items(session_id);
+     CREATE INDEX IF NOT EXISTS idx_learning_session_items_word_id ON learning_session_items(word_id);
+     CREATE INDEX IF NOT EXISTS idx_learning_session_items_group_position ON learning_session_items(session_id, group_index, position);
+     CREATE UNIQUE INDEX IF NOT EXISTS uq_learning_session_items_position ON learning_session_items(session_id, position);
+     CREATE UNIQUE INDEX IF NOT EXISTS uq_learning_session_items_word ON learning_session_items(session_id, word_id);
+     CREATE TABLE IF NOT EXISTS learning_attempts (
+       id TEXT PRIMARY KEY,
+       session_item_id TEXT NOT NULL REFERENCES learning_session_items(id) ON DELETE CASCADE,
+       request_id TEXT NOT NULL UNIQUE,
+       type TEXT NOT NULL CHECK (type IN ('RECALL', 'OUTPUT')),
+       attempt_number INTEGER NOT NULL CHECK (attempt_number IN (1, 2)),
+       answer TEXT NOT NULL,
+       result TEXT NOT NULL,
+       performance_score INTEGER NOT NULL CHECK (performance_score BETWEEN 0 AND 100),
+       feedback_codes TEXT,
+       source TEXT NOT NULL DEFAULT 'LOCAL',
+       created_at TEXT NOT NULL,
+       UNIQUE(session_item_id, type, attempt_number)
+     );
+     CREATE INDEX IF NOT EXISTS idx_learning_attempts_session_item_id ON learning_attempts(session_item_id);
+     CREATE INDEX IF NOT EXISTS idx_learning_attempts_item_type ON learning_attempts(session_item_id, type);
+     CREATE UNIQUE INDEX IF NOT EXISTS uq_learning_sessions_one_active ON learning_sessions(status) WHERE status = 'IN_PROGRESS';
+     CREATE INDEX IF NOT EXISTS idx_learning_sessions_status ON learning_sessions(status);
+     CREATE INDEX IF NOT EXISTS idx_learning_sessions_started_at ON learning_sessions(started_at);
+   `);
 
   // Ensure exposure columns exist if context_words was created with older schema
   const contextWordsTable = sqlite

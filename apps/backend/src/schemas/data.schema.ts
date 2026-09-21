@@ -196,6 +196,7 @@ export const reviewLogRowSchema = z
     responseTime: nonNegativeIntegerSchema.nullable(),
     answer: z.string().nullable(),
     correct: z.boolean().nullable(),
+    performanceScore: scoreSchema.nullable().optional(),
     createdAt: timestampSchema,
   })
   .strict();
@@ -212,6 +213,22 @@ export const wordTagRowSchema = z
   .object({
     wordId: z.string().min(1),
     tagId: z.string().min(1),
+  })
+  .strict();
+
+export const learningAttemptRowSchema = z
+  .object({
+    id: z.string().min(1),
+    sessionItemId: z.string().min(1),
+    requestId: z.string().min(1),
+    type: z.enum(['RECALL', 'OUTPUT']),
+    attemptNumber: z.union([z.literal(1), z.literal(2)]),
+    answer: z.string(),
+    result: z.string().min(1),
+    performanceScore: scoreSchema,
+    feedbackCodes: z.string().nullable(),
+    source: z.string().min(1),
+    createdAt: timestampSchema,
   })
   .strict();
 
@@ -232,6 +249,7 @@ export const learningSessionRowSchema = z
       'REVIEW',
     ]),
     totalWords: nonNegativeIntegerSchema,
+    status: z.enum(['IN_PROGRESS', 'COMPLETED', 'ABANDONED']).optional(),
     startedAt: timestampSchema,
     completedAt: timestampSchema.nullable(),
   })
@@ -242,6 +260,8 @@ export const learningSessionItemRowSchema = z
     id: z.string().min(1),
     sessionId: z.string().min(1),
     wordId: z.string().min(1),
+    position: nonNegativeIntegerSchema.optional(),
+    groupIndex: nonNegativeIntegerSchema.optional(),
     completedStep: z.enum(['CONTEXT', 'UNDERSTAND', 'RECALL', 'OUTPUT', 'ASSESS']).nullable(),
     recallResult: z.enum(['CORRECT', 'ALMOST_CORRECT', 'INCORRECT']).nullable(),
     outputSentence: z.string().nullable(),
@@ -265,6 +285,7 @@ type BackupDataShape = {
   wordTags: z.infer<typeof wordTagRowSchema>[];
   learningSessions: z.infer<typeof learningSessionRowSchema>[];
   learningSessionItems: z.infer<typeof learningSessionItemRowSchema>[];
+  learningAttempts: z.infer<typeof learningAttemptRowSchema>[];
 };
 
 function addIssue(ctx: z.RefinementCtx, message: string, path: (string | number)[] = []) {
@@ -347,10 +368,21 @@ function validateBackupRelations(data: BackupDataShape, ctx: z.RefinementCtx): v
     requireWord(row.wordId, 'wordTags', index, 'wordId');
     if (!tagsById.has(row.tagId)) addIssue(ctx, `Orphan tag reference: ${row.tagId}`, ['wordTags', index, 'tagId']);
   });
+  const sessionItemsById = new Set(data.learningSessionItems.map((row) => row.id));
   data.learningSessionItems.forEach((row, index) => {
     if (!sessionsById.has(row.sessionId)) addIssue(ctx, `Orphan session reference: ${row.sessionId}`, ['learningSessionItems', index, 'sessionId']);
     requireWord(row.wordId, 'learningSessionItems', index, 'wordId');
   });
+  const requestIds = new Set<string>();
+  const attemptKeys = new Set<string>();
+  for (const [index, row] of data.learningAttempts.entries()) {
+    if (!sessionItemsById.has(row.sessionItemId)) addIssue(ctx, `Orphan session item reference: ${row.sessionItemId}`, ['learningAttempts', index, 'sessionItemId']);
+    if (requestIds.has(row.requestId)) addIssue(ctx, `Duplicate request id: ${row.requestId}`, ['learningAttempts', index, 'requestId']);
+    requestIds.add(row.requestId);
+    const key = `${row.sessionItemId}\u0000${row.type}\u0000${row.attemptNumber}`;
+    if (attemptKeys.has(key)) addIssue(ctx, `Duplicate attempt: ${key}`, ['learningAttempts', index]);
+    attemptKeys.add(key);
+  }
 
   const uniqueComposite = (values: string[], table: string) => {
     const seen = new Set<string>();
@@ -365,60 +397,57 @@ function validateBackupRelations(data: BackupDataShape, ctx: z.RefinementCtx): v
   uniqueComposite(data.reviewStates.map((row) => row.wordId), 'reviewStates');
 }
 
-export const backupDataSchema = z
-  .object({
-    users: z.array(userRowSchema),
-    words: z.array(wordRowSchema),
-    wordFamilies: z.array(wordFamilyRowSchema),
-    collocations: z.array(collocationRowSchema),
-    examples: z.array(exampleRowSchema),
-    contexts: z.array(contextRowSchema),
-    contextWords: z.array(contextWordRowSchema),
-    learningProgress: z.array(learningProgressRowSchema),
-    reviewStates: z.array(reviewStateRowSchema),
-    reviewLogs: z.array(reviewLogRowSchema),
-    tags: z.array(tagRowSchema),
-    wordTags: z.array(wordTagRowSchema),
-    learningSessions: z.array(learningSessionRowSchema),
-    learningSessionItems: z.array(learningSessionItemRowSchema),
-  })
-  .strict()
-  .superRefine(validateBackupRelations);
+const backupTables = {
+  users: z.array(userRowSchema),
+  words: z.array(wordRowSchema),
+  wordFamilies: z.array(wordFamilyRowSchema),
+  collocations: z.array(collocationRowSchema),
+  examples: z.array(exampleRowSchema),
+  contexts: z.array(contextRowSchema),
+  contextWords: z.array(contextWordRowSchema),
+  learningProgress: z.array(learningProgressRowSchema),
+  reviewStates: z.array(reviewStateRowSchema),
+  reviewLogs: z.array(reviewLogRowSchema),
+  tags: z.array(tagRowSchema),
+  wordTags: z.array(wordTagRowSchema),
+  learningSessions: z.array(learningSessionRowSchema),
+  learningSessionItems: z.array(learningSessionItemRowSchema),
+} as const;
 
-export const backupSchema = z
-  .object({
-    version: z.literal(1, {
-      errorMap: () => ({ message: 'Unsupported backup version. Only version 1 is supported.' }),
-    }),
-    application: z.literal('Lexora', {
-      errorMap: () => ({ message: 'Invalid backup file. Application must be "Lexora".' }),
-    }),
-    exportedAt: timestampSchema,
-    data: backupDataSchema,
-  })
-  .strict();
+export const backupDataSchema = z.object({
+  ...backupTables,
+  learningAttempts: z.array(learningAttemptRowSchema).default([]),
+}).strict().superRefine(validateBackupRelations);
+
+export const backupV1DataSchema = z.object(backupTables).strict().superRefine((data, ctx) => {
+  validateBackupRelations({ ...data, learningAttempts: [] }, ctx);
+});
+
+const backupEnvelope = {
+  application: z.literal('Lexora', { errorMap: () => ({ message: 'Invalid backup file. Application must be "Lexora".' }) }),
+  exportedAt: timestampSchema,
+};
+
+export const backupV1Schema = z.object({ version: z.literal(1), ...backupEnvelope, data: backupV1DataSchema }).strict();
+export const backupV2Schema = z.object({ version: z.literal(2), ...backupEnvelope, data: backupDataSchema }).strict();
+export const backupSchema = z.union([backupV1Schema, backupV2Schema]);
 
 export type BackupData = z.infer<typeof backupDataSchema>;
-export type BackupPayload = z.infer<typeof backupSchema>;
+export type BackupPayload = z.infer<typeof backupV2Schema>;
+
+const restoreEnvelope = z.object({ confirm: z.literal(true), previewToken: z.string().min(1) }).strict();
 
 export const restoreSchema = z.union([
-  z
-    .object({
-      backup: backupSchema,
-      confirm: z.literal(true, { errorMap: () => ({ message: 'Confirmation required: confirm must be true' }) }),
-      previewToken: z.string().min(1),
-    })
-    .strict(),
-  backupSchema
-    .extend({
-      confirm: z.literal(true, { errorMap: () => ({ message: 'Confirmation required: confirm must be true' }) }),
-      previewToken: z.string().min(1),
-    })
-    .strict()
-    .transform((val) => {
-      const { confirm, previewToken, ...backup } = val;
-      return { backup: backup as BackupPayload, confirm: true as const, previewToken };
-    }),
+  z.object({ backup: backupV1Schema, ...restoreEnvelope.shape }).strict(),
+  z.object({ backup: backupV2Schema, ...restoreEnvelope.shape }).strict(),
+  backupV1Schema.extend(restoreEnvelope.shape).strict().transform((val) => {
+    const { confirm, previewToken, ...backup } = val;
+    return { backup, confirm: true as const, previewToken };
+  }),
+  backupV2Schema.extend(restoreEnvelope.shape).strict().transform((val) => {
+    const { confirm, previewToken, ...backup } = val;
+    return { backup, confirm: true as const, previewToken };
+  }),
 ]);
 
 export type RestoreInput = z.infer<typeof restoreSchema>;

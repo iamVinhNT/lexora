@@ -42,7 +42,7 @@ function latestSession(totalWords: number) {
 }
 
 function summarySession(totalWords: number, productionSentences: number) {
-  return { ...latestSession(totalWords), summary: { totalWords, recallCorrect: totalWords, productionSentences } };
+  return { ...latestSession(totalWords), summary: { totalWords, recallFirstTry: totalWords, outputValid: productionSentences } };
 }
 
 describe('Learning and review i18n', () => {
@@ -55,7 +55,7 @@ describe('Learning and review i18n', () => {
   });
 
   it('localizes learning-session start controls', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope({ activeSession: null, latestSession: null, sessions: [] })));
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve(input.toString().includes('/api/learning/options') ? envelope({ contexts: [{ id: 'context-1', title: 'Hệ thống', wordCount: 1 }], topics: [], availability: { newWords: 1, weakWords: 0, dueWords: 0 } }) : envelope({ activeSession: null, latestSession: null, sessions: [] }))));
     renderPage('learning');
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Bắt đầu phiên học' })).toBeTruthy());
@@ -70,10 +70,10 @@ describe('Learning and review i18n', () => {
     expect(resources.en.learning).not.toHaveProperty('latestSession');
 
     await i18n.changeLanguage('en');
-    const { rerender } = render(<SessionStartForm isPending={false} onSubmit={vi.fn()} latestSession={latestSession(1)} />);
+    const { rerender } = render(<SessionStartForm isPending={false} onSubmit={vi.fn()} latestSession={latestSession(1)} options={{ contexts: [], topics: [], availability: { newWords: 1, weakWords: 0, dueWords: 0 } }} />);
     expect(screen.getByText(/Latest session: 1 word on/)).toBeTruthy();
 
-    rerender(<SessionStartForm isPending={false} onSubmit={vi.fn()} latestSession={latestSession(2)} />);
+    rerender(<SessionStartForm isPending={false} onSubmit={vi.fn()} latestSession={latestSession(2)} options={{ contexts: [], topics: [], availability: { newWords: 1, weakWords: 0, dueWords: 0 } }} />);
     expect(screen.getByText(/Latest session: 2 words on/)).toBeTruthy();
   });
 

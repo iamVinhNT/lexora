@@ -1,22 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Fastify, { FastifyInstance } from 'fastify';
-import { getDb, AppDatabase } from '../../src/db/client.js';
-import { vocabularyRoutes } from '../../src/routes/vocabulary.routes.js';
-import { contextRoutes } from '../../src/routes/context.routes.js';
+/**
+ * @file session.routes.test.ts
+ * @description Contract tests for redesigned learning session requests and responses.
+ */
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { getDb, type AppDatabase } from '../../src/db/client.js';
 import { sessionRoutes } from '../../src/routes/session.routes.js';
-import {
-  learningSessions,
-  learningSessionItems,
-  learningProgress,
-  reviewStates,
-  reviewLogs,
-  words,
-  tags,
-  wordTags,
-} from '../../src/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { vocabularyRoutes } from '../../src/routes/vocabulary.routes.js';
+import { SessionRepository } from '../../src/repositories/session.repository.js';
+import { words, contexts, contextWords, learningSessions, learningSessionItems, learningAttempts } from '../../src/db/schema.js';
 
-describe('Learning Session Routes & Cognitive Flow Integration', () => {
+const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+describe('redesigned learning session contract', () => {
   let db: AppDatabase;
   let app: FastifyInstance;
 
@@ -24,9 +20,11 @@ describe('Learning Session Routes & Cognitive Flow Integration', () => {
     db = getDb(':memory:');
     app = Fastify();
     await app.register(vocabularyRoutes, { db });
-    await app.register(contextRoutes, { db });
     await app.register(sessionRoutes, { db });
     await app.ready();
+    for (let i = 1; i <= 6; i++) {
+      db.insert(words).values({ id: uuid(i), word: `word${i}`, definition: 'definition', difficulty: 'B1', createdAt: new Date().toISOString() }).run();
+    }
   });
 
   afterEach(async () => {
@@ -34,1107 +32,233 @@ describe('Learning Session Routes & Cognitive Flow Integration', () => {
     db.sqlite.close();
   });
 
-  // Helper to create test word
-  async function createWord(word: string, extra: Record<string, any> = {}) {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/words',
-      payload: {
-        word,
-        phonetic: `/fəˈnetɪk/`,
-        partOfSpeech: 'noun',
-        definition: `Definition of ${word}`,
-        translation: `Nghĩa của ${word}`,
-        difficulty: 'B2',
-        collocations: [`common ${word}`],
-        examples: [
-          {
-            sentence: `This is an example sentence using ${word}.`,
-            translation: `Đây là câu ví dụ dùng ${word}.`,
-            source: 'OXFORD',
-          },
-        ],
-        tags: ['Technology'],
-        ...extra,
+  it('preserves context selection order for deterministic first-word sessions', async () => {
+    db.insert(contexts).values({ id: 'context-order', title: 'Ordered context', content: 'word3 word1', createdAt: new Date().toISOString() }).run();
+    db.insert(contextWords).values({ contextId: 'context-order', wordId: uuid(3) }).run();
+    db.insert(contextWords).values({ contextId: 'context-order', wordId: uuid(1) }).run();
+    const response = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'context', contextId: 'context-order', count: 1 } });
+    expect(response.statusCode).toBe(201);
+    expect(JSON.parse(response.payload).data.items[0].wordId).toBe(uuid(3));
+  });
+
+  it('loads item relations with bounded batch queries', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 6 } });
+    const sessionId = JSON.parse(start.payload).data.id;
+    let selectCount = 0;
+    const trackedDb = new Proxy(db, {
+      get(target, property, receiver) {
+        if (property !== 'select') return Reflect.get(target, property, receiver);
+        return (...args: unknown[]) => {
+          selectCount += 1;
+          return (target as any).select(...args);
+        };
       },
-    });
-    expect(res.statusCode).toBe(201);
-    return JSON.parse(res.payload).data;
+    }) as AppDatabase;
+    new SessionRepository(trackedDb).findById(sessionId);
+    expect(selectCount).toBeLessThanOrEqual(7);
+  });
+
+  it('rejects deprecated client correctness and answer fields', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(response.payload).data;
+    const result = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'r1', wordId: session.items[0].wordId, step: 'CONTEXT', recallCorrect: true, userSentence: 'bad' } });
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('creates stable grouped positions and prevents a second active session', async () => {
+    const first = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 6 } });
+    expect(first.statusCode).toBe(201);
+    const data = JSON.parse(first.payload).data;
+    expect(data.items.map((item: any) => [item.position, item.groupIndex])).toEqual([[0, 0], [1, 0], [2, 0], [3, 1], [4, 1], [5, 1]]);
+    const second = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    expect(second.statusCode).toBe(409);
+  });
+
+  it('moves from first word encoding to second word context before retrieval', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 2 } });
+    const session = JSON.parse(start.payload).data;
+    const first = session.items[0];
+    const second = session.items[1];
+    for (const [step, requestId] of [['CONTEXT', 'sequence-context'], ['UNDERSTAND', 'sequence-understand']] as const) {
+      const response = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId, wordId: first.wordId, step } });
+      expect(response.statusCode).toBe(200);
+    }
+    const encoding = await app.inject({ method: 'GET', url: `/api/learning/session/${session.id}` });
+    expect(JSON.parse(encoding.payload).data.cursor).toMatchObject({ phase: 'ENCODE', step: 'CONTEXT', itemId: second.id, wordId: second.wordId });
+    expect(JSON.parse(encoding.payload).data.cursor.itemId).not.toBe(first.id);
+    for (const [step, requestId] of [['CONTEXT', 'sequence-second-context'], ['UNDERSTAND', 'sequence-second-understand']] as const) {
+      const response = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId, wordId: second.wordId, step } });
+      expect(response.statusCode).toBe(200);
+    }
+    const retrieval = await app.inject({ method: 'GET', url: `/api/learning/session/${session.id}` });
+    expect(JSON.parse(retrieval.payload).data.cursor).toMatchObject({ phase: 'RETRIEVE', step: 'RECALL', itemId: first.id, wordId: first.wordId });
+  });
+
+  it('persists exact cursor-relevant actions and idempotent request IDs', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(start.payload).data;
+    const wordId = session.items[0].wordId;
+    for (const [step, requestId] of [['CONTEXT', 'context-request'], ['UNDERSTAND', 'understand-request']]) {
+      const response = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId, wordId, step } });
+      expect(response.statusCode).toBe(200);
+    }
+    const payload = { requestId: 'same-request', wordId, step: 'RECALL', answer: 'wrong' };
+    const first = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
+    const second = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(JSON.parse(second.payload)).toEqual(JSON.parse(first.payload));
+    expect(db.select().from(learningAttempts).all()).toHaveLength(1);
+  });
+
+  it('resumes persisted recall retry and reveals answer after second failure', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(start.payload).data;
+    const wordId = session.items[0].wordId;
+    for (const [step, requestId] of [['CONTEXT', 'resume-context'], ['UNDERSTAND', 'resume-understand']]) {
+      expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId, wordId, step } })).statusCode).toBe(200);
+    }
+    const first = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'resume-recall-one', wordId, step: 'RECALL', answer: 'wrong' } });
+    expect(JSON.parse(first.payload).data.feedback).toMatchObject({ attemptNumber: 1, canRetry: true, hint: { firstLetter: 'w', letterCount: 4 } });
+    expect(JSON.parse(first.payload).data.feedback).not.toHaveProperty('revealedAnswer');
+    const resumed = await app.inject({ method: 'GET', url: `/api/learning/session/${session.id}` });
+    expect(JSON.parse(resumed.payload).data.cursor).toMatchObject({ step: 'RECALL', attemptNumber: 2 });
+    expect(JSON.parse(resumed.payload).data.items[0].attempts).toHaveLength(1);
+    const second = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'resume-recall-two', wordId, step: 'RECALL', answer: 'still wrong' } });
+    expect(JSON.parse(second.payload).data.feedback).toMatchObject({ attemptNumber: 2, canRetry: false, revealedAnswer: session.items[0].word.word });
+    expect(JSON.parse(second.payload).data.cursor).toMatchObject({ step: 'OUTPUT', attemptNumber: 1 });
+  });
+
+  it('rejects a third attempt without creating another persisted attempt', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(start.payload).data;
+    const wordId = session.items[0].wordId;
+    for (const [step, requestId] of [['CONTEXT', 'third-context'], ['UNDERSTAND', 'third-understand']]) {
+      expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId, wordId, step } })).statusCode).toBe(200);
+    }
+    for (const requestId of ['recall-one', 'recall-two']) {
+      expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId, wordId, step: 'RECALL', answer: 'wrong' } })).statusCode).toBe(200);
+    }
+    const third = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'recall-three', wordId, step: 'RECALL', answer: 'wrong' } });
+    expect(third.statusCode).toBe(409);
+    expect(JSON.parse(third.payload).error.code).toBe('CONFLICT');
+    expect(db.select().from(learningAttempts).all()).toHaveLength(2);
+  });
+
+  async function prepareCompleteSession() {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(start.payload).data;
+    const wordId = session.items[0].wordId;
+    const steps = [
+      { requestId: 'complete-context', wordId, step: 'CONTEXT' },
+      { requestId: 'complete-understand', wordId, step: 'UNDERSTAND' },
+      { requestId: 'complete-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
+      { requestId: 'complete-output', wordId, step: 'OUTPUT', answer: `This ${session.items[0].word.word} example works.` },
+      { requestId: 'complete-assess', wordId, step: 'ASSESS', assessmentRating: 'GOOD' },
+    ];
+    for (const payload of steps) {
+      expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload })).statusCode).toBe(200);
+    }
+    return { id: session.id, wordId };
   }
 
-  // Helper to create test context
-  async function createContext(title: string, content: string, wordIds: string[]) {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/contexts',
-      payload: {
-        title,
-        content,
-        sourceType: 'ARTICLE',
-        wordIds,
-      },
-    });
-    expect(res.statusCode).toBe(201);
-    return JSON.parse(res.payload).data;
-  }
+  it('reports final recall and output attempts in completion summary and review logs', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(start.payload).data;
+    const wordId = session.items[0].wordId;
+    const actions = [
+      { requestId: 'summary-context', wordId, step: 'CONTEXT' },
+      { requestId: 'summary-understand', wordId, step: 'UNDERSTAND' },
+      { requestId: 'summary-recall-wrong', wordId, step: 'RECALL', answer: 'wrong' },
+      { requestId: 'summary-recall-right', wordId, step: 'RECALL', answer: session.items[0].word.word },
+      { requestId: 'summary-output-invalid', wordId, step: 'OUTPUT', answer: 'too short' },
+      { requestId: 'summary-output-valid', wordId, step: 'OUTPUT', answer: `This ${session.items[0].word.word} example works.` },
+      { requestId: 'summary-assess', wordId, step: 'ASSESS', assessmentRating: 'GOOD' },
+    ];
+    for (const payload of actions) expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload })).statusCode).toBe(200);
 
-  describe('1. Zod Schemas & POST /api/learning/session - Start Session', () => {
-    it('creates a session with mode: new_words', async () => {
-      const w1 = await createWord('apple');
-      const w2 = await createWord('banana');
-
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: {
-          mode: 'new_words',
-          count: 5,
-        },
-      });
-
-      expect(res.statusCode).toBe(201);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(true);
-      expect(body.data.id).toBeDefined();
-      expect(body.data.sessionType).toBe('new_words');
-      expect(body.data.totalWords).toBe(2);
-      expect(body.data.items).toHaveLength(2);
-      expect(body.data.completedAt).toBeNull();
-
-      // Check item structure
-      const item = body.data.items[0];
-      expect(item.wordId).toBeDefined();
-      expect(item.word).toBeDefined();
-      expect(item.word.headword).toBeDefined();
-      expect(item.word.definition).toBeDefined();
-      expect(item.word.pronunciation).toBeDefined();
-      expect(item.word.examples).toBeInstanceOf(Array);
-      expect(item.word.collocations).toBeInstanceOf(Array);
-    });
-
-    it('creates a session with mode: context', async () => {
-      const w1 = await createWord('resilient');
-      const w2 = await createWord('scalable');
-      const w3 = await createWord('unrelated');
-
-      const ctx = await createContext(
-        'System Architecture',
-        'A resilient and scalable system is critical for success.',
-        [w1.id, w2.id]
-      );
-
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: {
-          mode: 'context',
-          contextId: ctx.id,
-          count: 10,
-        },
-      });
-
-      expect(res.statusCode).toBe(201);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(true);
-      expect(body.data.totalWords).toBe(2);
-      const wordIds = body.data.items.map((i: any) => i.wordId);
-      expect(wordIds).toContain(w1.id);
-      expect(wordIds).toContain(w2.id);
-      expect(wordIds).not.toContain(w3.id);
-      expect(body.data.items[0].word.contextSentence).toBeDefined();
-    });
-
-    it('creates a session with mode: topic', async () => {
-      const w1 = await createWord('algorithm', { tags: ['Computer Science'] });
-      const w2 = await createWord('database', { tags: ['Computer Science'] });
-      const w3 = await createWord('gardening', { tags: ['Hobby'] });
-
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: {
-          mode: 'topic',
-          topic: 'Computer Science',
-          count: 10,
-        },
-      });
-
-      expect(res.statusCode).toBe(201);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(true);
-      expect(body.data.totalWords).toBe(2);
-      const wordIds = body.data.items.map((i: any) => i.wordId);
-      expect(wordIds).toContain(w1.id);
-      expect(wordIds).toContain(w2.id);
-      expect(wordIds).not.toContain(w3.id);
-    });
-
-    it('creates a session with mode: weak_words (lapses >= 2, ignoring lapses = 1)', async () => {
-      const w1 = await createWord('fragile');
-      const w2 = await createWord('strong');
-
-      // Set w1 as weak (lapses = 2)
-      db.update(reviewStates)
-        .set({ lapses: 2 })
-        .where(eq(reviewStates.wordId, w1.id))
-        .run();
-
-      // Set w2 with lapses = 1 (should NOT be considered weak under domain rule lapses >= 2)
-      db.update(reviewStates)
-        .set({ lapses: 1 })
-        .where(eq(reviewStates.wordId, w2.id))
-        .run();
-
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: {
-          mode: 'weak_words',
-          count: 10,
-        },
-      });
-
-      expect(res.statusCode).toBe(201);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(true);
-      expect(body.data.totalWords).toBe(1);
-      expect(body.data.items[0].wordId).toBe(w1.id);
-    });
-
-    it('creates a session with mode: daily_plan', async () => {
-      const w1 = await createWord('daily1');
-      const w2 = await createWord('daily2');
-
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: {
-          mode: 'daily_plan',
-          count: 10,
-        },
-      });
-
-      expect(res.statusCode).toBe(201);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(true);
-      expect(body.data.totalWords).toBe(2);
-    });
-
-    it('rejects invalid session mode with 400 VALIDATION_ERROR', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: {
-          mode: 'invalid_mode',
-        },
-      });
-
-      expect(res.statusCode).toBe(400);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(false);
-      expect(body.error.code).toBe('VALIDATION_ERROR');
-    });
-
-    it('rejects context mode without contextId with 400', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: {
-          mode: 'context',
-        },
-      });
-
-      expect(res.statusCode).toBe(400);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(false);
-    });
+    const completed = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/complete` });
+    const data = JSON.parse(completed.payload).data;
+    expect(data.summary).toEqual({ totalWords: 1, recallFirstTry: 0, recallSecondTry: 1, recallFailed: 0, outputValid: 1, outputInvalid: 0, legacyUnknown: 0 });
+    expect(db.sqlite.prepare("SELECT performance_score AS performanceScore, answer FROM review_logs WHERE word_id = ? AND review_type = 'RECALL'").get(wordId)).toEqual({ performanceScore: 70, answer: session.items[0].word.word });
+    expect(db.sqlite.prepare("SELECT performance_score AS performanceScore, answer FROM review_logs WHERE word_id = ? AND review_type = 'PRODUCTION'").get(wordId)).toEqual({ performanceScore: 70, answer: `This ${session.items[0].word.word} example works.` });
   });
 
-  describe('2. GET /api/learning/session & GET /api/learning/session/:id', () => {
-    it('returns active session via GET /api/learning/session', async () => {
-      const w = await createWord('activeWord');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const session = JSON.parse(startRes.payload).data;
-
-      const getRes = await app.inject({
-        method: 'GET',
-        url: '/api/learning/session',
-      });
-
-      expect(getRes.statusCode).toBe(200);
-      const body = JSON.parse(getRes.payload);
-      expect(body.success).toBe(true);
-      expect(body.data.activeSession).toBeDefined();
-      expect(body.data.activeSession.id).toBe(session.id);
-    });
-
-    it('returns session by id with populated items and word data', async () => {
-      const w = await createWord('detailWord');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const sessionId = JSON.parse(startRes.payload).data.id;
-
-      const res = await app.inject({
-        method: 'GET',
-        url: `/api/learning/session/${sessionId}`,
-      });
-
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(true);
-      expect(body.data.id).toBe(sessionId);
-      expect(body.data.items).toHaveLength(1);
-
-      const item = body.data.items[0];
-      expect(item.word.headword).toBe('detailword');
-      expect(item.word.definition).toBe('Definition of detailWord');
-      expect(item.word.pronunciation).toBe('/fəˈnetɪk/');
-      expect(item.word.examples).toHaveLength(1);
-      expect(item.word.collocations).toHaveLength(1);
-      expect(item.word.contextSentence).toBeDefined();
-    });
-
-    it('returns 404 for non-existent session id', async () => {
-      const res = await app.inject({
-        method: 'GET',
-        url: '/api/learning/session/00000000-0000-0000-0000-000000000000',
-      });
-
-      expect(res.statusCode).toBe(404);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(false);
-      expect(body.error.code).toBe('NOT_FOUND');
-    });
+  it('persists invalid Output attempt one and advances to Assess after valid attempt two', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(start.payload).data;
+    const wordId = session.items[0].wordId;
+    for (const payload of [
+      { requestId: 'output-valid-context', wordId, step: 'CONTEXT' },
+      { requestId: 'output-valid-understand', wordId, step: 'UNDERSTAND' },
+      { requestId: 'output-valid-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
+      { requestId: 'output-invalid-one', wordId, step: 'OUTPUT', answer: 'too short' },
+    ]) expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload })).statusCode).toBe(200);
+    const first = db.select().from(learningAttempts).all();
+    expect(first).toHaveLength(2);
+    expect(first.find((attempt) => attempt.type === 'OUTPUT')).toMatchObject({ attemptNumber: 1, result: 'INVALID', performanceScore: 0, feedbackCodes: '["TOO_SHORT"]' });
+    const second = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'output-valid-two', wordId, step: 'OUTPUT', answer: `This ${session.items[0].word.word} example works.` } });
+    expect(JSON.parse(second.payload).data.cursor).toMatchObject({ step: 'ASSESS', attemptNumber: null });
+    expect(db.select().from(learningAttempts).all()).toHaveLength(3);
+    expect(db.select().from(learningAttempts).all().find((attempt) => attempt.type === 'OUTPUT' && attempt.attemptNumber === 2)).toMatchObject({ result: 'VALID_AFTER_FEEDBACK', performanceScore: 70 });
   });
 
-  describe('3. POST /api/learning/session/:id/step - Step Submissions', () => {
-    it('records steps sequentially: CONTEXT, UNDERSTAND, RECALL, OUTPUT, ASSESS', async () => {
-      const w = await createWord('cognitive');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const session = JSON.parse(startRes.payload).data;
-      const wordId = session.items[0].wordId;
-
-      // 1. CONTEXT
-      const step1 = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'CONTEXT',
-        },
-      });
-      expect(step1.statusCode).toBe(200);
-      expect(JSON.parse(step1.payload).data.completedStep).toBe('CONTEXT');
-
-      // 2. UNDERSTAND
-      const step2 = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'UNDERSTAND',
-        },
-      });
-      expect(step2.statusCode).toBe(200);
-      expect(JSON.parse(step2.payload).data.completedStep).toBe('UNDERSTAND');
-
-      // 3. RECALL - provides clozeSentence and records recall result
-      const step3 = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'RECALL',
-          recallAnswer: 'cognitive',
-          recallCorrect: true,
-        },
-      });
-      expect(step3.statusCode).toBe(200);
-      const step3Data = JSON.parse(step3.payload).data;
-      expect(step3Data.completedStep).toBe('RECALL');
-      expect(step3Data.recallResult).toBe('CORRECT');
-      expect(step3Data.clozeSentence).toContain('______');
-
-      // 4. OUTPUT - records userSentence
-      const step4 = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'OUTPUT',
-          userSentence: 'Cognitive psychology is fascinating.',
-        },
-      });
-      expect(step4.statusCode).toBe(200);
-      const step4Data = JSON.parse(step4.payload).data;
-      expect(step4Data.completedStep).toBe('OUTPUT');
-      expect(step4Data.outputSentence).toBe('Cognitive psychology is fascinating.');
-
-      // 5. ASSESS - records assessmentRating
-      const step5 = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'ASSESS',
-          assessmentRating: 'GOOD',
-        },
-      });
-      expect(step5.statusCode).toBe(200);
-      const step5Data = JSON.parse(step5.payload).data;
-      expect(step5Data.completedStep).toBe('ASSESS');
-      expect(step5Data.reviewRating).toBe('GOOD');
-    });
-
-    it('rejects step submission for non-existent word or invalid step', async () => {
-      const w = await createWord('testword');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const sessionId = JSON.parse(startRes.payload).data.id;
-
-      const resWrongWord = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${sessionId}/step`,
-        payload: {
-          wordId: 'a0000000-0000-0000-0000-000000000000',
-          step: 'CONTEXT',
-        },
-      });
-      expect(resWrongWord.statusCode).toBe(404);
-
-      const resWrongStep = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${sessionId}/step`,
-        payload: {
-          wordId: w.id,
-          step: 'INVALID_STEP',
-        },
-      });
-      expect(resWrongStep.statusCode).toBe(400);
-    });
-
-    it('rejects skipping steps with 400 VALIDATION_ERROR', async () => {
-      const w = await createWord('skipword');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const sessionId = JSON.parse(startRes.payload).data.id;
-      const wordId = JSON.parse(startRes.payload).data.items[0].wordId;
-
-      // 1. Initial -> RECALL (skipping CONTEXT)
-      const resSkipToRecall = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${sessionId}/step`,
-        payload: {
-          wordId,
-          step: 'RECALL',
-          recallAnswer: 'skipword',
-        },
-      });
-      expect(resSkipToRecall.statusCode).toBe(400);
-      const body1 = JSON.parse(resSkipToRecall.payload);
-      expect(body1.success).toBe(false);
-      expect(body1.error.code).toBe('VALIDATION_ERROR');
-      expect(body1.error.message).toContain('Invalid step transition from initial to RECALL');
-
-      // Now submit CONTEXT
-      const resContext = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${sessionId}/step`,
-        payload: {
-          wordId,
-          step: 'CONTEXT',
-        },
-      });
-      expect(resContext.statusCode).toBe(200);
-
-      // 2. CONTEXT -> ASSESS (skipping UNDERSTAND, RECALL, OUTPUT)
-      const resSkipToAssess = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${sessionId}/step`,
-        payload: {
-          wordId,
-          step: 'ASSESS',
-          assessmentRating: 'GOOD',
-        },
-      });
-      expect(resSkipToAssess.statusCode).toBe(400);
-      const body2 = JSON.parse(resSkipToAssess.payload);
-      expect(body2.success).toBe(false);
-      expect(body2.error.code).toBe('VALIDATION_ERROR');
-      expect(body2.error.message).toContain('Invalid step transition from CONTEXT to ASSESS');
-    });
-
-    it('requires assessmentRating when step is ASSESS', async () => {
-      const w = await createWord('assessword');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const sessionId = JSON.parse(startRes.payload).data.id;
-      const wordId = JSON.parse(startRes.payload).data.items[0].wordId;
-
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${sessionId}/step`,
-        payload: { wordId, step: 'CONTEXT' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${sessionId}/step`,
-        payload: { wordId, step: 'UNDERSTAND' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${sessionId}/step`,
-        payload: { wordId, step: 'RECALL', recallAnswer: 'assessword', recallCorrect: true },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${sessionId}/step`,
-        payload: { wordId, step: 'OUTPUT', userSentence: 'A sentence.' },
-      });
-
-      // Submit ASSESS without assessmentRating
-      const res = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${sessionId}/step`,
-        payload: {
-          wordId,
-          step: 'ASSESS',
-        },
-      });
-      expect(res.statusCode).toBe(400);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(false);
-      expect(body.error.code).toBe('VALIDATION_ERROR');
-      expect(body.error.message).toContain('assessmentRating is required');
-    });
-
-    it('requires recall and output text before advancing mandatory steps', async () => {
-      await createWord('required-evidence');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const session = JSON.parse(startRes.payload).data;
-      const wordId = session.items[0].wordId;
-
-      await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { wordId, step: 'CONTEXT' } });
-      await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { wordId, step: 'UNDERSTAND' } });
-
-      const missingRecall = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'RECALL', recallAnswer: '   ' },
-      });
-      expect(missingRecall.statusCode).toBe(400);
-      expect(JSON.parse(missingRecall.payload).error).toMatchObject({
-        code: 'VALIDATION_ERROR',
-        message: 'recallAnswer is required for RECALL step',
-      });
-
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'RECALL', recallAnswer: 'required-evidence' },
-      });
-      const missingOutput = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'OUTPUT', userSentence: '   ' },
-      });
-      expect(missingOutput.statusCode).toBe(400);
-      expect(JSON.parse(missingOutput.payload).error).toMatchObject({
-        code: 'VALIDATION_ERROR',
-        message: 'userSentence is required for OUTPUT step',
-      });
-    });
+  it('completes invalid Output attempt two with zero score and preserves both attempts', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(start.payload).data;
+    const wordId = session.items[0].wordId;
+    for (const payload of [
+      { requestId: 'output-invalid-context', wordId, step: 'CONTEXT' },
+      { requestId: 'output-invalid-understand', wordId, step: 'UNDERSTAND' },
+      { requestId: 'output-invalid-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
+      { requestId: 'output-invalid-one', wordId, step: 'OUTPUT', answer: 'too short' },
+      { requestId: 'output-invalid-two', wordId, step: 'OUTPUT', answer: 'still too short' },
+    ]) expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload })).statusCode).toBe(200);
+    const outputAttempts = db.select().from(learningAttempts).all().filter((attempt) => attempt.type === 'OUTPUT');
+    expect(JSON.parse((await app.inject({ method: 'GET', url: `/api/learning/session/${session.id}` })).payload).data.cursor).toMatchObject({ step: 'ASSESS', attemptNumber: null });
+    expect(outputAttempts).toHaveLength(2);
+    expect(outputAttempts.map((attempt) => [attempt.attemptNumber, attempt.result, attempt.performanceScore])).toEqual([[1, 'INVALID', 0], [2, 'INVALID', 0]]);
   });
 
-  describe('4. POST /api/learning/session/:id/complete - Completion & Progression', () => {
-    it('completes session, updates SM-2 review_states, advances learning_progress, and writes review_logs', async () => {
-      const w = await createWord('persistent');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const session = JSON.parse(startRes.payload).data;
-      const wordId = session.items[0].wordId;
-
-      // Submit all steps
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'CONTEXT' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'UNDERSTAND' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'RECALL',
-          recallAnswer: 'persistent',
-          recallCorrect: true,
-        },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'OUTPUT',
-          userSentence: 'She has a persistent drive to learn.',
-        },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'ASSESS',
-          assessmentRating: 'GOOD',
-        },
-      });
-
-      // Complete session
-      const completeRes = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/complete`,
-      });
-
-      expect(completeRes.statusCode).toBe(200);
-      const completeBody = JSON.parse(completeRes.payload);
-      expect(completeBody.success).toBe(true);
-      expect(completeBody.data.completedAt).not.toBeNull();
-
-      // Verify learning_progress updated
-      const progress = db
-        .select()
-        .from(learningProgress)
-        .where(eq(learningProgress.wordId, wordId))
-        .all()[0];
-      expect(progress.status).toBe('LEARNING');
-      expect(progress.recognitionScore).toBeGreaterThan(0);
-      expect(progress.recallScore).toBeGreaterThan(0);
-      expect(progress.productionScore).toBeGreaterThan(0);
-      expect(progress.lastStudiedAt).not.toBeNull();
-
-      // Verify review_states updated by SM2
-      const reviewState = db
-        .select()
-        .from(reviewStates)
-        .where(eq(reviewStates.wordId, wordId))
-        .all()[0];
-      expect(reviewState.repetitions).toBe(1);
-      expect(reviewState.interval).toBe(1);
-      expect(reviewState.lastReviewedAt).not.toBeNull();
-
-      // Verify review_logs written
-      const logs = db
-        .select()
-        .from(reviewLogs)
-        .where(eq(reviewLogs.wordId, wordId))
-        .all();
-      expect(logs.length).toBeGreaterThanOrEqual(1);
-
-      // Verify cannot submit step to completed session
-      const afterStepRes = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'CONTEXT' },
-      });
-      expect(afterStepRes.statusCode).toBe(400);
-
-      // Verify cannot complete already completed session
-      const reCompleteRes = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/complete`,
-      });
-      expect(reCompleteRes.statusCode).toBe(400);
-    });
-
-    it('handles AGAIN rating correctly by resetting repetitions and incrementing lapses in review_states', async () => {
-      const w = await createWord('difficultWord');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const session = JSON.parse(startRes.payload).data;
-      const wordId = session.items[0].wordId;
-
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'CONTEXT' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'UNDERSTAND' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'RECALL',
-          recallAnswer: 'wrong answer',
-          recallCorrect: false,
-        },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'OUTPUT',
-          userSentence: 'Difficult sentence.',
-        },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'ASSESS',
-          assessmentRating: 'AGAIN',
-        },
-      });
-
-      const completeRes = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/complete`,
-      });
-      expect(completeRes.statusCode).toBe(200);
-
-      const reviewState = db
-        .select()
-        .from(reviewStates)
-        .where(eq(reviewStates.wordId, wordId))
-        .all()[0];
-      expect(reviewState.repetitions).toBe(0);
-      expect(reviewState.interval).toBe(1);
-      expect(reviewState.lapses).toBe(1);
-    });
-
-    it('records correct: false in RECALL review log when recall is INCORRECT even with rating HARD', async () => {
-      const w = await createWord('recallFailWord');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const session = JSON.parse(startRes.payload).data;
-      const wordId = session.items[0].wordId;
-
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'CONTEXT' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'UNDERSTAND' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'RECALL',
-          recallAnswer: 'wrong answer',
-          recallCorrect: false,
-        },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'OUTPUT',
-          userSentence: 'Output sentence.',
-        },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'ASSESS',
-          assessmentRating: 'HARD',
-        },
-      });
-
-      const completeRes = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/complete`,
-      });
-      expect(completeRes.statusCode).toBe(200);
-
-      const recallLog = db
-        .select()
-        .from(reviewLogs)
-        .where(eq(reviewLogs.wordId, wordId))
-        .all()
-        .find((l) => l.reviewType === 'RECALL');
-
-      expect(recallLog).toBeDefined();
-      expect(Boolean(recallLog?.correct)).toBe(false);
-    });
-
-    it('records correct: false in RECOGNITION and PRODUCTION review logs when rating is AGAIN', async () => {
-      const w = await createWord('againRatingWord');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const session = JSON.parse(startRes.payload).data;
-      const wordId = session.items[0].wordId;
-
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'CONTEXT' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'UNDERSTAND' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'RECALL',
-          recallAnswer: 'againRatingWord',
-          recallCorrect: true,
-        },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'OUTPUT',
-          userSentence: 'I write a sentence.',
-        },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'ASSESS',
-          assessmentRating: 'AGAIN',
-        },
-      });
-
-      const completeRes = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/complete`,
-      });
-      expect(completeRes.statusCode).toBe(200);
-
-      const logs = db
-        .select()
-        .from(reviewLogs)
-        .where(eq(reviewLogs.wordId, wordId))
-        .all();
-
-      const recognitionLog = logs.find((l) => l.reviewType === 'RECOGNITION');
-      const productionLog = logs.find((l) => l.reviewType === 'PRODUCTION');
-
-      expect(recognitionLog).toBeDefined();
-      expect(Boolean(recognitionLog?.correct)).toBe(false);
-
-      expect(productionLog).toBeDefined();
-      expect(Boolean(productionLog?.correct)).toBe(false);
-    });
-
-    it('rejects completion when any item is incomplete without changing persistence', async () => {
-      const w1 = await createWord('completedItemWord');
-      const w2 = await createWord('uncompletedItemWord');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words', count: 2 },
-      });
-      const session = JSON.parse(startRes.payload).data;
-      expect(session.items).toHaveLength(2);
-
-      const item1 = session.items.find((i: any) => i.wordId === w1.id);
-      const item2 = session.items.find((i: any) => i.wordId === w2.id);
-
-      // Only complete steps for item1
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId: item1.wordId, step: 'CONTEXT' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId: item1.wordId, step: 'UNDERSTAND' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId: item1.wordId, step: 'RECALL', recallAnswer: 'completedItemWord', recallCorrect: true },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId: item1.wordId, step: 'OUTPUT', userSentence: 'Item 1 output' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId: item1.wordId, step: 'ASSESS', assessmentRating: 'GOOD' },
-      });
-
-      // For item2, we do nothing (or only CONTEXT)
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId: item2.wordId, step: 'CONTEXT' },
-      });
-
-      const sessionBefore = db
-        .select()
-        .from(learningSessions)
-        .where(eq(learningSessions.id, session.id))
-        .all();
-      const itemsBefore = db
-        .select()
-        .from(learningSessionItems)
-        .where(eq(learningSessionItems.sessionId, session.id))
-        .all();
-      const logsBefore = db.select().from(reviewLogs).all();
-      const item1ReviewStateBefore = db
-        .select()
-        .from(reviewStates)
-        .where(eq(reviewStates.wordId, item1.wordId))
-        .all();
-      const item2ReviewStateBefore = db
-        .select()
-        .from(reviewStates)
-        .where(eq(reviewStates.wordId, item2.wordId))
-        .all();
-      const item1ProgressBefore = db
-        .select()
-        .from(learningProgress)
-        .where(eq(learningProgress.wordId, item1.wordId))
-        .all();
-      const item2ProgressBefore = db
-        .select()
-        .from(learningProgress)
-        .where(eq(learningProgress.wordId, item2.wordId))
-        .all();
-
-      const completeRes = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/complete`,
-      });
-      expect(completeRes.statusCode).toBe(400);
-      expect(JSON.parse(completeRes.payload)).toMatchObject({
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-        },
-      });
-
-      expect(
-        JSON.parse(completeRes.payload).error.message
-      ).toContain('all items must be assessed');
-      expect(
-        db.select().from(learningSessions).where(eq(learningSessions.id, session.id)).all()
-      ).toEqual(sessionBefore);
-      expect(
-        db.select().from(learningSessionItems).where(eq(learningSessionItems.sessionId, session.id)).all()
-      ).toEqual(itemsBefore);
-      expect(db.select().from(reviewLogs).all()).toEqual(logsBefore);
-      expect(
-        db.select().from(reviewStates).where(eq(reviewStates.wordId, item1.wordId)).all()
-      ).toEqual(item1ReviewStateBefore);
-      expect(
-        db.select().from(reviewStates).where(eq(reviewStates.wordId, item2.wordId)).all()
-      ).toEqual(item2ReviewStateBefore);
-      expect(
-        db.select().from(learningProgress).where(eq(learningProgress.wordId, item1.wordId)).all()
-      ).toEqual(item1ProgressBefore);
-      expect(
-        db.select().from(learningProgress).where(eq(learningProgress.wordId, item2.wordId)).all()
-      ).toEqual(item2ProgressBefore);
-    });
-
-    it('rejects completion when an assessed item has no review rating', async () => {
-      await createWord('missingRatingWord');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const session = JSON.parse(startRes.payload).data;
-      const wordId = session.items[0].wordId;
-
-      for (const step of [
-        { step: 'CONTEXT' },
-        { step: 'UNDERSTAND' },
-        { step: 'RECALL', recallAnswer: 'missingRatingWord', recallCorrect: true },
-        { step: 'OUTPUT', userSentence: 'A missing rating sentence.' },
-        { step: 'ASSESS', assessmentRating: 'GOOD' },
-      ]) {
-        const stepRes = await app.inject({
-          method: 'POST',
-          url: `/api/learning/session/${session.id}/step`,
-          payload: { wordId, ...step },
-        });
-        expect(stepRes.statusCode).toBe(200);
-      }
-
-      db.update(learningSessionItems)
-        .set({ reviewRating: null })
-        .where(eq(learningSessionItems.sessionId, session.id))
-        .run();
-
-      const sessionBefore = db
-        .select()
-        .from(learningSessions)
-        .where(eq(learningSessions.id, session.id))
-        .all();
-      const itemsBefore = db
-        .select()
-        .from(learningSessionItems)
-        .where(eq(learningSessionItems.sessionId, session.id))
-        .all();
-      const logsBefore = db.select().from(reviewLogs).where(eq(reviewLogs.wordId, wordId)).all();
-      const reviewStateBefore = db.select().from(reviewStates).where(eq(reviewStates.wordId, wordId)).all();
-      const progressBefore = db.select().from(learningProgress).where(eq(learningProgress.wordId, wordId)).all();
-
-      const completeRes = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/complete`,
-      });
-
-      expect(completeRes.statusCode).toBe(400);
-      expect(JSON.parse(completeRes.payload)).toMatchObject({
-        success: false,
-        error: { code: 'VALIDATION_ERROR' },
-      });
-      expect(JSON.parse(completeRes.payload).error.message).toContain('all items must be assessed');
-      expect(db.select().from(learningSessions).where(eq(learningSessions.id, session.id)).all()).toEqual(sessionBefore);
-      expect(db.select().from(learningSessionItems).where(eq(learningSessionItems.sessionId, session.id)).all()).toEqual(itemsBefore);
-      expect(db.select().from(reviewLogs).where(eq(reviewLogs.wordId, wordId)).all()).toEqual(logsBefore);
-      expect(db.select().from(reviewStates).where(eq(reviewStates.wordId, wordId)).all()).toEqual(reviewStateBefore);
-      expect(db.select().from(learningProgress).where(eq(learningProgress.wordId, wordId)).all()).toEqual(progressBefore);
-    });
-
-    it('auto-detects typo in recallAnswer when recallCorrect is omitted', async () => {
-      const w = await createWord('beautiful');
-      const startRes = await app.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-      const session = JSON.parse(startRes.payload).data;
-      const wordId = session.items[0].wordId;
-
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'CONTEXT' },
-      });
-      await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: { wordId, step: 'UNDERSTAND' },
-      });
-
-      // 1 char distance typo on length >= 4 => ALMOST_CORRECT
-      const stepRes = await app.inject({
-        method: 'POST',
-        url: `/api/learning/session/${session.id}/step`,
-        payload: {
-          wordId,
-          step: 'RECALL',
-          recallAnswer: 'beautifol',
-        },
-      });
-      expect(stepRes.statusCode).toBe(200);
-      const data = JSON.parse(stepRes.payload).data;
-      expect(data.recallResult).toBe('ALMOST_CORRECT');
-    });
+  it('makes repeated and concurrent completion idempotent', async () => {
+    const session = await prepareCompleteSession();
+    const responses = await Promise.all([
+      app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/complete` }),
+      app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/complete` }),
+    ]);
+    expect(responses.map((response) => response.statusCode)).toEqual([200, 200]);
+    expect(responses.map((response) => JSON.parse(response.payload).data.status)).toEqual(['COMPLETED', 'COMPLETED']);
+    expect(db.select().from(learningAttempts).all()).toHaveLength(2);
+    expect(db.sqlite.prepare("SELECT count(*) AS count FROM review_logs WHERE word_id = ?").get(session.wordId)).toEqual({ count: 2 });
+    expect(db.sqlite.prepare("SELECT count(*) AS count FROM review_states WHERE word_id = ?").get(session.wordId)).toEqual({ count: 1 });
   });
 
-  describe('5. Error Handling & Edge Cases', () => {
-    it('returns activeSession as null when no sessions exist', async () => {
-      const getRes = await app.inject({
-        method: 'GET',
-        url: '/api/learning/session',
-      });
+  it('rolls back every completion effect when a review log write fails', async () => {
+    const session = await prepareCompleteSession();
+    db.sqlite.exec(`
+      CREATE TRIGGER fail_learning_completion
+      BEFORE INSERT ON review_logs
+      BEGIN
+        SELECT RAISE(ABORT, 'learning completion failure');
+      END;
+    `);
+    const response = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/complete` });
+    expect(response.statusCode).toBe(500);
+    expect(db.sqlite.prepare('SELECT status, completed_at AS completedAt FROM learning_sessions WHERE id = ?').get(session.id)).toEqual({ status: 'IN_PROGRESS', completedAt: null });
+    expect(db.sqlite.prepare("SELECT count(*) AS count FROM review_logs WHERE word_id = ?").get(session.wordId)).toEqual({ count: 0 });
+    expect(db.sqlite.prepare("SELECT count(*) AS count FROM review_states WHERE word_id = ?").get(session.wordId)).toEqual({ count: 0 });
+    expect(db.sqlite.prepare("SELECT count(*) AS count FROM learning_progress WHERE word_id = ?").get(session.wordId)).toEqual({ count: 0 });
+  });
 
-      expect(getRes.statusCode).toBe(200);
-      const body = JSON.parse(getRes.payload);
-      expect(body.success).toBe(true);
-      expect(body.data.activeSession).toBeNull();
-    });
-
-    it('sanitizes unexpected internal 500 errors', async () => {
-      // Create separate app where service throws unhandled Error
-      const faultApp = Fastify();
-      const faultyService: any = {
-        startSession: () => {
-          throw new Error('Database connection crashed with secret internal info');
-        },
-        findActiveSession: () => null,
-        getRecentSessions: () => [],
-      };
-      await faultApp.register(sessionRoutes, { service: faultyService });
-      await faultApp.ready();
-
-      const res = await faultApp.inject({
-        method: 'POST',
-        url: '/api/learning/session',
-        payload: { mode: 'new_words' },
-      });
-
-      expect(res.statusCode).toBe(500);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(false);
-      expect(body.error.code).toBe('INTERNAL_ERROR');
-      expect(body.error.message).toBe('Internal server error');
-      expect(body.error.message).not.toContain('secret');
-
-      await faultApp.close();
-    });
+  it('abandons idempotently without deleting session evidence or applying progress', async () => {
+    const session = await prepareCompleteSession();
+    const first = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/abandon` });
+    const second = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/abandon` });
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(JSON.parse(second.payload).data.status).toBe('ABANDONED');
+    expect(db.sqlite.prepare('SELECT count(*) AS count FROM learning_session_items WHERE session_id = ?').get(session.id)).toEqual({ count: 1 });
+    expect(db.sqlite.prepare("SELECT count(*) AS count FROM review_logs WHERE word_id = ?").get(session.wordId)).toEqual({ count: 0 });
+    expect(db.sqlite.prepare("SELECT count(*) AS count FROM learning_progress WHERE word_id = ?").get(session.wordId)).toEqual({ count: 0 });
   });
 });

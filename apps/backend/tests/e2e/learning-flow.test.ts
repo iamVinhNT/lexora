@@ -247,15 +247,16 @@ describe('learning lifecycle end to end', () => {
     const sessionWordId = session.items[0].wordId;
 
     const stepPayloads = [
-      { wordId: sessionWordId, step: 'CONTEXT' },
-      { wordId: sessionWordId, step: 'UNDERSTAND' },
-      { wordId: sessionWordId, step: 'RECALL', recallAnswer: session.items[0].word.word, recallCorrect: true },
+      { requestId: 'e2e-context', wordId: sessionWordId, step: 'CONTEXT' },
+      { requestId: 'e2e-understand', wordId: sessionWordId, step: 'UNDERSTAND' },
+      { requestId: 'e2e-recall', wordId: sessionWordId, step: 'RECALL', answer: session.items[0].word.word },
       {
+        requestId: 'e2e-output',
         wordId: sessionWordId,
         step: 'OUTPUT',
-        userSentence: `The team built a resilient service that recovered quickly.`,
+        answer: `The team built a resilient service that recovered quickly.`,
       },
-      { wordId: sessionWordId, step: 'ASSESS', assessmentRating: 'GOOD' },
+      { requestId: 'e2e-assess', wordId: sessionWordId, step: 'ASSESS', assessmentRating: 'GOOD' },
     ];
 
     for (const payload of stepPayloads) {
@@ -292,7 +293,7 @@ describe('learning lifecycle end to end', () => {
     expect(progressResponse.statusCode).toBe(200);
     const progress = JSON.parse(progressResponse.payload).data;
     expect(progress.status).not.toBe('NEW');
-    expect(progress.reviewSummary.totalReviews).toBeGreaterThanOrEqual(4);
+    expect(progress.reviewSummary.totalReviews).toBeGreaterThanOrEqual(3);
 
     const statisticsResponse = await app.inject({ method: 'GET', url: '/api/statistics/dashboard' });
     expect(statisticsResponse.statusCode).toBe(200);
@@ -431,7 +432,7 @@ describe('learning lifecycle end to end', () => {
 
     const firstSeed = await seedDatabase(app.db);
     const firstBackupPayload = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
-    expect(firstBackupPayload.version).toBe(1);
+    expect(firstBackupPayload.version).toBe(2);
     expect(firstBackupPayload.application).toBe('Lexora');
     const firstBackup = firstBackupPayload.data;
     expect(firstBackup).toEqual(expect.objectContaining(Object.fromEntries(backupTables.map((table) => [table, expect.any(Array)]))));
@@ -455,7 +456,7 @@ describe('learning lifecycle end to end', () => {
 
     const secondSeed = await seedDatabase(app.db);
     const secondBackupPayload = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
-    expect(secondBackupPayload.version).toBe(1);
+    expect(secondBackupPayload.version).toBe(2);
     expect(secondBackupPayload.application).toBe('Lexora');
     const secondBackup = secondBackupPayload.data;
 

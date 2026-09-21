@@ -22,6 +22,7 @@ import {
   wordTags,
   learningSessions,
   learningSessionItems,
+  learningAttempts,
   collocations,
   examples,
   wordFamilies,
@@ -553,7 +554,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
   });
 
   describe('GET /api/backup', () => {
-    it('returns exact v1 top-level backup structure with all 14 tables', async () => {
+    it('returns exact v2 top-level backup structure with session attempts and all tables', async () => {
       insertSampleWord('tenacious');
 
       const res = await app.inject({
@@ -566,7 +567,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(body.success).toBe(true);
 
       const backup = body.data;
-      expect(backup.version).toBe(1);
+      expect(backup.version).toBe(2);
       expect(backup.application).toBe('Lexora');
       expect(typeof backup.exportedAt).toBe('string');
       expect(new Date(backup.exportedAt).toISOString()).toBe(backup.exportedAt);
@@ -1529,7 +1530,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('POST /api/backup returns v1 backup and GET /api/backup retained as alias', async () => {
+    it('POST /api/backup returns v2 backup and GET /api/backup retained as alias', async () => {
       const postRes = await app.inject({
         method: 'POST',
         url: '/api/backup',
@@ -1537,7 +1538,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(postRes.statusCode).toBe(200);
       const postBody = JSON.parse(postRes.payload);
       expect(postBody.success).toBe(true);
-      expect(postBody.data.version).toBe(1);
+      expect(postBody.data.version).toBe(2);
       expect(postBody.data.application).toBe('Lexora');
 
       const getRes = await app.inject({
@@ -1546,7 +1547,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       });
       expect(getRes.statusCode).toBe(200);
       const getBody = JSON.parse(getRes.payload);
-      expect(getBody.data.version).toBe(1);
+      expect(getBody.data.version).toBe(2);
     });
 
     it('POST /api/data/reset-progress and /api/reset-progress aliases require confirm: true', async () => {
@@ -1975,6 +1976,66 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(rs.repetitions).toBe(0);
       expect(rs.lapses).toBe(0);
       expect(rs.lastReviewedAt).toBeNull();
+    });
+  });
+
+  describe('Learning backup compatibility', () => {
+    it('restores version 1 sessions with migration defaults and no attempts', async () => {
+      const now = new Date().toISOString();
+      const backup = {
+        version: 1,
+        application: 'Lexora',
+        exportedAt: now,
+        data: {
+          users: [], words: [
+            { id: 'v1-word', word: 'legacy', phonetic: null, partOfSpeech: null, definition: 'old', translation: null, difficulty: 'B1', createdAt: now, updatedAt: null },
+            { id: 'v1-word-2', word: 'legacy-two', phonetic: null, partOfSpeech: null, definition: 'old two', translation: null, difficulty: 'B1', createdAt: now, updatedAt: null },
+          ],
+          wordFamilies: [], collocations: [], examples: [], contexts: [], contextWords: [],
+          learningProgress: [], reviewStates: [], reviewLogs: [], tags: [], wordTags: [],
+          learningSessions: [{ id: 'v1-session', sessionType: 'NEW_WORDS', totalWords: 2, startedAt: now, completedAt: null }],
+          learningSessionItems: [
+            { id: 'v1-item', sessionId: 'v1-session', wordId: 'v1-word', completedStep: null, recallResult: null, outputSentence: null, reviewRating: null, createdAt: now },
+            { id: 'v1-item-2', sessionId: 'v1-session', wordId: 'v1-word-2', completedStep: null, recallResult: null, outputSentence: null, reviewRating: null, createdAt: now },
+          ],
+        },
+      };
+      const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
+      expect(preview.statusCode).toBe(200);
+      const restore = await app.inject({ method: 'POST', url: '/api/restore', payload: { backup, confirm: true, previewToken: JSON.parse(preview.payload).data.previewToken } });
+      expect(restore.statusCode).toBe(200);
+      expect(db.select().from(learningSessions).all()[0].status).toBe('IN_PROGRESS');
+      expect(db.select().from(learningSessionItems).all()[0]).toMatchObject({ position: 0, groupIndex: 0 });
+      expect(db.select().from(learningAttempts).all()).toEqual([]);
+    });
+
+    it('round-trips v2 attempts, grouping, status, and performance scores exactly', async () => {
+      insertSampleWord('roundtrip');
+      const now = new Date().toISOString();
+      db.insert(learningSessions).values({ id: 'v2-session', sessionType: 'NEW_WORDS', totalWords: 1, status: 'COMPLETED', startedAt: now, completedAt: now }).run();
+      db.insert(learningSessionItems).values({ id: 'v2-item', sessionId: 'v2-session', wordId: 'word-roundtrip', position: 0, groupIndex: 3, completedStep: 'ASSESS', reviewRating: 'GOOD', createdAt: now }).run();
+      db.insert(learningAttempts).values({ id: 'v2-attempt', sessionItemId: 'v2-item', requestId: 'v2-request', type: 'RECALL', attemptNumber: 2, answer: 'roundtrip', result: 'CORRECT_AFTER_HINT', performanceScore: 70, feedbackCodes: null, source: 'LOCAL', createdAt: now }).run();
+      db.insert(reviewLogs).values({ id: 'v2-log', wordId: 'word-roundtrip', reviewType: 'RECALL', rating: 'GOOD', correct: true, performanceScore: 70, createdAt: now }).run();
+      const backup = new ImportExportService(db).getBackup();
+      expect(backup.version).toBe(2);
+      expect(backup.data.learningAttempts).toHaveLength(1);
+      const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
+      const restore = await app.inject({ method: 'POST', url: '/api/restore', payload: { backup, confirm: true, previewToken: JSON.parse(preview.payload).data.previewToken } });
+      expect(restore.statusCode).toBe(200);
+      const restored = new ImportExportService(db).getBackup();
+      expect(restored.data.learningSessions).toEqual(backup.data.learningSessions);
+      expect(restored.data.learningSessionItems).toEqual(backup.data.learningSessionItems);
+      expect(restored.data.learningAttempts).toEqual(backup.data.learningAttempts);
+      expect(restored.data.reviewLogs).toEqual(backup.data.reviewLogs);
+    });
+
+    it('rejects orphan attempts before deleting current data', async () => {
+      insertSampleWord('survivor-attempt');
+      const backup = new ImportExportService(db).getBackup();
+      const invalid = { ...backup, data: { ...backup.data, learningAttempts: [{ ...backup.data.learningAttempts[0], sessionItemId: 'missing-item' }] } };
+      const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup: invalid } });
+      expect(preview.statusCode).toBe(400);
+      expect(db.select().from(words).all().map((word) => word.word)).toEqual(['survivor-attempt']);
     });
   });
 

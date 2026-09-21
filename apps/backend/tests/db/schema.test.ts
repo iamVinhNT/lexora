@@ -20,8 +20,9 @@ import {
   wordTags,
   learningSessions,
   learningSessionItems,
+  learningAttempts,
 } from '../../src/db/schema.js';
-import { getDb, createTables } from '../../src/db/client.js';
+import { getDb, createTables, assertLearningSchemaDowngradeSafe } from '../../src/db/client.js';
 
 describe('Database Schema & Client', () => {
   describe('Schema Table Exports', () => {
@@ -200,6 +201,129 @@ describe('Database Schema & Client', () => {
       // Running createTables again is idempotent
       expect(() => createTables(rawSqlite)).not.toThrow();
 
+      rawSqlite.close();
+    });
+  });
+
+  describe('Learning schema migration', () => {
+    it('refuses downgrade when version-2 evidence exists', () => {
+      const db = getDb(':memory:');
+      expect(() => assertLearningSchemaDowngradeSafe(db.sqlite)).not.toThrow();
+      db.sqlite.prepare("INSERT INTO learning_sessions (id, session_type, total_words, status, started_at) VALUES ('session-v2', 'new_words', 1, 'COMPLETED', '2026-09-01T00:00:00.000Z')").run();
+      expect(() => assertLearningSchemaDowngradeSafe(db.sqlite)).toThrow(/downgrade refused/i);
+      db.sqlite.close();
+    });
+
+    it('allows downgrade check on a version-1 learning schema without v2 tables', () => {
+      const sqlite = new Database(':memory:');
+      sqlite.exec('CREATE TABLE learning_sessions (id TEXT PRIMARY KEY)');
+      expect(() => assertLearningSchemaDowngradeSafe(sqlite)).not.toThrow();
+      sqlite.close();
+    });
+
+    it('keeps redesign columns, checks, indexes, and cascade constraints aligned in SQLite', () => {
+      const db = getDb(':memory:');
+      const sqlite = db.sqlite;
+      const columns = (table: string) => (sqlite.prepare(`PRAGMA table_info('${table}')`).all() as Array<{ name: string }>).map((column) => column.name);
+      const indexNames = (table: string) => (sqlite.prepare(`PRAGMA index_list('${table}')`).all() as Array<{ name: string }>).map((index) => index.name);
+      const attemptsSql = (sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'learning_attempts'").get() as { sql: string }).sql;
+      const sessionsSql = (sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'learning_sessions'").get() as { sql: string }).sql;
+      const itemsSql = (sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'learning_session_items'").get() as { sql: string }).sql;
+
+      expect(columns('learning_sessions')).toEqual(expect.arrayContaining(['status']));
+      expect(columns('learning_session_items')).toEqual(expect.arrayContaining(['position', 'group_index']));
+      expect(columns('learning_attempts')).toEqual(expect.arrayContaining(['request_id', 'type', 'attempt_number', 'performance_score', 'feedback_codes', 'source']));
+      expect(columns('review_logs')).toContain('performance_score');
+      expect(indexNames('learning_sessions')).toEqual(expect.arrayContaining(['uq_learning_sessions_one_active', 'idx_learning_sessions_status', 'idx_learning_sessions_started_at']));
+      expect(indexNames('learning_session_items')).toEqual(expect.arrayContaining(['uq_learning_session_items_position', 'uq_learning_session_items_word', 'idx_learning_session_items_group_position']));
+      expect(indexNames('learning_attempts')).toEqual(expect.arrayContaining(['sqlite_autoindex_learning_attempts_1', 'sqlite_autoindex_learning_attempts_2', 'idx_learning_attempts_session_item_id', 'idx_learning_attempts_item_type']));
+      expect(sessionsSql).toContain("status TEXT NOT NULL DEFAULT 'IN_PROGRESS'");
+      expect((sqlite.prepare("PRAGMA foreign_key_list('learning_session_items')").all() as Array<{ table: string; on_delete: string }>)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ table: 'learning_sessions', on_delete: 'CASCADE' }),
+        expect.objectContaining({ table: 'words', on_delete: 'CASCADE' }),
+      ]));
+      expect(attemptsSql).toContain("CHECK (type IN ('RECALL', 'OUTPUT'))");
+      expect(attemptsSql).toContain('CHECK (attempt_number IN (1, 2))');
+      expect(attemptsSql).toContain('CHECK (performance_score BETWEEN 0 AND 100)');
+      expect(attemptsSql).toContain('UNIQUE(session_item_id, type, attempt_number)');
+      expect((sqlite.prepare("PRAGMA foreign_key_list('learning_attempts')").all() as Array<{ table: string; on_delete: string }>)).toEqual(expect.arrayContaining([expect.objectContaining({ table: 'learning_session_items', on_delete: 'CASCADE' })]));
+
+      sqlite.exec("INSERT INTO words (id, word, definition, created_at) VALUES ('schema-word', 'schema', 'definition', '2026-01-01T00:00:00.000Z'); INSERT INTO learning_sessions (id, session_type, total_words, started_at) VALUES ('schema-session', 'new_words', 1, '2026-01-01T00:00:00.000Z'); INSERT INTO learning_session_items (id, session_id, word_id, position, group_index) VALUES ('schema-item', 'schema-session', 'schema-word', 0, 0);");
+      expect(() => sqlite.exec("INSERT INTO learning_attempts (id, session_item_id, request_id, type, attempt_number, answer, result, performance_score, created_at) VALUES ('bad-score', 'schema-item', 'bad-score', 'RECALL', 1, 'schema', 'CORRECT', 101, '2026-01-01T00:00:00.000Z')")).toThrow(/CHECK constraint failed/);
+      sqlite.prepare("DELETE FROM learning_sessions WHERE id = 'schema-session'").run();
+      expect(sqlite.prepare("SELECT count(*) AS count FROM learning_session_items WHERE id = 'schema-item'").get()).toEqual({ count: 0 });
+      sqlite.close();
+    });
+
+    it('keeps Drizzle active-session index aligned with manual DDL', () => {
+      const db = getDb(':memory:');
+      expect(db.sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'uq_learning_sessions_one_active'").get()).toMatchObject({ sql: expect.stringContaining("status = 'IN_PROGRESS'") });
+      db.sqlite.close();
+    });
+
+    it('keeps newest legacy session active and deterministically groups all legacy items', () => {
+      const rawSqlite = new Database(':memory:');
+      rawSqlite.exec(`
+        CREATE TABLE words (
+          id TEXT PRIMARY KEY,
+          word TEXT NOT NULL,
+          definition TEXT NOT NULL,
+          difficulty TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE learning_sessions (
+          id TEXT PRIMARY KEY,
+          session_type TEXT NOT NULL,
+          total_words INTEGER NOT NULL,
+          started_at TEXT NOT NULL,
+          completed_at TEXT
+        );
+        CREATE TABLE learning_session_items (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          word_id TEXT NOT NULL,
+          completed_step TEXT,
+          recall_result TEXT,
+          output_sentence TEXT,
+          review_rating TEXT,
+          created_at TEXT
+        );
+      `);
+
+      const wordsToInsert = Array.from({ length: 6 }, (_, index) => ({
+        id: `legacy-word-${index}`,
+        word: `legacy${index}`,
+        definition: 'definition',
+        difficulty: 'B1',
+        created_at: `2026-09-01T00:0${index}:00.000Z`,
+      }));
+      rawSqlite.prepare('INSERT INTO words (id, word, definition, difficulty, created_at) VALUES (@id, @word, @definition, @difficulty, @created_at)').run(wordsToInsert[0]);
+      for (const word of wordsToInsert.slice(1)) rawSqlite.prepare('INSERT INTO words (id, word, definition, difficulty, created_at) VALUES (@id, @word, @definition, @difficulty, @created_at)').run(word);
+      rawSqlite.prepare('INSERT INTO learning_sessions (id, session_type, total_words, started_at, completed_at) VALUES (?, ?, ?, ?, NULL)').run('older', 'NEW_WORDS', 6, '2026-09-01T00:00:00.000Z');
+      rawSqlite.prepare('INSERT INTO learning_sessions (id, session_type, total_words, started_at, completed_at) VALUES (?, ?, ?, ?, NULL)').run('newer', 'NEW_WORDS', 6, '2026-09-02T00:00:00.000Z');
+      const insertItem = rawSqlite.prepare('INSERT INTO learning_session_items (id, session_id, word_id, created_at) VALUES (?, ?, ?, ?)');
+      for (const [index, word] of wordsToInsert.entries()) {
+        insertItem.run(`older-item-${index}`, 'older', word.id, `2026-09-01T01:0${index}:00.000Z`);
+        insertItem.run(`newer-item-${index}`, 'newer', word.id, `2026-09-02T01:0${index}:00.000Z`);
+      }
+
+      createTables(rawSqlite);
+
+      expect(rawSqlite.prepare('SELECT id, status FROM learning_sessions ORDER BY id').all()).toEqual([
+        { id: 'newer', status: 'IN_PROGRESS' },
+        { id: 'older', status: 'ABANDONED' },
+      ]);
+      expect(rawSqlite.prepare('SELECT count(*) AS count FROM learning_session_items').get()).toEqual({ count: 12 });
+      expect(rawSqlite.prepare("SELECT position, group_index FROM learning_session_items WHERE session_id = 'newer' ORDER BY position").all()).toEqual([
+        { position: 0, group_index: 0 },
+        { position: 1, group_index: 0 },
+        { position: 2, group_index: 0 },
+        { position: 3, group_index: 1 },
+        { position: 4, group_index: 1 },
+        { position: 5, group_index: 1 },
+      ]);
+      expect(rawSqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('idx_learning_sessions_status', 'idx_learning_sessions_started_at', 'uq_learning_sessions_one_active') ORDER BY name").all()).toHaveLength(3);
+      expect(rawSqlite.prepare("SELECT count(*) AS count FROM learning_attempts").get()).toEqual({ count: 0 });
       rawSqlite.close();
     });
   });
@@ -468,6 +592,16 @@ describe('Database Schema & Client', () => {
       expect(item.wordId).toBe('word-1');
       expect(item.recallResult).toBe('CORRECT');
       expect(item.outputSentence).toBe('We must optimize database queries.');
+    });
+
+    it('enforces one active session and bounded attempt constraints', () => {
+      db.insert(words).values({ id: 'word-attempt', word: 'attempt', definition: 'definition', createdAt: new Date().toISOString() }).run();
+      db.insert(learningSessions).values({ id: 'session-attempt', sessionType: 'NEW_WORDS', totalWords: 1, startedAt: new Date().toISOString() }).run();
+      db.insert(learningSessionItems).values({ id: 'item-attempt', sessionId: 'session-attempt', wordId: 'word-attempt' }).run();
+      db.insert(learningAttempts).values({ id: 'attempt-1', sessionItemId: 'item-attempt', requestId: 'request-1', type: 'RECALL', attemptNumber: 1, answer: 'wrong', result: 'INCORRECT', performanceScore: 0, createdAt: new Date().toISOString() }).run();
+      expect(() => db.insert(learningAttempts).values({ id: 'attempt-3', sessionItemId: 'item-attempt', requestId: 'request-3', type: 'RECALL', attemptNumber: 3, answer: 'wrong', result: 'INCORRECT', performanceScore: 0, createdAt: new Date().toISOString() }).run()).toThrow(/CHECK constraint failed/i);
+      expect(() => db.insert(learningAttempts).values({ id: 'attempt-duplicate', sessionItemId: 'item-attempt', requestId: 'request-1', type: 'RECALL', attemptNumber: 2, answer: 'attempt', result: 'CORRECT', performanceScore: 100, createdAt: new Date().toISOString() }).run()).toThrow(/UNIQUE constraint failed/i);
+      expect(() => db.insert(learningSessions).values({ id: 'session-active-2', sessionType: 'NEW_WORDS', totalWords: 1, startedAt: new Date().toISOString() }).run()).toThrow(/UNIQUE constraint failed/i);
     });
   });
 

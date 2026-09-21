@@ -37,19 +37,17 @@ export type AssessmentRating = z.infer<typeof AssessmentRatingEnum>;
 export const startSessionSchema = z.object({
   mode: SessionModeEnum,
   count: z.coerce.number().int().min(1).max(50).default(10),
-  contextId: z.string().optional(),
-  topic: z.string().optional(),
-  tag: z.string().optional(),
-});
+  contextId: z.string().min(1).optional(),
+  topicId: z.string().min(1).optional(),
+}).strict();
 
 export const submitStepSchema = z.object({
-  wordId: z.string().uuid('wordId must be a valid UUID'),
+  requestId: z.string().min(1).max(100),
+  wordId: z.string().min(1),
   step: SessionStepEnum,
-  recallAnswer: z.string().optional(),
-  recallCorrect: z.boolean().optional(),
-  userSentence: z.string().optional(),
+  answer: z.string().max(2000).optional(),
   assessmentRating: AssessmentRatingEnum.optional(),
-});
+}).strict();
 
 export type StartSessionInput = z.infer<typeof startSessionSchema>;
 export type SubmitStepInput = z.infer<typeof submitStepSchema>;
