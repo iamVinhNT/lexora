@@ -13,7 +13,7 @@ import { useDashboardStatistics } from '../src/hooks/useAnalytics';
 const wordId = '11111111-1111-4111-8111-111111111111';
 const secondWordId = '22222222-2222-4222-8222-222222222222';
 
-function reviewItem(id = wordId, word = 'reliable') {
+function reviewItem(id = wordId, word = 'reliable', translation = 'đáng tin cậy') {
   return {
     id: `review-${id}`,
     wordId: id,
@@ -23,7 +23,7 @@ function reviewItem(id = wordId, word = 'reliable') {
       phonetic: '/rɪˈlaɪəbl/',
       partOfSpeech: 'adjective',
       definition: 'able to be trusted or depended on',
-      translation: 'đáng tin cậy',
+      translation,
     },
     reviewState: {
       id: `state-${id}`,
@@ -41,7 +41,7 @@ function reviewItem(id = wordId, word = 'reliable') {
     contextSentence: `A ${word} system earns trust.`,
     exercisePrompts: {
       RECOGNITION: { type: 'RECOGNITION', prompt: word, question: 'What is the definition?', answer: 'able to be trusted or depended on' },
-      RECALL: { type: 'RECALL', prompt: 'đáng tin cậy', question: 'What word matches this meaning?', answer: word, phonetic: '/rɪˈlaɪəbl/' },
+      RECALL: { type: 'RECALL', prompt: translation, question: 'What word matches this meaning?', answer: word, phonetic: '/rɪˈlaɪəbl/' },
       CLOZE: { type: 'CLOZE', prompt: `A ______ system earns trust.`, question: 'Fill in the missing word.', answer: word },
       PRODUCTION: { type: 'PRODUCTION', prompt: `Create a sentence with "${word}".`, question: 'Write a sentence.', targetWord: word, definition: 'able to be trusted or depended on' },
       CONTEXTUAL: { type: 'CONTEXTUAL', prompt: `A ${word} system earns trust.`, instructions: 'Identify or apply the vocabulary in this context', targetWord: word, definition: 'able to be trusted or depended on' },
@@ -126,20 +126,22 @@ describe('ReviewPage', () => {
     expect(screen.getByRole('link', { name: 'Learn new words' }).getAttribute('href')).toBe('/learn');
   });
 
-  it('requires reveal, submits actual grade payload, and progresses with backend interval data', async () => {
+  it('advances the cached queue after rating without another due-queue request', async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(json(queue()))
+      .mockResolvedValueOnce(json(queue([
+        reviewItem(),
+        reviewItem(secondWordId, 'precise', 'chính xác'),
+      ])))
       .mockResolvedValueOnce(json({
         reviewState: { interval: 6, repetitions: 2, easeFactor: 2.5, lapses: 0 },
         reviewLog: { wordId, rating: 'GOOD', reviewType: 'RECALL' },
         learningProgress: { wordId, status: 'FAMILIAR' },
-      }))
-      .mockResolvedValueOnce(json(queue([reviewItem(secondWordId, 'precise')])));
+      }));
     renderPage();
 
     await screen.findByRole('heading', { name: 'Recall the word' });
-    expect(screen.queryByText('reliable')).toBeNull();
+    expect(screen.getAllByText('2 due today')).toHaveLength(2);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('limit=50');
     const goodButton = screen.getByRole('button', { name: /Good/ });
     expect(goodButton).toHaveProperty('disabled', true);
@@ -151,11 +153,30 @@ describe('ReviewPage', () => {
     expect(goodButton).toHaveProperty('disabled', false);
     fireEvent.click(goodButton);
 
-    await waitFor(() => expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1));
+    await screen.findByText('chính xác');
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')?.[1];
     expect(JSON.parse(String(post?.body))).toEqual({ wordId, reviewType: 'RECALL', rating: 'GOOD' });
-    expect(screen.queryByText('precise')).toBeNull();
+    expect(fetchMock.mock.calls.filter(([input, init]) => String(input).includes('/api/reviews/due') && init?.method !== 'POST')).toHaveLength(1);
+    expect(screen.getAllByText('1 due today')).toHaveLength(2);
     expect(screen.getByRole('status').textContent).toContain('Next review in 6 days');
+  });
+
+  it('starts the next cached review unrevealed', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(queue([
+        reviewItem(),
+        reviewItem(secondWordId, 'precise', 'chính xác'),
+      ])))
+      .mockResolvedValueOnce(json({ reviewState: { interval: 1 }, reviewLog: { rating: 'GOOD' }, learningProgress: {} }));
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'Recall the word' });
+    fireEvent.click(screen.getByRole('button', { name: /Reveal answer/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Good/ }));
+
+    await screen.findByText('chính xác');
+    expect(screen.queryByText('precise', { selector: '[data-review-answer="true"]' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Reveal answer/ })).toBeTruthy();
   });
 
   it('prevents duplicate rating requests while submission is pending', async () => {
@@ -175,15 +196,14 @@ describe('ReviewPage', () => {
     resolveReview?.(json({ reviewState: { interval: 4 }, reviewLog: { rating: 'EASY' }, learningProgress: {} }));
   });
 
-  it('supports reveal keyboard activation and ignores rating shortcuts from text inputs', async () => {
+  it('supports click reveal and ignores rating shortcuts from text inputs', async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(json(queue()))
       .mockResolvedValueOnce(json({ reviewState: { interval: 1 }, reviewLog: { rating: 'GOOD' }, learningProgress: {} }));
     renderPage();
     await screen.findByRole('heading', { name: 'Recall the word' });
-    const revealButton = screen.getByRole('button', { name: /Reveal answer/ });
-    fireEvent.keyDown(revealButton, { key: ' ' });
+    fireEvent.click(screen.getByRole('button', { name: /Reveal answer/ }));
     expect(screen.getByText('reliable', { selector: '[data-review-answer="true"]' })).toBeTruthy();
 
     const input = document.createElement('input');

@@ -14,6 +14,7 @@ import { ContextFormDialog } from '../components/context/ContextFormDialog';
 import { ContextDetailDialog } from '../components/context/ContextDetailDialog';
 import { useContexts } from '../hooks/useContexts';
 import { useWords } from '../hooks/useVocabulary';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { CONTEXT_SOURCE_TYPES, type Context } from '../api/context.api';
 import { formatNumber } from '../i18n/formatters';
 
@@ -28,8 +29,9 @@ export function ContextPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [selected, setSelected] = useState<Context | null>(null);
   const [editing, setEditing] = useState<Context | null>(null);
-  const contextsQuery = useContexts({ search, sourceType: sourceType as '' | (typeof CONTEXT_SOURCE_TYPES)[number], page, limit: 20 });
-  const wordsQuery = useWords({ page: 1, limit: 100 });
+  const debouncedSearch = useDebouncedValue(search);
+  const contextsQuery = useContexts({ search: debouncedSearch, sourceType: sourceType as '' | (typeof CONTEXT_SOURCE_TYPES)[number], page, limit: 20 });
+  const wordsQuery = useWords({ page: 1, limit: 100 }, formOpen || Boolean(selected) || Boolean(editing));
   const total = contextsQuery.data?.total ?? 0;
   const totalPages = contextsQuery.data ? Math.max(1, Math.ceil(total / contextsQuery.data.limit)) : 1;
     const wordsOnPage = contextsQuery.data?.items.reduce((sum, item) => sum + item.wordCount, 0) ?? 0;

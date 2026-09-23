@@ -1,10 +1,13 @@
 /**
  * @file api-client.test.ts
- * @description Verifies configured, desktop production, and web development API base URL resolution.
+ * @description Verifies API base URL resolution and request cancellation plumbing.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { listWords } from '../src/api/vocabulary.api';
 import { resolveApiBaseUrl } from '../src/api/client';
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('resolveApiBaseUrl', () => {
   it('prefers configured deployment URL', () => {
@@ -17,5 +20,22 @@ describe('resolveApiBaseUrl', () => {
 
   it('keeps standalone backend URL in development', () => {
     expect(resolveApiBaseUrl('', false, 'http://localhost:5173')).toBe('http://localhost:3001');
+  });
+});
+
+describe('request cancellation', () => {
+  it('forwards an abort signal through an endpoint function to fetch', async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(() => Promise.resolve({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ success: true, data: { total: 0, page: 1, limit: 20, items: [] } }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listWords({ search: 'obsolete' }, controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({ signal: controller.signal }));
   });
 });

@@ -2,7 +2,7 @@
  * @file config.test.ts
  * @description Verifies locale normalization, detection precedence, persistence, and document language synchronization.
  */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, i18n, normalizeLocale } from '../../src/i18n/config';
 
@@ -43,5 +43,25 @@ describe('i18n configuration', () => {
 
     expect(i18n.t('navigation:overview')).toBe('Tổng quan');
     expect(document.documentElement.lang).toBe('vi');
+  });
+
+  it('detects persisted Vietnamese before fresh module initialization', async () => {
+    localStorage.setItem('lexora-language', 'vi');
+    vi.resetModules();
+
+    const freshConfig = await import('../../src/i18n/config');
+
+    expect(freshConfig.i18n.resolvedLanguage).toBe('vi');
+    expect(document.documentElement.lang).toBe('vi');
+  });
+
+  it('falls back to English for unsupported persisted language during fresh initialization', async () => {
+    localStorage.setItem('lexora-language', 'fr-FR');
+    vi.resetModules();
+
+    const freshConfig = await import('../../src/i18n/config');
+
+    expect(freshConfig.i18n.resolvedLanguage).toBe('en');
+    expect(document.documentElement.lang).toBe('en');
   });
 });

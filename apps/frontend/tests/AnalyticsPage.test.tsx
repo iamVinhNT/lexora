@@ -106,6 +106,7 @@ describe('AnalyticsPage', () => {
     const rendered = render(<StateChart progress={{ ...progress, countsPerState: { NEW: 1, LEARNING: 2, FAMILIAR: 0, MASTERED: 0, MAINTENANCE: 0 } }} />);
 
     await waitFor(() => expect(rendered.container.querySelectorAll('.recharts-pie-label-text').length).toBeGreaterThan(0), { timeout: 3000 });
+    expect(screen.getByRole('img', { name: 'Phân bố trạng thái từ vựng' })).toBeTruthy();
     const pieLabels = [...rendered.container.querySelectorAll('.recharts-pie-label-text')].map((element) => element.textContent);
     expect(pieLabels).toContain(`Mới ${formatPercent(100 / 3)}`);
   });
@@ -179,6 +180,7 @@ describe('AnalyticsPage', () => {
 
     await waitFor(() => expect(screen.getByText(/Review volume axis scales independently up to 150 reviews/)).toBeTruthy());
     await waitFor(() => expect(rendered.container.querySelectorAll('.recharts-yAxis')).toHaveLength(2));
+    expect(screen.getByRole('img', { name: 'Retention trend' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Show retention data table' }));
     expect(screen.getAllByText('150').length).toBeGreaterThan(0);
   });

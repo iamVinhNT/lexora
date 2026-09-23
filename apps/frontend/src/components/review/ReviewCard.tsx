@@ -28,12 +28,6 @@ export function ReviewCard({ item, isRevealed, isPending, onReveal, onRate }: Re
     headingRef.current?.focus();
   }, [item.wordId]);
 
-  function activateReveal(event: React.KeyboardEvent<HTMLButtonElement>) {
-    if (event.key !== ' ' && event.key !== 'Enter') return;
-    event.preventDefault();
-    onReveal();
-  }
-
   return (
     <Card className="mx-auto w-full max-w-3xl p-5 sm:p-8">
       <div className="flex items-center justify-between gap-4 text-sm text-muted">
@@ -52,7 +46,6 @@ export function ReviewCard({ item, isRevealed, isPending, onReveal, onRate }: Re
           <button
             type="button"
             onClick={onReveal}
-            onKeyDown={activateReveal}
             className="min-h-11 w-full rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
              aria-expanded={isRevealed}
           >

@@ -47,12 +47,12 @@ export type WordPayload = {
   wordFamilies?: Array<{ relatedWordId: string; relationship: string }>;
 };
 
-export function listWords(query: WordQuery = {}) {
-  return apiFetch<WordList>('/api/words', { query });
+export function listWords(query: WordQuery = {}, signal?: AbortSignal) {
+  return apiFetch<WordList>('/api/words', { query, signal });
 }
 
-export function getWord(id: string) {
-  return apiFetch<Word>(`/api/words/${id}`);
+export function getWord(id: string, signal?: AbortSignal) {
+  return apiFetch<Word>(`/api/words/${id}`, { signal });
 }
 
 export function createWord(payload: WordPayload) {

@@ -7,6 +7,12 @@ import { persist } from 'zustand/middleware';
 
 export type Theme = 'light' | 'dark';
 
+export function applyTheme(theme: Theme): void {
+  if (typeof document !== 'undefined') document.documentElement.dataset.theme = theme;
+}
+
+applyTheme('light');
+
 type UiState = {
   theme: Theme;
   isSidebarOpen: boolean;
@@ -24,8 +30,15 @@ export const useUiStore = create<UiState>()(
       theme: 'light',
       isSidebarOpen: true,
       isMoreOpen: false,
-      setTheme: (theme) => set({ theme }),
-      toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
+      setTheme: (theme) => {
+        applyTheme(theme);
+        set({ theme });
+      },
+      toggleTheme: () => set((state) => {
+        const theme = state.theme === 'light' ? 'dark' : 'light';
+        applyTheme(theme);
+        return { theme };
+      }),
       setSidebarOpen: (isSidebarOpen) => set({ isSidebarOpen }),
       openMore: () => set({ isMoreOpen: true }),
       closeMore: () => set({ isMoreOpen: false }),
@@ -33,6 +46,9 @@ export const useUiStore = create<UiState>()(
     {
       name: 'lexora-ui',
       partialize: (state) => ({ theme: state.theme }),
+      onRehydrateStorage: () => (state) => {
+        if (state) applyTheme(state.theme);
+      },
     },
   ),
 );

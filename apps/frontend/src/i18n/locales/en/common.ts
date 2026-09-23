@@ -8,7 +8,7 @@ export default {
     addWord: 'Add word', addContext: 'Add context', save: 'Save', saveWord: 'Save word', saveContext: 'Save context',
     cancel: 'Cancel', retry: 'Retry', previous: 'Previous', next: 'Next', editWord: 'Edit word', editContext: 'Edit context',
     deleteWord: 'Delete word', deleteContext: 'Delete context', confirmDelete: 'Confirm delete', confirmDeletion: 'Confirm deletion',
-    completeSession: 'Complete session', startSession: 'Start session', startNextSession: 'Start next session', returnOverview: 'Return to overview',
+    completeSession: 'Complete session', startSession: 'Start session', abandonSession: 'Abandon session', startNextSession: 'Start next session', returnOverview: 'Return to overview',
     learnNewWords: 'Learn new words', linkWords: 'Link words', saveLinks: 'Save links', unlink: 'Unlink', openSource: 'Open source',
     show: 'Show', hide: 'Hide', viewDetails: 'View details', exportVocabulary: 'Export vocabulary', downloadFullBackup: 'Download full backup',
     openRestoreConfirmation: 'Open restore confirmation', resetLearningProgress: 'Reset learning progress', deleteAllData: 'Delete all data',

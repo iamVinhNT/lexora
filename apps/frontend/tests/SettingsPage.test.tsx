@@ -148,7 +148,7 @@ describe('SettingsPage', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect((screen.getByRole('button', { name: 'Import 1 item' }) as HTMLButtonElement).disabled).toBe(true);
 
-    fireEvent.click(screen.getByLabelText('Confirm import')); 
+    fireEvent.click(screen.getByLabelText('I reviewed valid items.'));
     expect((screen.getByRole('button', { name: 'Import 1 item' }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 item' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
@@ -165,7 +165,7 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(screen.getByTestId('live-data').textContent).toBe('before-word|before-context|1||1|1|2026-09-07|before-insight'));
     fireEvent.change(screen.getByLabelText('Import file'), { target: { files: [fileWithText('words.txt', 'lucid')] } });
     await waitFor(() => expect(screen.getByText('Valid: 1')).toBeTruthy());
-    fireEvent.click(screen.getByLabelText('Confirm import'));
+    fireEvent.click(screen.getByLabelText('I reviewed valid items.'));
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 item' }));
 
     await waitFor(() => expect(screen.getByTestId('live-data').textContent).toBe('after-word|after-context|2|after-session|2|2|2026-09-08|after-insight'));
@@ -336,7 +336,6 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(screen.getByTestId('live-data').textContent).toBe('before-word|before-context|1||1|1|2026-09-07|before-insight'));
     fireEvent.change(screen.getByLabelText('Restore backup file'), { target: { files: [fileWithText('backup.json', JSON.stringify(emptyBackup))] } });
     await waitFor(() => expect(screen.getByText('No existing records will be overwritten.')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Open restore confirmation' }));
     fireEvent.change(screen.getByLabelText('Type RESTORE to confirm'), { target: { value: 'RESTORE' } });
     fireEvent.click(screen.getByRole('button', { name: 'Restore backup' }));
 
@@ -353,8 +352,7 @@ describe('SettingsPage', () => {
 
     renderSettings();
     fireEvent.change(screen.getByLabelText('Restore backup file'), { target: { files: [fileWithText('backup.json', JSON.stringify(emptyBackup))] } });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Open restore confirmation' })).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Open restore confirmation' }));
+    await screen.findByRole('dialog', { name: 'Restore backup' });
     fireEvent.change(screen.getByLabelText('Type RESTORE to confirm'), { target: { value: 'RESTORE' } });
     fireEvent.click(screen.getByRole('button', { name: 'Restore backup' }));
 
@@ -464,7 +462,7 @@ describe('SettingsPage', () => {
 
     fireEvent.change(screen.getByLabelText('Import file'), { target: { files: [fileWithText('words.txt', 'lucid')] } });
     await waitFor(() => expect(screen.getByText('Valid: 1')).toBeTruthy());
-    fireEvent.click(screen.getByLabelText('Confirm import'));
+    fireEvent.click(screen.getByLabelText('I reviewed valid items.'));
     fireEvent.pointerDown(screen.getByRole('combobox', { name: 'Import format' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(screen.getByRole('option', { name: 'CSV' }));
 
@@ -542,7 +540,7 @@ describe('SettingsPage', () => {
     resolveFirst(response({ validItems: [{ index: 0, word: 'first', definition: '' }], duplicates: [], invalidItems: [], validCount: 1, duplicateCount: 0, previewToken: 'first-token' }));
     await waitFor(() => expect(screen.getByText('Selected: second.txt')).toBeTruthy());
     expect(screen.getByText('Selected: second.txt')).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('Confirm import'));
+    fireEvent.click(screen.getByLabelText('I reviewed valid items.'));
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 item' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     const commitCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/api/import/commit'));
@@ -567,7 +565,7 @@ describe('SettingsPage', () => {
 
     fireEvent.change(screen.getByLabelText('Import file'), { target: { files: [fileWithText('first.txt', 'first')] } });
     await waitFor(() => expect(screen.getByText('Selected: first.txt')).toBeTruthy());
-    fireEvent.click(screen.getByLabelText('Confirm import'));
+    fireEvent.click(screen.getByLabelText('I reviewed valid items.'));
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 item' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/import/commit'))).toBe(true));
 
@@ -600,7 +598,7 @@ describe('SettingsPage', () => {
 
     fireEvent.change(screen.getByLabelText('Import file'), { target: { files: [fileWithText('first.txt', 'first')] } });
     await waitFor(() => expect(screen.getByText('Selected: first.txt')).toBeTruthy());
-    fireEvent.click(screen.getByLabelText('Confirm import'));
+    fireEvent.click(screen.getByLabelText('I reviewed valid items.'));
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 item' }));
 
     fireEvent.change(screen.getByLabelText('Import file'), { target: { files: [fileWithText('second.txt', 'second')] } });
@@ -638,14 +636,13 @@ describe('SettingsPage', () => {
 
     fireEvent.change(screen.getByLabelText('Restore backup file'), { target: { files: [fileWithText('first.json', JSON.stringify(firstBackup))] } });
     await waitFor(() => expect(screen.getByText('No existing records will be overwritten.')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Open restore confirmation' }));
     fireEvent.change(screen.getByLabelText('Type RESTORE to confirm'), { target: { value: 'RESTORE' } });
     fireEvent.click(screen.getByRole('button', { name: 'Restore backup' }));
     await waitFor(() => expect(restoreCall).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Restore backup' }));
 
     fireEvent.change(screen.getByLabelText('Restore backup file'), { target: { files: [fileWithText('second.json', JSON.stringify(secondBackup))] } });
     await waitFor(() => expect(screen.getByText('No existing records will be overwritten.')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Open restore confirmation' }));
     fireEvent.change(screen.getByLabelText('Type RESTORE to confirm'), { target: { value: 'RESTORE' } });
     const secondRestoreButton = screen.getByRole('button', { name: 'Restore backup' }) as HTMLButtonElement;
     expect(secondRestoreButton.disabled).toBe(false);
@@ -695,14 +692,13 @@ describe('SettingsPage', () => {
 
     fireEvent.change(screen.getByLabelText('Restore backup file'), { target: { files: [fileWithText('first.json', JSON.stringify(firstBackup))] } });
     await waitFor(() => expect(screen.getByText('No existing records will be overwritten.')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Open restore confirmation' }));
     fireEvent.change(screen.getByLabelText('Type RESTORE to confirm'), { target: { value: 'RESTORE' } });
     fireEvent.click(screen.getByRole('button', { name: 'Restore backup' }));
     await waitFor(() => expect(restoreCall).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Restore backup' }));
 
     fireEvent.change(screen.getByLabelText('Restore backup file'), { target: { files: [fileWithText('second.json', JSON.stringify(secondBackup))] } });
     await waitFor(() => expect(screen.getByText('No existing records will be overwritten.')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Open restore confirmation' }));
     fireEvent.change(screen.getByLabelText('Type RESTORE to confirm'), { target: { value: 'RESTORE' } });
 
     await act(async () => {

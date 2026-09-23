@@ -16,7 +16,7 @@ export function SidebarTrigger({ className = '' }: SidebarTriggerProps) {
   const isSidebarOpen = useUiStore((state) => state.isSidebarOpen);
   const setSidebarOpen = useUiStore((state) => state.setSidebarOpen);
 
-  const label = isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar';
+  const label = t(isSidebarOpen ? 'collapseSidebar' : 'expandSidebar');
 
   return (
     <button

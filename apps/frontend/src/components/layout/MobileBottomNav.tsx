@@ -17,6 +17,7 @@ type MobileBottomNavProps = {
 export function MobileBottomNav({ moreTriggerRef }: MobileBottomNavProps) {
   const { t } = useTranslation('navigation');
   const openMore = useUiStore((state) => state.openMore);
+  const isMoreOpen = useUiStore((state) => state.isMoreOpen);
 
   return (
     <nav
@@ -42,7 +43,7 @@ export function MobileBottomNav({ moreTriggerRef }: MobileBottomNavProps) {
         ref={moreTriggerRef}
         type="button"
         aria-haspopup="dialog"
-        aria-expanded={useUiStore((state) => state.isMoreOpen)}
+        aria-expanded={isMoreOpen}
         aria-controls="more-navigation"
         onClick={openMore}
         className="flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-medium text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"

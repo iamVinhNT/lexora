@@ -16,12 +16,12 @@ export const wordKeys = {
   detail: (id: string) => [...wordKeys.details(), id] as const,
 };
 
-export function useWords(query: WordQuery) {
-  return useQuery({ queryKey: wordKeys.list(query), queryFn: () => listWords(query) });
+export function useWords(query: WordQuery, enabled = true) {
+  return useQuery({ queryKey: wordKeys.list(query), queryFn: ({ signal }) => listWords(query, signal), enabled });
 }
 
 export function useWord(id: string | null) {
-  return useQuery({ queryKey: wordKeys.detail(id ?? ''), queryFn: () => getWord(id!), enabled: Boolean(id) });
+  return useQuery({ queryKey: wordKeys.detail(id ?? ''), queryFn: ({ signal }) => getWord(id!, signal), enabled: Boolean(id) });
 }
 
 export function useCreateWord() {

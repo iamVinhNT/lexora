@@ -15,7 +15,8 @@ import { useUiStore } from '../src/stores/ui.store';
 describe('LanguageSelector', () => {
   beforeEach(async () => {
     localStorage.clear();
-    useUiStore.setState({ theme: 'dark', isSidebarOpen: true, isMoreOpen: false });
+    useUiStore.setState({ isSidebarOpen: true, isMoreOpen: false });
+    useUiStore.getState().setTheme('dark');
     await i18n.changeLanguage('en');
     vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
   });
@@ -28,6 +29,8 @@ describe('LanguageSelector', () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
+    await screen.findByRole('heading', { level: 1, name: 'Settings' });
+
 
     const selector = screen.getAllByRole('combobox', { name: 'Language' })[0];
     fireEvent.change(selector, { target: { value: 'vi' } });

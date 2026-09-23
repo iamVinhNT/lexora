@@ -134,6 +134,26 @@ describe('LearningSessionPage', () => {
     expect(screen.getByText(/Attempt 2 of 2/)).toBeTruthy();
   });
 
+  it('does not carry recall feedback into another item', async () => {
+    const secondWordId = '22222222-2222-4222-8222-222222222222';
+    const secondItem = { ...baseItem, id: 'item-2', wordId: secondWordId, position: 1, word: { ...baseItem.word, id: secondWordId, word: 'durable', headword: 'durable' } };
+    vi.mocked(fetch).mockImplementation(routeFetch((url, init) => {
+      if (url.pathname === '/api/learning/session' && !init.method) return envelope({ activeSession: { ...session({ ...baseItem, completedStep: 'UNDERSTAND' }, 'RECALL'), totalWords: 2, items: [baseItem, secondItem] }, latestSession: null, sessions: [] });
+      if (url.pathname.endsWith('/step')) return envelope({
+        item: { ...baseItem, completedStep: 'RECALL', word: baseItem.word },
+        cursor: { ...cursor('OUTPUT'), itemId: secondItem.id, wordId: secondWordId, itemIndex: 1, sessionPosition: 1 },
+        feedback: { outcome: 'CORRECT', attemptNumber: 1, canRetry: false },
+      });
+      return undefined;
+    }));
+    renderPage();
+    await screen.findByRole('heading', { name: 'Recall' });
+    fireEvent.change(screen.getByLabelText('Recall answer'), { target: { value: 'reliable' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to Output' }));
+    await screen.findByRole('heading', { name: 'Output' });
+    expect(screen.queryByText('Recall result: Correct')).toBeNull();
+  });
+
   it('uses distinct request IDs for recall attempts while reusing retry ID', async () => {
     const fetchMock = vi.mocked(fetch);
     let recallPosts = 0;
@@ -210,6 +230,9 @@ describe('LearningSessionPage', () => {
     }));
     renderPage();
     await screen.findByRole('heading', { name: 'Assess' });
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.getByRole('button', { name: '1. Again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '4. Easy' })).toBeTruthy();
     fireEvent.keyDown(screen.getByLabelText('Assessment controls'), { key: '1' });
     await waitFor(() => expect(postCount).toBe(1));
   });
@@ -240,6 +263,7 @@ describe('LearningSessionPage', () => {
     await screen.findByRole('heading', { name: 'Recall' });
     fireEvent.change(screen.getByLabelText('Recall answer'), { target: { value: 'reliable' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue to Output' }));
+    expect(await screen.findByText('Recall result: Correct')).toBeTruthy();
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Your sentence')));
   });
 
@@ -313,7 +337,7 @@ describe('LearningSessionPage', () => {
     }));
     renderPage();
     await screen.findByRole('heading', { name: 'Assess' });
-    fireEvent.click(screen.getByRole('button', { name: 'Good' }));
+    fireEvent.click(screen.getByRole('button', { name: '3. Good' }));
     await waitFor(() => expect(completeCalls).toBe(1));
     expect(await screen.findByRole('heading', { name: 'Session complete' })).toBeTruthy();
     const summarySection = screen.getByRole('heading', { name: 'Session complete' }).closest('section');

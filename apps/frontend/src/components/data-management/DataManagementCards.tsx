@@ -105,7 +105,7 @@ export function ImportCard({ format, onFormatChange, importName, onFile, desktop
           <p className="text-muted">{t('skipped')}</p>
         </div>
         <label className="flex min-h-11 items-center gap-3 text-sm text-foreground">
-          <input aria-label={t('confirmImport')} type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+          <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
           {t('reviewedValid')}
         </label>
         <Button type="button" onClick={onCommit} disabled={!confirmed || preview.validCount === 0 || pending}>{pending ? tCommon('status.loading') : importButtonLabel}</Button>

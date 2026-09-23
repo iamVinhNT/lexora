@@ -78,8 +78,10 @@ describe('Vocabulary and context i18n', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /Đóng Building a scalable API/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Thêm ngữ cảnh' }));
     expect(screen.getByRole('heading', { name: 'Thêm ngữ cảnh' })).toBeTruthy();
-    expect(screen.getByLabelText('Tiêu đề')).toBeTruthy();
-    expect(screen.getByLabelText('Nội dung')).toBeTruthy();
+    const titleInput = screen.getByRole('textbox', { name: 'Tiêu đề' }) as HTMLInputElement;
+    const contentInput = screen.getByRole('textbox', { name: 'Nội dung' }) as HTMLTextAreaElement;
+    expect(titleInput.required).toBe(true);
+    expect(contentInput.required).toBe(true);
     expect(screen.getByRole('button', { name: 'Lưu ngữ cảnh' })).toBeTruthy();
   });
 });

@@ -4,6 +4,6 @@
  */
 import type { HTMLAttributes } from 'react';
 
-export function Card({ className = '', ...props }: HTMLAttributes<HTMLElement>) {
-  return <section className={`rounded-2xl border border-border bg-surface shadow-sm ${className}`} {...props} />;
+export function Card({ className = '', ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={`rounded-2xl border border-border bg-surface shadow-sm ${className}`} {...props} />;
 }

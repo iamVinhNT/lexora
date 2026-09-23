@@ -67,6 +67,33 @@ describe('Dialog', () => {
     expect(document.body.style.overflow).toBe('');
   });
 
+  it('makes background content inert and aria-hidden only while mounted', () => {
+    const background = document.createElement('main');
+    const preHidden = document.createElement('aside');
+    preHidden.setAttribute('aria-hidden', 'false');
+    preHidden.setAttribute('inert', 'preserved');
+    document.body.append(background, preHidden);
+
+    const { unmount } = render(
+      <Dialog title="Inert Background Dialog" onClose={vi.fn()}>
+        <div>Dialog Content</div>
+      </Dialog>,
+    );
+
+    expect(background.getAttribute('aria-hidden')).toBe('true');
+    expect(background.hasAttribute('inert')).toBe(true);
+    expect(preHidden.getAttribute('aria-hidden')).toBe('true');
+    expect(preHidden.getAttribute('inert')).toBe('');
+
+    unmount();
+    expect(background.hasAttribute('aria-hidden')).toBe(false);
+    expect(background.hasAttribute('inert')).toBe(false);
+    expect(preHidden.getAttribute('aria-hidden')).toBe('false');
+    expect(preHidden.getAttribute('inert')).toBe('preserved');
+    background.remove();
+    preHidden.remove();
+  });
+
   it('calls onClose when backdrop is clicked', () => {
     const handleClose = vi.fn();
     render(
@@ -175,6 +202,22 @@ describe('Dialog', () => {
     lastBtn.focus();
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: false });
     expect(document.activeElement).toBe(closeBtn);
+  });
+
+  it('returns focus to the dialog when Tab is pressed after focus escapes', () => {
+    const outsideButton = document.createElement('button');
+    document.body.appendChild(outsideButton);
+    render(
+      <Dialog title="Escaped Focus Dialog" onClose={vi.fn()}>
+        <input aria-label="Dialog field" />
+      </Dialog>,
+    );
+
+    outsideButton.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /close escaped focus dialog/i }));
+    outsideButton.remove();
   });
 
   it('restores previous focus on unmount', () => {

@@ -3,7 +3,6 @@
  * @description Accessible light and dark theme toggle backed by UI-only state.
  */
 import { Moon, Sun } from 'lucide-react';
-import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useUiStore } from '../../stores/ui.store';
@@ -12,10 +11,6 @@ export function ThemeToggle() {
   const { t } = useTranslation('common');
   const theme = useUiStore((state) => state.theme);
   const toggleTheme = useUiStore((state) => state.toggleTheme);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
 
   const isDark = theme === 'dark';
 

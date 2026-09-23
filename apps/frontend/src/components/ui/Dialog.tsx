@@ -18,6 +18,7 @@ type DialogProps = {
 export function Dialog({ title, children, onClose, wide = false }: DialogProps) {
   const { t } = useTranslation('common');
   const dialogRef = useRef<HTMLDivElement>(null);
+  const portalRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -27,10 +28,21 @@ export function Dialog({ title, children, onClose, wide = false }: DialogProps) 
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
     previousFocusRef.current = document.activeElement as HTMLElement;
+    const originalOverflow = document.body.style.overflow;
+    const backgroundAttributes = Array.from(document.body.children)
+      .filter((element) => element !== portalRef.current)
+      .map((element) => ({
+        element,
+        ariaHidden: element.getAttribute('aria-hidden'),
+        inert: element.getAttribute('inert'),
+      }));
+    document.body.style.overflow = 'hidden';
+    backgroundAttributes.forEach(({ element }) => {
+      element.setAttribute('aria-hidden', 'true');
+      element.setAttribute('inert', '');
+    });
+
     const firstFormField = Array.from(
       dialogRef.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
         'input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)',
@@ -50,13 +62,21 @@ export function Dialog({ title, children, onClose, wide = false }: DialogProps) 
 
       const focusable = Array.from(
         dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+          'button:not([disabled]):not([tabindex="-1"]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
         ) ?? [],
-      );
+      ).filter((element) => {
+        const styles = getComputedStyle(element);
+        return !element.hidden && styles.display !== 'none' && styles.visibility !== 'hidden';
+      });
       if (focusable.length === 0) return;
 
       const first = focusable[0];
       const last = focusable.at(-1)!;
+      if (!dialogRef.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -71,6 +91,12 @@ export function Dialog({ title, children, onClose, wide = false }: DialogProps) 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = originalOverflow;
+      backgroundAttributes.forEach(({ element, ariaHidden, inert }) => {
+        if (ariaHidden === null) element.removeAttribute('aria-hidden');
+        else element.setAttribute('aria-hidden', ariaHidden);
+        if (inert === null) element.removeAttribute('inert');
+        else element.setAttribute('inert', inert);
+      });
       previousFocusRef.current?.focus();
     };
   }, []);
@@ -81,6 +107,7 @@ export function Dialog({ title, children, onClose, wide = false }: DialogProps) 
 
   return createPortal(
     <div
+      ref={portalRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
       onClick={(event) => {
         if (event.target === event.currentTarget) {
@@ -88,7 +115,9 @@ export function Dialog({ title, children, onClose, wide = false }: DialogProps) 
         }
       }}
     >
-      <div
+      <button
+        type="button"
+        tabIndex={-1}
         className="fixed inset-0 z-50 bg-overlay backdrop-blur-sm"
         aria-hidden="true"
         onClick={onClose}

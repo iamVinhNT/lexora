@@ -7,6 +7,29 @@ import { describe, expect, it, vi } from 'vitest';
 import { createMainWindow } from '../src/window.js';
 
 describe('createMainWindow', () => {
+  it('maximizes visible windows before showing them and leaves hidden windows untouched', async () => {
+    const calls: string[] = [];
+    const browserWindow = {
+      webContents: {
+        setWindowOpenHandler: vi.fn(),
+        on: vi.fn(),
+        session: { setPermissionRequestHandler: vi.fn() },
+      },
+      once: vi.fn((_event: string, listener: () => void) => listener()),
+      maximize: vi.fn(() => calls.push('maximize')),
+      show: vi.fn(() => calls.push('show')),
+      loadURL: vi.fn(async () => undefined),
+    };
+    const BrowserWindowCtor = vi.fn(() => browserWindow);
+
+    await createMainWindow({ BrowserWindowCtor: BrowserWindowCtor as never, origin: 'http://127.0.0.1:45678', preloadPath: '/opt/preload.cjs', iconPath: '/opt/icon.png' });
+    expect(calls).toEqual(['maximize', 'show']);
+
+    calls.length = 0;
+    await createMainWindow({ BrowserWindowCtor: BrowserWindowCtor as never, origin: 'http://127.0.0.1:45678', preloadPath: '/opt/preload.cjs', iconPath: '/opt/icon.png', showWindow: false });
+    expect(calls).toEqual([]);
+  });
+
   it('creates a sandboxed window with restricted navigation and permissions', async () => {
     const handlers = new Map<string, (...args: unknown[]) => unknown>();
     const loadURL = vi.fn(async () => undefined);
@@ -19,6 +42,8 @@ describe('createMainWindow', () => {
         },
       },
       once: vi.fn(),
+      maximize: vi.fn(),
+      show: vi.fn(),
       loadURL,
     };
     const BrowserWindowCtor = vi.fn(() => browserWindow);

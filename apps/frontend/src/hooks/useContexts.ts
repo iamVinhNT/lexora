@@ -16,11 +16,11 @@ export const contextKeys = {
 };
 
 export function useContexts(query: ContextQuery) {
-  return useQuery({ queryKey: contextKeys.list(query), queryFn: () => listContexts(query) });
+  return useQuery({ queryKey: contextKeys.list(query), queryFn: ({ signal }) => listContexts(query, signal) });
 }
 
 export function useContext(id: string | null) {
-  return useQuery({ queryKey: contextKeys.detail(id ?? ''), queryFn: () => getContext(id!), enabled: Boolean(id) });
+  return useQuery({ queryKey: contextKeys.detail(id ?? ''), queryFn: ({ signal }) => getContext(id!, signal), enabled: Boolean(id) });
 }
 
 function invalidateRelated(queryClient: ReturnType<typeof useQueryClient>, id?: string) {

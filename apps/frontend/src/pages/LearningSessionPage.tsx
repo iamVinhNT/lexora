@@ -19,7 +19,6 @@ export function LearningSessionPage() {
   const options = useLearningOptions();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [completedSession, setCompletedSession] = useState<LearningSession | null>(null);
-  const [recallResult, setRecallResult] = useState<string | null>(null);
   const requestIds = useRef(new Map<string, string>());
   const submitLock = useRef(false);
   const startMutation = useStartLearningSession();
@@ -52,9 +51,6 @@ export function LearningSessionPage() {
         payload: { ...payload, requestId: requestId, wordId: item.wordId, step },
       });
 
-      if (step === 'RECALL') {
-        setRecallResult(actionResult.feedback?.outcome ?? null);
-      }
 
       if (step === 'ASSESS') {
         const updatedSession = { ...safeActiveSession, items: safeActiveSession.items.map((candidate) => candidate.wordId === actionResult.item.wordId ? actionResult.item : candidate) };
@@ -81,7 +77,6 @@ export function LearningSessionPage() {
   function resetForNextSession() {
     setCompletedSession(null);
     setSessionId(null);
-    setRecallResult(null);
     void overview.refetch();
   }
 
@@ -99,18 +94,18 @@ export function LearningSessionPage() {
     {!shownCompletedSession && overview.isLoading && <LoadingState />}
      {!shownCompletedSession && overview.isError && <ErrorState message={getLocalizedErrorMessage(overview.error, tCommon)} onRetry={() => void overview.refetch()} />}
      {!shownCompletedSession && !overview.isLoading && !overview.isError && !activeSession && <SessionStartForm isPending={startMutation.isPending} errorMessage={startMutation.error ? getLocalizedErrorMessage(startMutation.error, tCommon) : undefined} latestSession={overview.data?.latestSession} options={options.data} optionsLoading={options.isLoading} optionsError={options.isError ? t('optionsError') : undefined} onRetryOptions={() => void options.refetch()} onSubmit={handleStart} />}
-     {!shownCompletedSession && !overview.isLoading && !overview.isError && safeActiveSession && <ActiveSession session={safeActiveSession} detailError={detail.error} isPending={submitMutation.isPending || completeMutation.isPending || abandonMutation.isPending} submitError={submitMutation.error ? getLocalizedErrorMessage(submitMutation.error, tCommon) : completeMutation.error ? getLocalizedErrorMessage(completeMutation.error, tCommon) : undefined} recallFeedback={recallResult} onSubmit={handleStepSubmit} onComplete={handleComplete} onAbandon={handleAbandon} />}
+     {!shownCompletedSession && !overview.isLoading && !overview.isError && safeActiveSession && <ActiveSession session={safeActiveSession} detailError={detail.error} isPending={submitMutation.isPending || completeMutation.isPending || abandonMutation.isPending} submitError={submitMutation.error ? getLocalizedErrorMessage(submitMutation.error, tCommon) : completeMutation.error ? getLocalizedErrorMessage(completeMutation.error, tCommon) : undefined} onSubmit={handleStepSubmit} onComplete={handleComplete} onAbandon={handleAbandon} />}
   </div>;
 }
 
-function ActiveSession({ session, detailError, isPending, submitError, recallFeedback, recallAttemptNumber, recallHint, recallRevealedAnswer, onSubmit, onComplete, onAbandon }: { session: LearningSession; detailError: Error | null; isPending: boolean; submitError?: string; recallFeedback?: string | null; recallAttemptNumber?: 1 | 2 | null; recallHint?: { firstLetter: string; letterCount: number }; recallRevealedAnswer?: string; onSubmit: (payload: Omit<SubmitStepPayload, 'wordId' | 'step' | 'requestId'>, step: SessionStep) => Promise<void>; onComplete: (id: string) => Promise<void>; onAbandon: () => void }) {
+function ActiveSession({ session, detailError, isPending, submitError, onSubmit, onComplete, onAbandon }: { session: LearningSession; detailError: Error | null; isPending: boolean; submitError?: string; onSubmit: (payload: Omit<SubmitStepPayload, 'wordId' | 'step' | 'requestId'>, step: SessionStep) => Promise<void>; onComplete: (id: string) => Promise<void>; onAbandon: () => void }) {
   const { t } = useTranslation('learning');
   const { t: tCommon } = useTranslation('common');
   const cursor = session.cursor;
   const currentItem = cursor?.itemId ? session.items.find((item) => item.id === cursor.itemId) : undefined;
   if (!currentItem || !cursor?.step) return <div className="mx-auto max-w-xl space-y-4 rounded-2xl border border-border bg-surface p-6"><h2 className="text-2xl font-semibold text-foreground">{t('sessionReady')}</h2><p className="text-muted">{t('allAssessmentsRecorded')}</p>{submitError && <p role="alert" className="text-sm text-red-700 dark:text-red-200">{submitError}</p>}<button type="button" disabled={isPending} onClick={() => void onComplete(session.id)} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">{tCommon('actions.completeSession')}</button></div>;
   const step = cursor.step;
-  const persistedRecallFeedback = currentItem.feedback ?? (currentItem.attempts?.find((attempt) => attempt.type === 'RECALL')?.result ? { outcome: currentItem.attempts.find((attempt) => attempt.type === 'RECALL')?.result ?? '', attemptNumber: session.cursor?.attemptNumber ?? null, canRetry: session.cursor?.attemptNumber === 2 } : recallFeedback ? { outcome: recallFeedback, attemptNumber: null, canRetry: false } : null);
+  const persistedRecallFeedback = currentItem.feedback ?? (currentItem.attempts?.find((attempt) => attempt.type === 'RECALL')?.result ? { outcome: currentItem.attempts.find((attempt) => attempt.type === 'RECALL')?.result ?? '', attemptNumber: session.cursor?.attemptNumber ?? null, canRetry: session.cursor?.attemptNumber === 2 } : null);
   return <>
     {detailError && <p role="alert" className="mx-auto max-w-3xl rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">{getLocalizedErrorMessage(detailError, tCommon)}</p>}
       <div className="space-y-4"><button type="button" onClick={onAbandon} disabled={isPending} className="min-h-11 rounded-lg border border-border px-4 py-2 text-sm font-semibold">{tCommon('actions.abandonSession')}</button><LearningStepView item={currentItem} step={step} isPending={isPending} errorMessage={submitError} recallFeedback={persistedRecallFeedback?.outcome} recallAttemptNumber={cursor.attemptNumber ?? persistedRecallFeedback?.attemptNumber} recallHint={persistedRecallFeedback?.hint} recallRevealedAnswer={persistedRecallFeedback?.revealedAnswer} outputFeedback={currentItem.feedback?.codes || currentItem.feedback?.outcome === 'INVALID' ? { ...currentItem.feedback, attemptNumber: cursor.attemptNumber ?? currentItem.feedback.attemptNumber } : null} onSubmit={(payload) => void onSubmit(payload, step)} /></div>

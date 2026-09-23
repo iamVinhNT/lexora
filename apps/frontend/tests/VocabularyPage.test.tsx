@@ -2,7 +2,7 @@
  * @file VocabularyPage.test.tsx
  * @description Verifies vocabulary list, filters, CRUD dialogs, and API-backed state.
  */
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -33,6 +33,21 @@ const word = {
 
 function response(data: unknown, status = 200) {
   return Promise.resolve({ ok: status >= 200 && status < 300, status, json: async () => status >= 400 ? { success: false, error: data } : { success: true, data } });
+}
+
+function mockDesktopViewport(matches = true) {
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  const mediaQuery = {
+    matches,
+    media: '(min-width: 1024px)',
+    onchange: null,
+    addEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.add(listener),
+    removeEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener),
+    addListener: (listener: (event: MediaQueryListEvent) => void) => listeners.add(listener),
+    removeListener: (listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener),
+    dispatchEvent: () => true,
+  } as unknown as MediaQueryList;
+  vi.stubGlobal('matchMedia', vi.fn(() => mediaQuery));
 }
 
 function renderPage() {
@@ -70,7 +85,108 @@ describe('VocabularyPage', () => {
     }));
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it('auto-selects first result and updates inline details from keyboard selection', async () => {
+    mockDesktopViewport();
+    const secondWord = { ...word, id: 'word-2', word: 'resilient', definition: 'Able to recover.' };
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/word-1')) return response(word);
+      if (url.endsWith('/word-2')) return response(secondWord);
+      return response({ total: 2, page: 1, limit: 20, items: [word, secondWord] });
+    });
+
+    renderPage();
+    const page = screen.getByTestId('vocabulary-page');
+    expect(page.className).not.toContain('lg:-mt-4');
+    expect(page.className).toContain('lg:h-[calc(100dvh-6rem)]');
+    expect(page.className).toContain('lg:gap-1');
+    expect(screen.getByRole('region', { name: /vocabulary filters/i }).className).toContain('lg:p-0');
+    const results = await screen.findByRole('listbox', { name: /vocabulary/i });
+    const firstRow = await within(results).findByRole('option', { name: /reliable/i });
+    expect(firstRow.getAttribute('aria-selected')).toBe('true');
+    expect(within(screen.getByRole('region', { name: /word details/i })).getByRole('heading', { name: 'reliable' })).toBeTruthy();
+
+    fireEvent.keyDown(firstRow, { key: 'ArrowDown' });
+
+    const detail = screen.getByRole('region', { name: /word details/i });
+    expect(within(detail).getByRole('heading', { name: 'resilient' })).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('closes desktop delete confirmation back to inline detail on cancel', async () => {
+    mockDesktopViewport();
+    renderPage();
+    await screen.findByRole('option', { name: /reliable/i });
+
+    const detail = screen.getByRole('region', { name: /word details/i });
+    fireEvent.click(within(detail).getByRole('button', { name: /delete word reliable/i }));
+    const confirmation = await screen.findByRole('dialog', { name: /delete word/i });
+
+    fireEvent.click(within(confirmation).getByRole('button', { name: /^cancel$/i }));
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(within(screen.getByRole('region', { name: /word details/i })).getByRole('heading', { name: 'reliable' })).toBeTruthy();
+  });
+
+  it('returns mobile delete confirmation to the detail dialog on cancel', async () => {
+    mockDesktopViewport(false);
+    renderPage();
+    await screen.findByText('reliable');
+
+    fireEvent.click(screen.getByRole('button', { name: /details for reliable/i }));
+    const detailDialog = await screen.findByRole('dialog', { name: /reliable/i });
+    fireEvent.click(within(detailDialog).getByRole('button', { name: /delete word reliable/i }));
+    const confirmation = await screen.findByRole('dialog', { name: /delete word/i });
+
+    fireEvent.click(within(confirmation).getByRole('button', { name: /^cancel$/i }));
+
+    expect(await screen.findByRole('dialog', { name: /reliable/i })).toBeTruthy();
+  });
+
+  it('does not request a detail endpoint when desktop opens direct delete confirmation', async () => {
+    mockDesktopViewport();
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => response({ total: 1, page: 1, limit: 20, items: [word] }));
+
+    renderPage();
+    await screen.findByRole('option', { name: /reliable/i });
+    fireEvent.click(within(screen.getByRole('region', { name: /word details/i })).getByRole('button', { name: /delete word reliable/i }));
+    await screen.findByRole('dialog', { name: /delete word/i });
+
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes('/api/words/word-1'))).toBe(false);
+  });
+
+  it('does not restore a deleted desktop word from the stale list cache', async () => {
+    mockDesktopViewport();
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'DELETE') return response({ id: 'word-1', deleted: true });
+      if (String(input).includes('/api/words')) {
+        return response({ total: 1, page: 1, limit: 20, items: [word] });
+      }
+      return response(word);
+    });
+
+    renderPage();
+    await screen.findByRole('option', { name: /reliable/i });
+    fireEvent.click(within(screen.getByRole('region', { name: /word details/i })).getByRole('button', { name: /delete word reliable/i }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: /delete word/i })).getByRole('button', { name: /confirm delete/i }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /delete word/i })).toBeNull());
+    expect(within(screen.getByRole('region', { name: /word details/i })).queryByRole('heading', { name: 'reliable' })).toBeNull();
+  });
+
+  it('emphasizes Production in word details while preserving edit actions', async () => {
+    renderPage();
+    await screen.findByText('reliable');
+
+    fireEvent.click(screen.getByRole('button', { name: /details for reliable/i }));
+    const dialog = await screen.findByRole('dialog', { name: /reliable/i });
+    const production = within(dialog).getByText('30%');
+
+    expect(production.parentElement?.className).toContain('border-accent');
+    expect(within(dialog).getByRole('button', { name: /edit word/i })).toBeTruthy();
+  });
 
   it('renders the initial list view inside a local results viewport', async () => {
     renderPage();
@@ -111,7 +227,27 @@ describe('VocabularyPage', () => {
     expect(screen.getByRole('article', { name: /reliable/i })).toBeTruthy();
   });
 
-  it('shows loading then renders word rows and applies filters to request URL', async () => {
+  it('debounces text filters without lagging their controlled inputs', async () => {
+    vi.useFakeTimers();
+    renderPage();
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    const search = screen.getByRole('textbox', { name: /search vocabulary/i }) as HTMLInputElement;
+    const tag = screen.getByRole('textbox', { name: /tag filter/i }) as HTMLInputElement;
+    const initialCalls = vi.mocked(fetch).mock.calls.length;
+
+    fireEvent.change(search, { target: { value: 's' } });
+    fireEvent.change(search, { target: { value: 'system' } });
+    fireEvent.change(tag, { target: { value: 'w' } });
+    fireEvent.change(tag, { target: { value: 'work' } });
+
+    expect(search.value).toBe('system');
+    expect(tag.value).toBe('work');
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(initialCalls);
+    await act(() => vi.advanceTimersByTimeAsync(300));
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).includes('search=system') && String(input).includes('tag=work'))).toHaveLength(1);
+  });
+
+  it('shows loading, renders word rows, and applies categorical filters', async () => {
     renderPage();
 
     expect(screen.getByText('Loading vocabulary…')).toBeTruthy();
@@ -119,16 +255,14 @@ describe('VocabularyPage', () => {
     expect(screen.getByText('work')).toBeTruthy();
     expect(screen.getByText('priority')).toBeTruthy();
 
-    fireEvent.change(screen.getByRole('textbox', { name: /search vocabulary/i }), { target: { value: 'system' } });
     fireEvent.pointerDown(screen.getByRole('combobox', { name: /cefr difficulty/i }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(screen.getByRole('option', { name: 'B2' }));
     fireEvent.pointerDown(screen.getByRole('combobox', { name: /vocabulary status/i }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(screen.getByRole('option', { name: 'Learning' }));
-    fireEvent.change(screen.getByRole('textbox', { name: /tag filter/i }), { target: { value: 'work' } });
 
     await waitFor(() => {
       const calls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
-      expect(calls.some((url) => url.includes('search=system') && url.includes('difficulty=B2') && url.includes('status=LEARNING') && url.includes('tag=work'))).toBe(true);
+      expect(calls.some((url) => url.includes('difficulty=B2') && url.includes('status=LEARNING'))).toBe(true);
     });
   });
 

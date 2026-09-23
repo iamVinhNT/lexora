@@ -16,6 +16,7 @@ interface WindowWebContents {
 export interface WindowLike {
   webContents: WindowWebContents;
   once(event: 'ready-to-show' | 'closed', listener: () => void): void;
+  maximize(): void;
   show(): void;
   loadURL(url: string): Promise<unknown>;
   close?: () => void;
@@ -57,7 +58,9 @@ export async function createMainWindow(options: CreateMainWindowOptions): Promis
   });
 
   mainWindow.once('ready-to-show', () => {
-    if (options.showWindow !== false) mainWindow.show();
+    if (options.showWindow === false) return;
+    mainWindow.maximize();
+    mainWindow.show();
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   const blockUnapprovedNavigation = (event: { preventDefault: () => void }, url: string) => {

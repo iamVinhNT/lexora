@@ -29,12 +29,12 @@ export type ContextList = { total: number; page: number; limit: number; items: C
 export type ContextQuery = { search?: string; sourceType?: ContextSourceType | ''; page?: number; limit?: number };
 export type ContextPayload = { title: string; content: string; sourceType: ContextSourceType; sourceUrl?: string | null; wordIds?: string[] };
 
-export function listContexts(query: ContextQuery = {}) {
-  return apiFetch<ContextList>('/api/contexts', { query });
+export function listContexts(query: ContextQuery = {}, signal?: AbortSignal) {
+  return apiFetch<ContextList>('/api/contexts', { query, signal });
 }
 
-export function getContext(id: string) {
-  return apiFetch<Context>(`/api/contexts/${id}`);
+export function getContext(id: string, signal?: AbortSignal) {
+  return apiFetch<Context>(`/api/contexts/${id}`, { signal });
 }
 
 export function createContext(payload: ContextPayload) {

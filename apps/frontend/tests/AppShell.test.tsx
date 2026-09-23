@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App from '../src/App';
 import { useUiStore } from '../src/stores/ui.store';
+import { i18n } from '../src/i18n/config';
 
 function renderApp(initialEntry = '/') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -202,6 +203,26 @@ describe('AppShell', () => {
     expect(background?.hasAttribute('inert')).toBe(false);
   });
 
+  it('applies persisted theme during fresh store initialization before first render', async () => {
+    localStorage.setItem('lexora-ui', JSON.stringify({ state: { theme: 'dark' }, version: 0 }));
+    vi.resetModules();
+
+    const { useUiStore: freshUiStore } = await import('../src/stores/ui.store');
+
+    expect(freshUiStore.getState().theme).toBe('dark');
+    expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+
+  it('falls back to light for malformed persisted theme state during fresh initialization', async () => {
+    localStorage.setItem('lexora-ui', '{malformed');
+    vi.resetModules();
+
+    const { useUiStore: freshUiStore } = await import('../src/stores/ui.store');
+
+    expect(freshUiStore.getState().theme).toBe('light');
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
   it('exposes theme toggle state and applies the selected theme', () => {
     renderApp();
     const toggle = screen.getAllByRole('button', { name: /switch to dark theme/i })[0];
@@ -217,7 +238,7 @@ describe('AppShell', () => {
   it('moves focus to the current route heading without a visible focus indicator', async () => {
     renderApp('/review');
 
-    const heading = screen.getByRole('heading', { level: 1, name: 'Review' });
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Review' });
     expect(document.activeElement).toBe(heading);
 
     const { readFile } = await import('node:fs/promises');
@@ -288,6 +309,17 @@ describe('AppShell', () => {
     expect(sidebar.getAttribute('data-state')).toBe('expanded');
     expect(sidebar.className).toContain('w-64');
     expect(contentContainer?.className).toContain('lg:pl-64');
+  });
+
+  it('localizes the sidebar trigger accessible name in Vietnamese', async () => {
+    await i18n.changeLanguage('vi');
+    renderApp();
+
+    const sidebar = screen.getAllByRole('complementary')[0];
+    const trigger = within(sidebar).getByRole('button', { name: 'Thu gọn thanh bên' });
+    fireEvent.click(trigger);
+
+    expect(within(sidebar).getByRole('button', { name: 'Mở rộng thanh bên' })).toBeTruthy();
   });
 
   it('renders accessible touch targets and controls in sidebar footer', () => {

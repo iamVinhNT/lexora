@@ -20,15 +20,12 @@ export function ReviewPage() {
   const { t: tCommon } = useTranslation('common');
   const queue = useReviewQueue({ limit: reviewLimit });
   const submitMutation = useSubmitReview();
-  const [isRevealed, setIsRevealed] = useState(false);
+  const [revealedWordId, setRevealedWordId] = useState<string>();
   const [lastReview, setLastReview] = useState<{ rating: ReviewRating; interval: number }>();
   const isSubmittingRef = useRef(false);
   const item = queue.data?.items[0];
+  const isRevealed = revealedWordId === item?.wordId;
   const dueCount = queue.data?.counts.total ?? queue.data?.total ?? 0;
-
-  useEffect(() => {
-    setIsRevealed(false);
-  }, [item?.wordId]);
 
   const submitRating = useCallback(async (rating: ReviewRating) => {
     if (!item || !isRevealed || submitMutation.isPending || isSubmittingRef.current) return;
@@ -36,7 +33,7 @@ export function ReviewPage() {
     try {
       const result = await submitMutation.mutateAsync({ wordId: item.wordId, reviewType: 'RECALL', rating });
       setLastReview({ rating, interval: result.reviewState.interval });
-      setIsRevealed(false);
+      setRevealedWordId(undefined);
     } finally {
       isSubmittingRef.current = false;
     }
@@ -70,7 +67,7 @@ export function ReviewPage() {
            <span>{t('dueToday', { count: dueCount, formattedCount: formatNumber(dueCount) })}</span>
            <span>{t('recallMode')}</span>
         </div>
-        <ReviewCard item={item} isRevealed={isRevealed} isPending={submitMutation.isPending} onReveal={() => setIsRevealed(true)} onRate={(rating) => void submitRating(rating)} />
+        <ReviewCard item={item} isRevealed={isRevealed} isPending={submitMutation.isPending} onReveal={() => setRevealedWordId(item.wordId)} onRate={(rating) => void submitRating(rating)} />
          {submitMutation.isError && <p role="alert" className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-secondary px-4 py-3 text-sm text-foreground">{getLocalizedErrorMessage(submitMutation.error, tCommon)}</p>}
          {submitMutation.isPending && <p className="mx-auto w-full max-w-3xl text-sm text-muted">{t('saving')}</p>}
       </>}

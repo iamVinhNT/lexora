@@ -33,9 +33,42 @@ export function AppShell() {
     }
   }, [isMoreOpen]);
 
+  const previousPathnameRef = useRef(location.pathname);
+
   useEffect(() => {
+    const isRouteNavigation = previousPathnameRef.current !== location.pathname;
+    previousPathnameRef.current = location.pathname;
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-    mainRef.current?.querySelector<HTMLElement>('h1')?.focus();
+    const main = mainRef.current;
+    if (!main) return;
+    const activeElement = document.activeElement;
+    const focusHeading = () => {
+      const heading = main.querySelector<HTMLElement>('h1');
+      heading?.focus();
+      return Boolean(heading);
+    };
+    if (focusHeading()) return;
+    let hasFocusMoved = false;
+    const handleFocusIn = (event: FocusEvent) => {
+      hasFocusMoved ||= event.target !== activeElement;
+    };
+    document.addEventListener('focusin', handleFocusIn);
+    const observer = new MutationObserver(() => {
+      if (!isRouteNavigation && hasFocusMoved) {
+        observer.disconnect();
+        document.removeEventListener('focusin', handleFocusIn);
+        return;
+      }
+      if (focusHeading()) {
+        observer.disconnect();
+        document.removeEventListener('focusin', handleFocusIn);
+      }
+    });
+    observer.observe(main, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('focusin', handleFocusIn);
+    };
   }, [location.pathname]);
 
   return (

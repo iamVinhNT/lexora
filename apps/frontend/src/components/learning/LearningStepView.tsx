@@ -143,9 +143,8 @@ export function LearningStepView({ item, step, isPending, errorMessage, recallFe
 
        {step === 'ASSESS' && <div className="space-y-6" aria-label={t('assessmentControls')}>
          <p className="text-base text-muted">{t('assessmentPrompt')}</p>
-         <input aria-label={t('assessmentShortcuts')} tabIndex={-1} className="sr-only" readOnly value="" onChange={() => undefined} />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {(Object.entries(ratingLabels) as [AssessmentRating, string][]).map(([rating, label], index) => <button key={rating} type="button" aria-label={label} disabled={isPending} onClick={() => onSubmit({ assessmentRating: rating })} className="min-h-14 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary-subtle disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{label}<span aria-hidden="true" className="mt-1 block text-xs font-normal text-muted">{index + 1}</span></button>)}
+          {(Object.entries(ratingLabels) as [AssessmentRating, string][]).map(([rating, label], index) => <button key={rating} type="button" aria-label={`${index + 1}. ${label}`} disabled={isPending} onClick={() => onSubmit({ assessmentRating: rating })} className="min-h-14 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary-subtle disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{label}<span aria-hidden="true" className="mt-1 block text-xs font-normal text-muted">{index + 1}</span></button>)}
         </div>
       </div>}
 
