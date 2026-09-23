@@ -30,16 +30,31 @@ function migrateLearningSchema(sqlite: Database.Database): void {
     if (tableExists('learning_sessions') && !columns('learning_sessions').has('status')) sqlite.exec("ALTER TABLE learning_sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'IN_PROGRESS'");
     if (tableExists('learning_session_items') && tableExists('learning_sessions')) {
       const itemColumns = columns('learning_session_items');
-      if (!itemColumns.has('position')) sqlite.exec('ALTER TABLE learning_session_items ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
-      if (!itemColumns.has('group_index')) sqlite.exec('ALTER TABLE learning_session_items ADD COLUMN group_index INTEGER NOT NULL DEFAULT 0');
-      const sessions = sqlite.prepare('SELECT id FROM learning_sessions ORDER BY started_at DESC, id DESC').all() as Array<{ id: string }>;
-      const hasDifficulty = tableExists('words') && columns('words').has('difficulty');
-      const findDifficulty = hasDifficulty ? sqlite.prepare('SELECT difficulty FROM words WHERE id = ?') : null;
-      const updateItem = sqlite.prepare('UPDATE learning_session_items SET position = ?, group_index = ? WHERE id = ?');
-      for (const session of sessions) {
-        const items = sqlite.prepare('SELECT id, word_id FROM learning_session_items WHERE session_id = ? ORDER BY created_at, id').all(session.id) as Array<{ id: string; word_id: string }>;
-        const assignments = groupSessionItems(items.map((item) => ({ id: item.id, difficulty: findDifficulty ? (findDifficulty.get(item.word_id) as { difficulty?: string | null } | undefined)?.difficulty : null })));
-        for (const group of assignments) for (const assignment of group) updateItem.run(assignment.position, assignment.groupIndex, assignment.id);
+      const needsPositionMigration = !itemColumns.has('position');
+      const needsGroupMigration = !itemColumns.has('group_index');
+      if (needsPositionMigration) sqlite.exec('ALTER TABLE learning_session_items ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
+      if (needsGroupMigration) sqlite.exec('ALTER TABLE learning_session_items ADD COLUMN group_index INTEGER NOT NULL DEFAULT 0');
+      if (needsPositionMigration || needsGroupMigration) {
+        const sessions = sqlite.prepare('SELECT id FROM learning_sessions ORDER BY started_at DESC, id DESC').all() as Array<{ id: string }>;
+        const hasDifficulty = tableExists('words') && columns('words').has('difficulty');
+        const findDifficulty = hasDifficulty ? sqlite.prepare('SELECT difficulty FROM words WHERE id = ?') : null;
+        const ordering = needsPositionMigration ? 'created_at, id' : 'position, id';
+        const updates = [
+          ...(needsPositionMigration ? ['position = @position'] : []),
+          ...(needsGroupMigration ? ['group_index = @groupIndex'] : []),
+        ];
+        const updateItem = sqlite.prepare(`UPDATE learning_session_items SET ${updates.join(', ')} WHERE id = @id`);
+        for (const session of sessions) {
+          const items = sqlite.prepare(`SELECT id, word_id FROM learning_session_items WHERE session_id = ? ORDER BY ${ordering}`).all(session.id) as Array<{ id: string; word_id: string }>;
+          const assignments = groupSessionItems(items.map((item) => ({ id: item.id, difficulty: findDifficulty ? (findDifficulty.get(item.word_id) as { difficulty?: string | null } | undefined)?.difficulty : null })));
+          for (const group of assignments) for (const assignment of group) {
+            updateItem.run({
+              id: assignment.id,
+              ...(needsPositionMigration ? { position: assignment.position } : {}),
+              ...(needsGroupMigration ? { groupIndex: assignment.groupIndex } : {}),
+            });
+          }
+        }
       }
     }
     if (tableExists('learning_sessions')) {

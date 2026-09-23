@@ -158,6 +158,77 @@ describe('Database Schema & Client', () => {
       sqlite.close();
     });
 
+    it.each([
+      { missingColumn: 'position', itemColumns: 'group_index INTEGER NOT NULL', itemColumn: 'group_index', initialValues: [['item-1', 40, '2026-01-01T01:00:00.000Z'], ['item-2', 50, '2026-01-01T02:00:00.000Z'], ['item-3', 60, '2026-01-01T03:00:00.000Z'], ['item-4', 70, '2026-01-01T04:00:00.000Z'], ['item-5', 80, '2026-01-01T05:00:00.000Z']], expectedRows: [{ id: 'item-1', position: 0, group_index: 40 }, { id: 'item-2', position: 1, group_index: 50 }, { id: 'item-3', position: 2, group_index: 60 }, { id: 'item-4', position: 3, group_index: 70 }, { id: 'item-5', position: 4, group_index: 80 }] },
+      { missingColumn: 'group_index', itemColumns: 'position INTEGER NOT NULL', itemColumn: 'position', initialValues: [['item-1', 4, '2026-01-01T01:00:00.000Z'], ['item-2', 2, '2026-01-01T02:00:00.000Z'], ['item-3', 0, '2026-01-01T03:00:00.000Z'], ['item-4', 3, '2026-01-01T04:00:00.000Z'], ['item-5', 1, '2026-01-01T05:00:00.000Z']], expectedRows: [{ id: 'item-1', position: 4, group_index: 1 }, { id: 'item-2', position: 2, group_index: 0 }, { id: 'item-3', position: 0, group_index: 0 }, { id: 'item-4', position: 3, group_index: 1 }, { id: 'item-5', position: 1, group_index: 0 }] },
+    ])('migrates legacy items with only $missingColumn missing', ({ itemColumns, itemColumn, initialValues, expectedRows }) => {
+      const sqlite = new Database(':memory:');
+      try {
+        sqlite.exec(`
+          CREATE TABLE words (id TEXT PRIMARY KEY, word TEXT NOT NULL, definition TEXT NOT NULL, difficulty TEXT, created_at TEXT NOT NULL);
+          CREATE TABLE learning_sessions (id TEXT PRIMARY KEY, session_type TEXT NOT NULL, total_words INTEGER NOT NULL, started_at TEXT NOT NULL, completed_at TEXT);
+          CREATE TABLE learning_session_items (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, word_id TEXT NOT NULL, ${itemColumns}, created_at TEXT);
+          CREATE INDEX legacy_learning_items_created_at ON learning_session_items(created_at);
+          INSERT INTO words (id, word, definition, difficulty, created_at) VALUES
+            ('word-1', 'word1', 'definition', 'B1', '2026-01-01'),
+            ('word-2', 'word2', 'definition', 'B1', '2026-01-01');
+          INSERT INTO learning_sessions (id, session_type, total_words, started_at) VALUES ('session-1', 'NEW_WORDS', 2, '2026-01-01');
+        `);
+        const insertItem = sqlite.prepare(`INSERT INTO learning_session_items (id, session_id, word_id, ${itemColumn}, created_at) VALUES (?, ?, ?, ?, ?)`);
+        initialValues.forEach(([id, value, createdAt], index) => insertItem.run(id, 'session-1', `word-${index + 1}`, value, createdAt));
+        const originalIndexes = sqlite.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'learning_session_items' ORDER BY name").all();
+
+        createTables(sqlite);
+
+        expect(sqlite.prepare('SELECT id, position, group_index FROM learning_session_items ORDER BY id').all()).toEqual(expectedRows);
+        const migratedIndexes = sqlite.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'learning_session_items' ORDER BY name").all();
+        expect(migratedIndexes).toEqual(expect.arrayContaining(originalIndexes));
+        expect(migratedIndexes.map((index: { name: string }) => index.name)).toEqual(expect.arrayContaining([
+          'uq_learning_session_items_position',
+          'uq_learning_session_items_word',
+          'idx_learning_session_items_group_position',
+        ]));
+        createTables(sqlite);
+        expect(sqlite.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'learning_session_items' ORDER BY name").all()).toEqual(migratedIndexes);
+      } finally {
+        sqlite.close();
+      }
+    });
+
+    it('preserves existing learning item assignments and attempts when initialized again', () => {
+      const sqlite = new Database(':memory:');
+      try {
+        createTables(sqlite);
+        sqlite.exec(`
+          INSERT INTO words (id, word, definition, created_at) VALUES
+            ('word-1', 'word1', 'definition', '2026-01-01'),
+            ('word-2', 'word2', 'definition', '2026-01-01'),
+            ('word-3', 'word3', 'definition', '2026-01-01'),
+            ('word-4', 'word4', 'definition', '2026-01-01');
+          INSERT INTO learning_sessions (id, session_type, total_words, started_at)
+            VALUES ('session-1', 'NEW_WORDS', 4, '2026-01-01');
+          INSERT INTO learning_session_items (id, session_id, word_id, position, group_index, completed_step, recall_result, output_sentence, review_rating, created_at) VALUES
+            ('item-1', 'session-1', 'word-1', 3, 4, 'OUTPUT', 'CORRECT', 'sentence 1', 'EASY', '2026-01-01T01:00:00.000Z'),
+            ('item-2', 'session-1', 'word-2', 0, 5, 'RECALL', 'INCORRECT', 'sentence 2', 'AGAIN', '2026-01-01T02:00:00.000Z'),
+            ('item-3', 'session-1', 'word-3', 2, 6, 'CONTEXT', 'CORRECT', 'sentence 3', 'GOOD', '2026-01-01T03:00:00.000Z'),
+            ('item-4', 'session-1', 'word-4', 1, 7, 'UNDERSTAND', 'INCORRECT', 'sentence 4', 'HARD', '2026-01-01T04:00:00.000Z');
+          INSERT INTO learning_attempts (id, session_item_id, request_id, type, attempt_number, answer, result, performance_score, feedback_codes, source, created_at)
+            VALUES ('attempt-1', 'item-2', 'request-1', 'RECALL', 1, 'answer', 'INCORRECT', 25, '[]', 'LOCAL', '2026-01-01');
+        `);
+        const rowsBefore = sqlite.prepare('SELECT * FROM learning_session_items ORDER BY id').all();
+        const attemptsBefore = sqlite.prepare('SELECT * FROM learning_attempts ORDER BY id').all();
+        const indexesBefore = sqlite.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('learning_sessions', 'learning_session_items', 'learning_attempts') ORDER BY name").all();
+
+        expect(() => createTables(sqlite)).not.toThrow();
+        expect(() => getDb(sqlite)).not.toThrow();
+        expect(sqlite.prepare('SELECT * FROM learning_session_items ORDER BY id').all()).toEqual(rowsBefore);
+        expect(sqlite.prepare('SELECT * FROM learning_attempts ORDER BY id').all()).toEqual(attemptsBefore);
+        expect(sqlite.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('learning_sessions', 'learning_session_items', 'learning_attempts') ORDER BY name").all()).toEqual(indexesBefore);
+      } finally {
+        sqlite.close();
+      }
+    });
+
     it('transactionally adds exposure columns to legacy context_words table with postcondition verification', () => {
       const rawSqlite = new Database(':memory:');
       // Create minimal tables with legacy context_words
@@ -259,6 +330,31 @@ describe('Database Schema & Client', () => {
       const db = getDb(':memory:');
       expect(db.sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'uq_learning_sessions_one_active'").get()).toMatchObject({ sql: expect.stringContaining("status = 'IN_PROGRESS'") });
       db.sqlite.close();
+    });
+
+    it('rolls back legacy item columns and assignments when migration fails', () => {
+      const sqlite = new Database(':memory:');
+      sqlite.exec(`
+        CREATE TABLE words (id TEXT PRIMARY KEY, word TEXT NOT NULL, definition TEXT NOT NULL, difficulty TEXT, created_at TEXT NOT NULL);
+        CREATE TABLE learning_sessions (id TEXT PRIMARY KEY, session_type TEXT NOT NULL, total_words INTEGER NOT NULL, started_at TEXT NOT NULL, completed_at TEXT);
+        CREATE TABLE learning_session_items (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, word_id TEXT NOT NULL, completed_step TEXT, recall_result TEXT, output_sentence TEXT, review_rating TEXT, created_at TEXT);
+        INSERT INTO words (id, word, definition, difficulty, created_at) VALUES ('legacy-word-1', 'word1', 'definition', 'B1', '2026-01-01'), ('legacy-word-2', 'word2', 'definition', 'B1', '2026-01-01');
+        INSERT INTO learning_sessions (id, session_type, total_words, started_at) VALUES ('legacy-session', 'NEW_WORDS', 2, '2026-01-01');
+        INSERT INTO learning_session_items (id, session_id, word_id, created_at) VALUES ('legacy-item-1', 'legacy-session', 'legacy-word-1', '2026-01-01T01:00:00.000Z'), ('legacy-item-2', 'legacy-session', 'legacy-word-2', '2026-01-01T02:00:00.000Z');
+        CREATE TRIGGER fail_legacy_item_migration BEFORE UPDATE OF position ON learning_session_items WHEN OLD.id = 'legacy-item-2' BEGIN SELECT RAISE(ABORT, 'injected migration failure'); END;
+      `);
+
+      try {
+        expect(() => createTables(sqlite)).toThrow(/injected migration failure/);
+        expect((sqlite.prepare("PRAGMA table_info('learning_session_items')").all() as Array<{ name: string }>).map(({ name }) => name)).not.toContain('position');
+        expect((sqlite.prepare("PRAGMA table_info('learning_session_items')").all() as Array<{ name: string }>).map(({ name }) => name)).not.toContain('group_index');
+        expect(sqlite.prepare('SELECT id, completed_step, recall_result, output_sentence, review_rating FROM learning_session_items ORDER BY id').all()).toEqual([
+          { id: 'legacy-item-1', completed_step: null, recall_result: null, output_sentence: null, review_rating: null },
+          { id: 'legacy-item-2', completed_step: null, recall_result: null, output_sentence: null, review_rating: null },
+        ]);
+      } finally {
+        sqlite.close();
+      }
     });
 
     it('keeps newest legacy session active and deterministically groups all legacy items', () => {
