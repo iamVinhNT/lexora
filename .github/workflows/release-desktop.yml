@@ -1,0 +1,151 @@
+# @file release-desktop.yml
+# @description Build, verify, and publish Lexora Linux desktop releases for semver tags.
+
+name: Release desktop
+
+on:
+  push:
+    tags:
+      - v*.*.*
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to validate and package without a leading v
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate requested version
+        id: version
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            [[ "$REQUESTED_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+              printf 'Release tags must match vX.Y.Z exactly: %s\n' "$REQUESTED_VERSION" >&2
+              exit 1
+            }
+            VERSION="${REQUESTED_VERSION#v}"
+          else
+            [[ "$REQUESTED_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+              printf 'Manual versions must match X.Y.Z exactly: %s\n' "$REQUESTED_VERSION" >&2
+              exit 1
+            }
+            VERSION="$REQUESTED_VERSION"
+          fi
+
+          RELEASE_VERSION="$VERSION" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const expected = process.env.RELEASE_VERSION;
+          const manifests = ['package.json', 'apps/backend/package.json', 'apps/frontend/package.json', 'apps/desktop/package.json'];
+          for (const manifest of manifests) {
+            const { version } = JSON.parse(readFileSync(manifest, 'utf8'));
+            if (version !== expected) {
+              throw new Error(`${manifest} has version ${version}; expected ${expected}`);
+            }
+          }
+          NODE
+          printf 'version=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
+
+  build-linux:
+    needs: validate
+    runs-on: ubuntu-22.04
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install Linux runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 xvfb
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build Linux AppImage and Debian packages
+        run: pnpm run desktop:dist
+      - name: Verify release artifacts
+        run: pnpm run desktop:smoke
+      - name: Launch packaged AppImage
+        shell: bash
+        run: timeout 30s xvfb-run -a "apps/desktop/release/Lexora-${RELEASE_VERSION}-x86_64.AppImage" --smoke-test
+      - name: Install and launch Debian package
+        shell: bash
+        run: |
+          sudo apt-get install -y "./apps/desktop/release/lexora_${RELEASE_VERSION}_amd64.deb"
+          timeout 30s xvfb-run -a /opt/Lexora/lexora --smoke-test
+      - name: Collect Linux release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          cp "apps/desktop/release/Lexora-${RELEASE_VERSION}-x86_64.AppImage" release-assets/
+          cp "apps/desktop/release/lexora_${RELEASE_VERSION}_amd64.deb" release-assets/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+
+  release:
+    needs: build-linux
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-release-assets
+          path: release-assets
+      - name: Verify release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            printf 'Release already exists: %s\n' "$GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          remote_sha="$(git ls-remote origin "refs/tags/$GITHUB_REF_NAME^{}" | awk 'NR == 1 {print $1}')"
+          if [[ -z "$remote_sha" ]]; then
+            remote_sha="$(git ls-remote origin "refs/tags/$GITHUB_REF_NAME" | awk 'NR == 1 {print $1}')"
+          fi
+          if [[ -z "$remote_sha" || "$remote_sha" != "$GITHUB_SHA" ]]; then
+            printf 'Tag %s does not resolve to workflow commit %s (got %s)\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" "${remote_sha:-missing}" >&2
+            exit 1
+          fi
+      - name: Create stable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --title "Lexora v$VERSION" \
+            --verify-tag \
+            --repo "$GITHUB_REPOSITORY" \
+            --generate-notes
