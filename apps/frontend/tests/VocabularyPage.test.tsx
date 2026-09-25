@@ -353,6 +353,24 @@ describe('VocabularyPage', () => {
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true));
   });
 
+  it('places desktop vocabulary count below results', async () => {
+    mockDesktopViewport();
+    renderPage();
+    await screen.findByRole('option', { name: /reliable/i });
+    const results = screen.getByTestId('vocabulary-results');
+    const count = screen.getByText('1 word');
+    expect(results.compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('places mobile vocabulary count below results', async () => {
+    mockDesktopViewport(false);
+    renderPage();
+    await screen.findByRole('article', { name: /reliable/i });
+    const results = screen.getByTestId('vocabulary-results');
+    const count = screen.getByText('1 word');
+    expect(results.compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('refetches active analytics after each vocabulary mutation', async () => {
     const fetchMock = vi.mocked(fetch);
     let dashboardCalls = 0;

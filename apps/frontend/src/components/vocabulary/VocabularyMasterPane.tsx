@@ -28,14 +28,16 @@ export function VocabularyMasterPane({ words, activeWordId, isLoading, error, pa
   const { t } = useTranslation('vocabulary');
   const { t: tCommon } = useTranslation('common');
   return <Card data-testid="vocabulary-master-pane" className="flex min-h-0 flex-col overflow-hidden">
-    <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-0"><h2 className="text-sm font-semibold leading-5 text-foreground">{t('resultCount', { count: total })}</h2><span className="text-xs text-muted">{t('pageMeta', { page })}</span></div>
     <div role={!isLoading && !error && words.length > 0 ? 'listbox' : undefined} aria-label={!isLoading && !error && words.length > 0 ? t('title') : undefined} data-testid="vocabulary-results" className="min-h-0 flex-1 overflow-y-auto">
       {isLoading && <p className="p-5 text-sm text-muted">{t('loading')}</p>}
       {error && <div className="space-y-4 p-5"><p role="alert" className="text-sm text-foreground">{getLocalizedErrorMessage(error, tCommon)}</p><Button type="button" variant="secondary" onClick={onRetry}>{t('retry')}</Button></div>}
       {!isLoading && !error && words.length === 0 && <EmptyState title={t('noMatch')} description={t('noMatchDescription')} />}
       {!isLoading && !error && words.map((word, index) => <MasterRow key={word.id} word={word} index={index} selected={word.id === activeWordId} words={words} onSelect={onSelect} />)}
     </div>
-    {total > 0 && <nav aria-label={t('pagination')} className="flex items-center justify-between border-t border-border p-0.5"><Button type="button" variant="secondary" className="min-h-10" disabled={page <= 1} onClick={() => onPage(page - 1)}>{tCommon('actions.previous')}</Button><span className="text-sm text-muted">{tCommon('pagination.pageOf', { page, totalPages })}</span><Button type="button" variant="secondary" className="min-h-10" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>{tCommon('actions.next')}</Button></nav>}
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border p-0.5 pl-4">
+      <span className="text-sm font-semibold text-foreground">{t('resultCount', { count: total })}</span>
+      {total > 0 && <nav aria-label={t('pagination')} className="flex items-center justify-between p-0.5"><Button type="button" variant="secondary" className="min-h-10" disabled={page <= 1} onClick={() => onPage(page - 1)}>{tCommon('actions.previous')}</Button><span className="text-sm text-muted">{tCommon('pagination.pageOf', { page, totalPages })}</span><Button type="button" variant="secondary" className="min-h-10" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>{tCommon('actions.next')}</Button></nav>}
+    </div>
   </Card>;
 }
 
