@@ -15,6 +15,14 @@
     "./app": {
       "types": "./dist/app.d.ts",
       "import": "./dist/app.js"
+    },
+    "./shared-database": {
+      "types": "./dist/db/shared-database.d.ts",
+      "import": "./dist/db/shared-database.js"
+    },
+    "./db/shared-database": {
+      "types": "./dist/db/shared-database.d.ts",
+      "import": "./dist/db/shared-database.js"
     }
   },
   "dependencies": {

@@ -6,6 +6,7 @@ import { accessSync, chmodSync, constants, mkdirSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { buildApp } from '@lexora/backend/app';
+import { prepareSharedDatabase } from '@lexora/backend/shared-database';
 
 export interface DesktopServerHandle {
   app: Awaited<ReturnType<typeof buildApp>>;
@@ -17,6 +18,7 @@ const SPA_CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self'; styl
 const DATABASE_SIDECARS = ['', '-wal', '-shm'];
 
 function prepareDatabaseStorage(databasePath: string): void {
+  if (databasePath === ':memory:') return;
   const databaseDirectory = dirname(databasePath);
 
   try {
@@ -48,7 +50,12 @@ export async function startDesktopServer(options: {
   databasePath: string;
   rendererRoot: string;
   logger?: boolean;
+  prepareDatabase?: (databasePath: string) => Promise<void>;
 }): Promise<DesktopServerHandle> {
+  const prepare = options.prepareDatabase ?? prepareSharedDatabase;
+  if (options.databasePath !== ':memory:') {
+    await prepare(options.databasePath);
+  }
   prepareDatabaseStorage(options.databasePath);
   const app = await buildApp({
     dbPath: options.databasePath,

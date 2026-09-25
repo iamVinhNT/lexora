@@ -5,7 +5,7 @@
 import { chmod, mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { startDesktopServer, type DesktopServerHandle } from '../src/desktop-server.js';
 
@@ -113,6 +113,41 @@ describe('startDesktopServer', () => {
       expect(await route.text()).toContain('Lexora desktop');
       expect(missing.status).toBe(404);
       expect(missing.headers.get('content-type')).toContain('application/json');
+    } finally {
+      await rm(rendererRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('invokes database preparation when databasePath is not :memory:', async () => {
+    const rendererRoot = await mkdtemp(join(tmpdir(), 'lexora-desktop-spa-'));
+    const databasePath = join(rendererRoot, 'data', 'lexora.db');
+    const prepareDatabase = vi.fn().mockResolvedValue(undefined);
+
+    try {
+      server = await startDesktopServer({
+        databasePath,
+        rendererRoot,
+        prepareDatabase,
+      });
+
+      expect(prepareDatabase).toHaveBeenCalledWith(databasePath);
+    } finally {
+      await rm(rendererRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('skips database preparation when databasePath is :memory:', async () => {
+    const rendererRoot = await mkdtemp(join(tmpdir(), 'lexora-desktop-spa-'));
+    const prepareDatabase = vi.fn().mockResolvedValue(undefined);
+
+    try {
+      server = await startDesktopServer({
+        databasePath: ':memory:',
+        rendererRoot,
+        prepareDatabase,
+      });
+
+      expect(prepareDatabase).not.toHaveBeenCalled();
     } finally {
       await rm(rendererRoot, { recursive: true, force: true });
     }

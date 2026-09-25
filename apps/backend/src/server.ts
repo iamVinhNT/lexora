@@ -8,6 +8,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildApp, type BuildAppOptions } from './app.js';
+import { prepareSharedDatabase, sharedDatabasePath } from './db/shared-database.js';
 
 export function parsePort(value: string | undefined): number {
   if (value === undefined) return 3001;
@@ -18,8 +19,8 @@ export function parsePort(value: string | undefined): number {
   return port;
 }
 
-export function parseDatabasePath(value: string | undefined): string {
-  if (value === undefined) return './data/lexora.db';
+export function parseDatabasePath(value: string | undefined, home?: string): string {
+  if (value === undefined) return sharedDatabasePath(home);
   if (value.trim() === '' || value.includes('\u0000')) {
     throw new Error('DATABASE_PATH must be a non-empty path or :memory:');
   }
@@ -32,6 +33,7 @@ export interface StartServerOptions {
   logger?: boolean;
   signalEmitter?: SignalEmitter;
   appFactory?: (options: BuildAppOptions) => Promise<FastifyInstance>;
+  prepareDatabase?: (databasePath: string) => Promise<void>;
 }
 
 export interface SignalEmitter {
@@ -43,7 +45,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Fas
   const env = options.env ?? process.env;
   const port = parsePort(env.PORT);
   const databasePath = parseDatabasePath(env.DATABASE_PATH);
-  if (databasePath !== ':memory:') mkdirSync(dirname(databasePath), { recursive: true });
+  if (databasePath !== ':memory:') {
+    const prepare = options.prepareDatabase ?? prepareSharedDatabase;
+    await prepare(databasePath);
+    mkdirSync(dirname(databasePath), { recursive: true });
+  }
   const app = await (options.appFactory ?? buildApp)({
     dbPath: databasePath,
     logger: options.logger ?? true,

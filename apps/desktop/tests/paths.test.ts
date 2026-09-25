@@ -3,13 +3,52 @@
  * @description Verifies stable Linux desktop data, log, and renderer path resolution.
  */
 import { describe, expect, it } from 'vitest';
+import { sharedDatabasePath } from '@lexora/backend/shared-database';
 
 import { resolveDesktopIconPath, resolveDesktopPaths, resolveDevelopmentRendererRoot } from '../src/paths.js';
 
 describe('resolveDesktopPaths', () => {
-  it('keeps mutable data below Electron userData', () => {
-    expect(resolveDesktopPaths('/home/test/.config/Lexora', '/opt/Lexora/resources')).toEqual({
-      databasePath: '/home/test/.config/Lexora/data/lexora.db',
+  it('resolves databasePath to sharedDatabasePath under user home while logs stay below userData', () => {
+    expect(resolveDesktopPaths('/home/test/.config/Lexora', '/opt/Lexora/resources', { home: '/home/test' })).toEqual({
+      databasePath: '/home/test/.lexora/data/lexora.db',
+      logPath: '/home/test/.config/Lexora/logs/desktop.log',
+      rendererRoot: '/opt/Lexora/resources/frontend',
+    });
+  });
+
+  it('defaults to sharedDatabasePath without explicit home or override', () => {
+    const paths = resolveDesktopPaths('/home/test/.config/Lexora', '/opt/Lexora/resources');
+    expect(paths.databasePath).toBe(sharedDatabasePath());
+    expect(paths.logPath).toBe('/home/test/.config/Lexora/logs/desktop.log');
+  });
+
+  it('allows overriding databasePath via explicit option for test isolation', () => {
+    expect(
+      resolveDesktopPaths('/home/test/.config/Lexora', '/opt/Lexora/resources', { databasePath: ':memory:' })
+    ).toEqual({
+      databasePath: ':memory:',
+      logPath: '/home/test/.config/Lexora/logs/desktop.log',
+      rendererRoot: '/opt/Lexora/resources/frontend',
+    });
+  });
+
+  it('allows overriding databasePath via DATABASE_PATH environment variable', () => {
+    expect(
+      resolveDesktopPaths('/home/test/.config/Lexora', '/opt/Lexora/resources', {
+        env: { DATABASE_PATH: ':memory:' },
+      })
+    ).toEqual({
+      databasePath: ':memory:',
+      logPath: '/home/test/.config/Lexora/logs/desktop.log',
+      rendererRoot: '/opt/Lexora/resources/frontend',
+    });
+  });
+
+  it('supports passing home as a string parameter', () => {
+    expect(
+      resolveDesktopPaths('/home/test/.config/Lexora', '/opt/Lexora/resources', '/home/test')
+    ).toEqual({
+      databasePath: '/home/test/.lexora/data/lexora.db',
       logPath: '/home/test/.config/Lexora/logs/desktop.log',
       rendererRoot: '/opt/Lexora/resources/frontend',
     });

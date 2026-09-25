@@ -8,6 +8,7 @@ import { createServer as createTcpServer } from 'node:net';
 import { EventEmitter } from 'node:events';
 import type { FastifyInstance } from 'fastify';
 import { parseDatabasePath, parsePort, startServer } from '../src/server.js';
+import { sharedDatabasePath } from '../src/db/shared-database.js';
 
 async function getFreePort(): Promise<number> {
   const tcpServer = createTcpServer();
@@ -43,9 +44,11 @@ describe('server lifecycle', () => {
     expect(parsePort(undefined)).toBe(3001);
   });
 
-  it('validates database path instead of silently accepting an empty path', () => {
-    expect(parseDatabasePath(undefined)).toBe('./data/lexora.db');
+  it('validates database path and defaults to sharedDatabasePath', () => {
+    expect(parseDatabasePath(undefined)).toBe(sharedDatabasePath());
+    expect(parseDatabasePath(undefined, '/home/custom')).toBe('/home/custom/.lexora/data/lexora.db');
     expect(parseDatabasePath(':memory:')).toBe(':memory:');
+    expect(parseDatabasePath('/isolated/test.db')).toBe('/isolated/test.db');
     expect(() => parseDatabasePath('')).toThrow(/DATABASE_PATH/);
     expect(() => parseDatabasePath('   ')).toThrow(/DATABASE_PATH/);
     expect(() => parseDatabasePath('bad\u0000path')).toThrow(/DATABASE_PATH/);
@@ -145,5 +148,43 @@ describe('server lifecycle', () => {
     );
     expect(signals.listenerCount('SIGINT')).toBe(0);
     expect(signals.listenerCount('SIGTERM')).toBe(0);
+  });
+
+  it('prepares shared database when databasePath is not :memory:', async () => {
+    const prepareDatabase = vi.fn().mockResolvedValue(undefined);
+    const fakeApp = {
+      log: { info: vi.fn(), error: vi.fn() },
+      addHook: vi.fn(),
+      listen: vi.fn().mockResolvedValue('http://127.0.0.1:1'),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as FastifyInstance;
+
+    await startServer({
+      env: { PORT: '3001', DATABASE_PATH: '/tmp/test-lexora-db/lexora.db' },
+      logger: false,
+      appFactory: async () => fakeApp,
+      prepareDatabase,
+    });
+
+    expect(prepareDatabase).toHaveBeenCalledWith('/tmp/test-lexora-db/lexora.db');
+  });
+
+  it('skips database preparation when databasePath is :memory:', async () => {
+    const prepareDatabase = vi.fn().mockResolvedValue(undefined);
+    const fakeApp = {
+      log: { info: vi.fn(), error: vi.fn() },
+      addHook: vi.fn(),
+      listen: vi.fn().mockResolvedValue('http://127.0.0.1:1'),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as FastifyInstance;
+
+    await startServer({
+      env: { PORT: '3001', DATABASE_PATH: ':memory:' },
+      logger: false,
+      appFactory: async () => fakeApp,
+      prepareDatabase,
+    });
+
+    expect(prepareDatabase).not.toHaveBeenCalled();
   });
 });
