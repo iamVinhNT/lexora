@@ -38,12 +38,11 @@ describe('LearningSessionPage', () => {
     await screen.findByRole('heading', { name: 'Start a learning session' });
     fireEvent.pointerDown(screen.getByRole('combobox', { name: 'Session mode' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(screen.getByRole('option', { name: 'Context' }));
-    expect(screen.getByText(/System Architecture/)).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Context' })).toBeTruthy();
     fireEvent.submit(screen.getByRole('button', { name: 'Start session' }).closest('form')!);
     expect(screen.getByText('Context is required for context mode.')).toBeTruthy();
-    const contextSelect = screen.getByLabelText('Context');
-    fireEvent.change(contextSelect, { target: { value: 'context-1' } });
-    expect((contextSelect as HTMLSelectElement).value).toBe('context-1');
+    fireEvent.pointerDown(screen.getByRole('combobox', { name: 'Context' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(screen.getByRole('option', { name: /System Architecture/ }));
     fireEvent.submit(screen.getByRole('button', { name: 'Start session' }).closest('form')!);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toContain('POST');
@@ -425,5 +424,143 @@ describe('LearningSessionPage', () => {
     expect(await screen.findByRole('button', { name: 'Saving…' })).toBeTruthy();
     resolveAction(envelope({ item: { ...baseItem, completedStep: 'OUTPUT', outputSentence: 'A reliable system works.' }, cursor: cursor('ASSESS'), feedback: null }));
     expect(await screen.findByRole('heading', { name: 'Assess' })).toBeTruthy();
+  });
+
+  it('renders "Next word in group" during ENCODE phase for non-final group items, then "Continue to Recall" for the final item', async () => {
+    const fetchMock = vi.mocked(fetch);
+    const secondWordId = '22222222-2222-4222-8222-222222222222';
+    const secondItem = {
+      ...baseItem,
+      id: 'item-2',
+      wordId: secondWordId,
+      position: 1,
+      groupIndex: 0,
+      word: { ...baseItem.word, id: secondWordId, word: 'durable', headword: 'durable' },
+    };
+
+    let stepCallCount = 0;
+    fetchMock.mockImplementation(
+      routeFetch((url, init) => {
+        if (url.pathname === '/api/learning/session' && !init.method) {
+          return envelope({
+            activeSession: {
+              ...session(baseItem, 'UNDERSTAND'),
+              totalWords: 2,
+              cursor: {
+                phase: 'ENCODE',
+                groupIndex: 0,
+                groupCount: 1,
+                groupSize: 2,
+                itemIndex: 0,
+                sessionPosition: 0,
+                step: 'UNDERSTAND',
+                itemId: baseItem.id,
+                wordId: baseItem.wordId,
+                attemptNumber: null,
+              },
+              items: [baseItem, secondItem],
+            },
+            latestSession: null,
+            sessions: [],
+          });
+        }
+        if (url.pathname.endsWith('/step')) {
+          stepCallCount += 1;
+          if (stepCallCount === 1) {
+            // After submitting UNDERSTAND on word 1, server advances cursor to word 2 at CONTEXT
+            return envelope({
+              item: { ...baseItem, completedStep: 'UNDERSTAND', word: baseItem.word },
+              cursor: {
+                phase: 'ENCODE',
+                groupIndex: 0,
+                groupCount: 1,
+                groupSize: 2,
+                itemIndex: 1,
+                sessionPosition: 1,
+                step: 'CONTEXT',
+                itemId: secondItem.id,
+                wordId: secondWordId,
+                attemptNumber: null,
+              },
+              feedback: null,
+            });
+          }
+          if (stepCallCount === 2) {
+            // After submitting CONTEXT on word 2, server advances cursor to word 2 at UNDERSTAND
+            return envelope({
+              item: { ...secondItem, completedStep: 'CONTEXT', word: secondItem.word },
+              cursor: {
+                phase: 'ENCODE',
+                groupIndex: 0,
+                groupCount: 1,
+                groupSize: 2,
+                itemIndex: 1,
+                sessionPosition: 1,
+                step: 'UNDERSTAND',
+                itemId: secondItem.id,
+                wordId: secondWordId,
+                attemptNumber: null,
+              },
+              feedback: null,
+            });
+          }
+          if (stepCallCount === 3) {
+            // After submitting UNDERSTAND on word 2, group encoding is complete -> RETRIEVE phase starts at word 1 RECALL
+            return envelope({
+              item: { ...secondItem, completedStep: 'UNDERSTAND', word: secondItem.word },
+              cursor: {
+                phase: 'RETRIEVE',
+                groupIndex: 0,
+                groupCount: 1,
+                groupSize: 2,
+                itemIndex: 0,
+                sessionPosition: 0,
+                step: 'RECALL',
+                itemId: baseItem.id,
+                wordId: baseItem.wordId,
+                attemptNumber: 1,
+              },
+              feedback: null,
+            });
+          }
+        }
+        return undefined;
+      })
+    );
+
+    renderPage();
+    await screen.findByRole('heading', { name: 'Understand' });
+
+    // Step 1: Word 1 in ENCODE phase displays phase badge and "Next word in group"
+    expect(screen.getByText('Encoding · Word 1 of 2 in group')).toBeTruthy();
+    const nextWordButton = screen.getByRole('button', { name: 'Next word in group' });
+    expect(nextWordButton).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Continue to Recall' })).toBeNull();
+
+    // Click submit for word 1 UNDERSTAND
+    fireEvent.click(nextWordButton);
+    await waitFor(() => expect(stepCallCount).toBe(1));
+
+    // Now on word 2 at CONTEXT
+    await screen.findByRole('heading', { name: 'Context' });
+    expect(screen.getByText('Encoding · Word 2 of 2 in group')).toBeTruthy();
+    const continueToUnderstandButton = screen.getByRole('button', { name: 'Continue to Understand' });
+    fireEvent.click(continueToUnderstandButton);
+    await waitFor(() => expect(stepCallCount).toBe(2));
+
+    // Now on word 2 at UNDERSTAND (final word in group: itemIndex: 1, groupSize: 2) -> Continue to Recall
+    await screen.findByRole('heading', { name: 'Understand' });
+    expect(screen.getByText('Encoding · Word 2 of 2 in group')).toBeTruthy();
+    const continueToRecallButton = screen.getByRole('button', { name: 'Continue to Recall' });
+    expect(continueToRecallButton).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Next word in group' })).toBeNull();
+
+    // Click submit for word 2 UNDERSTAND -> transitions to RETRIEVE phase for word 1 RECALL
+    fireEvent.click(continueToRecallButton);
+    await waitFor(() => expect(stepCallCount).toBe(3));
+
+    await screen.findByRole('heading', { name: 'Recall' });
+    expect(screen.getByText('Retrieval · Word 1 of 2 in group')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue to Output' })).toBeTruthy();
   });
 });
