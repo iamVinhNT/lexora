@@ -1,17 +1,12 @@
 /**
  * @file ui.store.ts
- * @description Zustand state for theme and shell-only UI presentation state.
+ * @description Zustand state for shell-only UI presentation state with backwards-compatible theme delegation.
  */
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
-export type Theme = 'light' | 'dark';
+import { applyTheme, type Theme, useThemeStore } from './theme.store';
 
-export function applyTheme(theme: Theme): void {
-  if (typeof document !== 'undefined') document.documentElement.dataset.theme = theme;
-}
-
-applyTheme('light');
+export { applyTheme, type Theme, useThemeStore };
 
 type UiState = {
   theme: Theme;
@@ -24,31 +19,31 @@ type UiState = {
   closeMore: () => void;
 };
 
-export const useUiStore = create<UiState>()(
-  persist(
-    (set) => ({
-      theme: 'light',
-      isSidebarOpen: true,
-      isMoreOpen: false,
-      setTheme: (theme) => {
-        applyTheme(theme);
-        set({ theme });
-      },
-      toggleTheme: () => set((state) => {
-        const theme = state.theme === 'light' ? 'dark' : 'light';
-        applyTheme(theme);
-        return { theme };
-      }),
-      setSidebarOpen: (isSidebarOpen) => set({ isSidebarOpen }),
-      openMore: () => set({ isMoreOpen: true }),
-      closeMore: () => set({ isMoreOpen: false }),
-    }),
-    {
-      name: 'lexora-ui',
-      partialize: (state) => ({ theme: state.theme }),
-      onRehydrateStorage: () => (state) => {
-        if (state) applyTheme(state.theme);
-      },
-    },
-  ),
-);
+export const useUiStore = create<UiState>()((set) => ({
+  theme: useThemeStore.getState().theme,
+  isSidebarOpen: true,
+  isMoreOpen: false,
+  setTheme: (theme) => {
+    useThemeStore.getState().setTheme(theme);
+    set({ theme });
+  },
+  toggleTheme: () => {
+    useThemeStore.getState().toggleTheme();
+    set({ theme: useThemeStore.getState().theme });
+  },
+  setSidebarOpen: (isSidebarOpen) => set({ isSidebarOpen }),
+  openMore: () => set({ isMoreOpen: true }),
+  closeMore: () => set({ isMoreOpen: false }),
+}));
+
+useThemeStore.subscribe((state) => {
+  if (useUiStore.getState().theme !== state.theme) {
+    useUiStore.setState({ theme: state.theme });
+  }
+});
+
+useUiStore.subscribe((state, prevState) => {
+  if (state.theme !== prevState.theme && state.theme !== useThemeStore.getState().theme) {
+    useThemeStore.getState().setTheme(state.theme);
+  }
+});

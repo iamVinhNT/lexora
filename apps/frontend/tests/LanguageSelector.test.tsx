@@ -1,6 +1,6 @@
 /**
  * @file LanguageSelector.test.tsx
- * @description Verifies reusable language selection, persistence, and runtime shell-safe switching.
+ * @description Verifies reusable language selection button, persistence, and runtime shell-safe switching.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -31,9 +31,8 @@ describe('LanguageSelector', () => {
     );
     await screen.findByRole('heading', { level: 1, name: 'Settings' });
 
-
-    const selector = screen.getAllByRole('combobox', { name: 'Language' })[0];
-    fireEvent.change(selector, { target: { value: 'vi' } });
+    const toggleButton = screen.getAllByRole('button', { name: 'Language' })[0];
+    fireEvent.click(toggleButton);
 
     await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Cài đặt' })).toBeTruthy());
     expect(document.documentElement.lang).toBe('vi');
@@ -42,12 +41,12 @@ describe('LanguageSelector', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Cài đặt' })).toBeTruthy();
   });
 
-  it('exposes native names and stays synchronized when rendered twice', async () => {
+  it('exposes language toggle button and stays synchronized when rendered twice', async () => {
     render(<><LanguageSelector /><LanguageSelector /></>);
-    expect(screen.getAllByRole('combobox', { name: 'Language' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Language' })).toHaveLength(2);
 
-    fireEvent.change(screen.getAllByRole('combobox', { name: 'Language' })[0], { target: { value: 'vi' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Language' })[0]);
 
-    await waitFor(() => expect(screen.getAllByRole('combobox', { name: 'Ngôn ngữ' })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Ngôn ngữ' })).toHaveLength(2));
   });
 });

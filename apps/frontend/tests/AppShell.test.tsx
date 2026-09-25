@@ -327,17 +327,17 @@ describe('AppShell', () => {
 
     const sidebar = screen.getAllByRole('complementary')[0];
     const trigger = within(sidebar).getByRole('button', { name: /collapse sidebar/i });
-    const languageCombobox = within(sidebar).getByRole('combobox', { name: 'Language' });
+    const languageButton = within(sidebar).getByRole('button', { name: 'Language' });
     const themeButton = within(sidebar).getByRole('button', { name: /switch to dark theme/i });
 
-    expect(languageCombobox.className).toContain('min-h-11');
+    expect(languageButton.className).toContain('min-h-11');
     expect(themeButton.className).toContain('min-h-11');
     expect(themeButton.className).toContain('min-w-11');
 
     // Collapse sidebar and verify compact controls
     fireEvent.click(trigger);
 
-    const compactLanguage = within(sidebar).getByRole('combobox', { name: 'Language' });
+    const compactLanguage = within(sidebar).getByRole('button', { name: 'Language' });
     expect(compactLanguage.className).toContain('w-11');
     expect(compactLanguage.className).toContain('min-w-11');
   });

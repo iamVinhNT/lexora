@@ -9,12 +9,12 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { LanguageSelector } from '../components/ui/LanguageSelector';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
-import { useUiStore } from '../stores/ui.store';
+import { useThemeStore } from '../stores/theme.store';
 
 export function SettingsPage() {
   const { t } = useTranslation('settings');
   const { t: tCommon } = useTranslation('common');
-  const theme = useUiStore((state) => state.theme);
+  const theme = useThemeStore((state) => state.theme);
   const themeLabel = tCommon(`theme.${theme}`);
 
   return <div className="space-y-8">

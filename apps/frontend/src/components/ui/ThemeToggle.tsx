@@ -5,12 +5,12 @@
 import { Moon, Sun } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-import { useUiStore } from '../../stores/ui.store';
+import { useThemeStore } from '../../stores/theme.store';
 
 export function ThemeToggle() {
   const { t } = useTranslation('common');
-  const theme = useUiStore((state) => state.theme);
-  const toggleTheme = useUiStore((state) => state.toggleTheme);
+  const theme = useThemeStore((state) => state.theme);
+  const toggleTheme = useThemeStore((state) => state.toggleTheme);
 
   const isDark = theme === 'dark';
 

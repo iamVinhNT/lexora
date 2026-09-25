@@ -1,51 +1,50 @@
 /**
  * @file LanguageSelector.tsx
- * @description Reusable native-name locale selector that changes Lexora language without navigation or reload.
+ * @description Accessible language toggle button backed by Zustand i18n store and shadcn Button.
  */
 import { Languages } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-import { i18n, normalizeLocale } from '../../i18n/config';
-import type { SupportedLocale } from '../../i18n/types';
-
-const localeOptions: Array<{ value: SupportedLocale; key: 'vietnamese' | 'english' }> = [
-  { value: 'vi', key: 'vietnamese' },
-  { value: 'en', key: 'english' },
-];
+import { useI18nStore } from '../../stores/i18n.store';
+import { Button } from './Button';
 
 export type LanguageSelectorProps = {
   compact?: boolean;
   className?: string;
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
 };
 
-export function LanguageSelector({ compact = false, className = '' }: LanguageSelectorProps) {
+export function LanguageSelector({
+  compact = false,
+  className = '',
+  variant = 'ghost',
+}: LanguageSelectorProps) {
   const { t } = useTranslation('common');
-  const locale = normalizeLocale(i18n.resolvedLanguage ?? i18n.language);
+  const locale = useI18nStore((state) => state.locale);
+  const toggleLocale = useI18nStore((state) => state.toggleLocale);
 
-  const select = (
-    <select
-      aria-label={t('language.label')}
-      title={t('language.label')}
-      value={locale}
-      onChange={(event) => void i18n.changeLanguage(normalizeLocale(event.target.value))}
-      className={`min-h-11 rounded-lg border border-border bg-surface text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-        compact ? 'min-w-11 w-11 appearance-none px-0 text-transparent' : 'min-w-32 w-full px-3 py-2'
+  const label = t('language.label');
+  const currentLanguageName = locale === 'vi' ? t('language.vietnamese') : t('language.english');
+
+  return (
+    <Button
+      type="button"
+      variant={variant}
+      aria-label={label}
+      title={label}
+      onClick={() => void toggleLocale()}
+      className={`min-h-11 min-w-11 ${
+        compact ? 'w-11 px-1 gap-1' : 'px-3 py-2 gap-2'
       } ${className}`}
     >
-      {localeOptions.map((option) => (
-        <option key={option.value} value={option.value} lang={option.value} className="text-foreground">
-          {t(`language.${option.key}`)}
-        </option>
-      ))}
-    </select>
-  );
-
-  return compact ? (
-    <span className="relative inline-flex min-h-11 min-w-11 w-11">
-      {select}
-      <Languages aria-hidden="true" size={18} className="pointer-events-none absolute inset-0 m-auto text-muted" />
-    </span>
-  ) : (
-    select
+      <Languages aria-hidden="true" size={18} className="shrink-0" />
+      {compact ? (
+        <span className="text-[11px] font-bold uppercase tracking-tight leading-none">
+          {locale}
+        </span>
+      ) : (
+        <span className="text-sm font-medium">{currentLanguageName}</span>
+      )}
+    </Button>
   );
 }
