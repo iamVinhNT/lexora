@@ -2,6 +2,7 @@
  * @file WordDetailContent.tsx
  * @description Shared presentation for vocabulary detail fields, progress, review metadata, and actions.
  */
+import { Pencil, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { Word } from '../../api/vocabulary.api';
@@ -12,22 +13,24 @@ type WordDetailContentProps = {
   word: Word;
   onEdit: () => void;
   onDelete: () => void;
+  fixedActions?: boolean;
 };
 
-export function WordDetailContent({ word, onEdit, onDelete }: WordDetailContentProps) {
+export function WordDetailContent({ word, onEdit, onDelete, fixedActions = true }: WordDetailContentProps) {
   const { t } = useTranslation('vocabulary');
   const { t: tCommon } = useTranslation('common');
   const progress = word.learningProgress;
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className={fixedActions ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'space-y-6'}>
+      <div className={fixedActions ? 'shrink-0 border-b border-border px-5 py-4 sm:px-7' : undefined}>
         <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{word.word}</h2>
         <p className="mt-2 text-lg text-foreground">{word.definition}</p>
         {word.translation && <p className="mt-1 text-sm text-muted">{word.translation}</p>}
         <p className="mt-2 text-sm text-muted">{[word.partOfSpeech, word.phonetic, word.difficulty].filter(Boolean).join(' · ')}</p>
       </div>
-      <DetailList title={t('wordFamilies')} items={word.wordFamilies.map((item) => `${item.word.word} (${item.relationship})`)} empty={t('noWordFamilies')} />
+      <div data-testid={fixedActions ? 'word-detail-scroll-area' : undefined} className={fixedActions ? 'min-h-0 flex-1 overflow-y-auto space-y-6 px-5 py-5 sm:px-7 pr-1' : 'space-y-6'}>
+        <DetailList title={t('wordFamilies')} items={word.wordFamilies.map((item) => `${item.word.word} (${item.relationship})`)} empty={t('noWordFamilies')} />
       <DetailList title={tCommon('labels.collocations')} items={word.collocations.map((item) => item.phrase)} empty={t('noCollocations')} />
       <DetailList title={tCommon('labels.examples')} items={word.examples.map((item) => item.sentence)} empty={t('noExamples')} />
       <DetailList title={tCommon('labels.contexts')} items={word.contexts.map((item) => item.title)} empty={t('noContexts')} />
@@ -45,9 +48,10 @@ export function WordDetailContent({ word, onEdit, onDelete }: WordDetailContentP
         <h3 className="font-semibold text-foreground">{t('reviewState')}</h3>
         {word.reviewState ? <p className="mt-2 text-sm text-muted">{t('due', { date: formatDate(word.reviewState.dueAt), repetitions: word.reviewState.repetitions, lapses: word.reviewState.lapses })}</p> : <p className="mt-2 text-sm text-muted">{t('noReviewState')}</p>}
       </section>
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-        <Button type="button" variant="secondary" onClick={onEdit}>{tCommon('actions.editWord')}</Button>
-        <Button type="button" variant="ghost" onClick={onDelete}>{tCommon('actions.deleteWord')} {word.word}</Button>
+      </div>
+      <div className={`${fixedActions ? 'shrink-0 border-t border-border bg-surface p-3 pt-4 sm:px-7' : ''} flex flex-col-reverse gap-3 sm:flex-row sm:justify-end`}>
+        <Button type="button" variant="secondary" aria-label={tCommon('actions.editWord')} className="min-h-11 min-w-11 px-3" onClick={onEdit}><Pencil aria-hidden="true" size={18} /></Button>
+        <Button type="button" variant="ghost" aria-label={`${tCommon('actions.deleteWord')} ${word.word}`} className="min-h-11 min-w-11 px-3" onClick={onDelete}><Trash2 aria-hidden="true" size={18} /></Button>
       </div>
     </div>
   );

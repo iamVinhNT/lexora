@@ -13,9 +13,10 @@ type DialogProps = {
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  fixedContent?: boolean;
 };
 
-export function Dialog({ title, children, onClose, wide = false }: DialogProps) {
+export function Dialog({ title, children, onClose, wide = false, fixedContent = false }: DialogProps) {
   const { t } = useTranslation('common');
   const dialogRef = useRef<HTMLDivElement>(null);
   const portalRef = useRef<HTMLDivElement>(null);
@@ -128,11 +129,11 @@ export function Dialog({ title, children, onClose, wide = false }: DialogProps) 
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`relative z-50 max-h-[90vh] w-full overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-xl sm:p-6 ${
+        className={`relative z-50 max-h-[90dvh] w-full rounded-2xl border border-border bg-surface shadow-xl ${fixedContent ? 'flex flex-col overflow-hidden p-0' : 'overflow-y-auto p-5 sm:p-6'} ${
           wide ? 'max-w-3xl' : 'max-w-xl'
         }`}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className={`flex shrink-0 items-start justify-between gap-4 ${fixedContent ? 'border-b border-border px-5 py-3 sm:px-7' : ''}`}>
           <h2 id={titleId} className="text-xl font-semibold text-foreground">
             {title}
           </h2>
@@ -146,7 +147,7 @@ export function Dialog({ title, children, onClose, wide = false }: DialogProps) 
             <X aria-hidden="true" size={20} />
           </button>
         </div>
-        <div className="mt-5">{children}</div>
+        <div className={fixedContent ? 'min-h-0 flex-1 overflow-hidden' : 'mt-5'}>{children}</div>
       </div>
     </div>,
     document.body,

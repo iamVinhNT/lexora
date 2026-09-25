@@ -101,7 +101,7 @@ describe('VocabularyPage', () => {
     const page = screen.getByTestId('vocabulary-page');
     expect(page.className).not.toContain('lg:-mt-4');
     expect(page.className).toContain('lg:h-[calc(100dvh-6rem)]');
-    expect(page.className).toContain('lg:gap-1');
+    expect(page.className).toContain('lg:gap-4');
     expect(screen.getByRole('region', { name: /vocabulary filters/i }).className).toContain('lg:p-0');
     const results = await screen.findByRole('listbox', { name: /vocabulary/i });
     const firstRow = await within(results).findByRole('option', { name: /reliable/i });
@@ -353,22 +353,76 @@ describe('VocabularyPage', () => {
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true));
   });
 
-  it('places desktop vocabulary count below results', async () => {
+  it('keeps desktop pagination at the bottom and navigates between pages', async () => {
     mockDesktopViewport();
+    const secondWord = { ...word, id: 'word-2', word: 'resilient' };
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const requestUrl = new URL(String(input), 'http://localhost');
+      if (requestUrl.pathname.endsWith('/word-1')) return response(word);
+      if (requestUrl.pathname.endsWith('/word-2')) return response(secondWord);
+      const page = Number(requestUrl.searchParams.get('page') ?? 1);
+      return response({ total: 21, page, limit: 20, items: [page === 1 ? word : secondWord] });
+    });
+
     renderPage();
     await screen.findByRole('option', { name: /reliable/i });
-    const results = screen.getByTestId('vocabulary-results');
-    const count = screen.getByText('1 word');
-    expect(results.compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const master = screen.getByTestId('vocabulary-master-pane');
+    const count = within(master).getByText('21 words');
+    expect(screen.getByTestId('vocabulary-results').compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(screen.getByTestId('vocabulary-page').querySelector('header')!).queryByText(/page 1/i)).toBeNull();
+    const pagination = screen.getByRole('navigation', { name: /pagination/i });
+    const previous = within(pagination).getByRole('button', { name: 'Previous' });
+    const next = within(pagination).getByRole('button', { name: 'Next' });
+    const indicator = within(pagination).getByRole('button', { name: /page 1 of 2/i });
+    expect(indicator.className).toContain('cursor-default');
+    expect(previous.disabled).toBe(true);
+    expect(previous.textContent).toBe('');
+    expect(next.textContent).toBe('');
+    expect(next.className).toContain('min-h-11');
+    expect(next.className).toContain('min-w-11');
+
+    fireEvent.click(next);
+    await screen.findByRole('option', { name: /resilient/i });
+    expect(next.disabled).toBe(true);
+    expect(previous.disabled).toBe(false);
+    fireEvent.click(previous);
+    await screen.findByRole('option', { name: /reliable/i });
+    expect(previous.disabled).toBe(true);
   });
 
-  it('places mobile vocabulary count below results', async () => {
+  it('keeps mobile pagination and icon-only vocabulary actions accessible', async () => {
     mockDesktopViewport(false);
     renderPage();
     await screen.findByRole('article', { name: /reliable/i });
-    const results = screen.getByTestId('vocabulary-results');
     const count = screen.getByText('1 word');
-    expect(results.compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('vocabulary-results').compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const details = screen.getByRole('button', { name: /details for reliable/i });
+    const addWord = screen.getByRole('button', { name: 'Add word' });
+    const modes = screen.getByRole('group', { name: /vocabulary view/i });
+    expect(details.textContent).toBe('');
+    expect(addWord.textContent).toBe('');
+    expect(details.className).toContain('min-w-11');
+    expect(addWord.className).toContain('min-w-11');
+    expect(within(modes).getByRole('button', { name: /list view/i }).textContent).toBe('');
+
+    const pagination = screen.getByRole('navigation', { name: /pagination/i });
+    expect(within(pagination).getByRole('button', { name: 'Previous' }).textContent).toBe('');
+    expect(within(pagination).getByRole('button', { name: 'Next' }).textContent).toBe('');
+    expect(within(pagination).getByRole('button', { name: /page 1 of 1/i }).className).toContain('cursor-default');
+
+    fireEvent.click(details);
+    const dialog = await screen.findByRole('dialog', { name: /reliable/i });
+    expect(dialog.className).toContain('overflow-hidden');
+    expect(dialog.className).toContain('max-h-');
+    expect(within(dialog).getByTestId('word-detail-scroll-area').className).toContain('overflow-y-auto');
+    const edit = within(dialog).getByRole('button', { name: /edit word/i });
+    const remove = within(dialog).getByRole('button', { name: /delete word reliable/i });
+    expect(edit.textContent).toBe('');
+    expect(remove.textContent).toBe('');
+    expect(edit.className).toContain('min-w-11');
+    expect(remove.className).toContain('min-w-11');
   });
 
   it('refetches active analytics after each vocabulary mutation', async () => {

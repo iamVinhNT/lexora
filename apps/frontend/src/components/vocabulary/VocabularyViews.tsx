@@ -3,7 +3,7 @@
  * @description Accessible mode controls and alternate vocabulary result presentations.
  */
 import { useState } from 'react';
-import { Grid2X2, List, Table2 } from 'lucide-react';
+import { Grid2X2, List, Table2, Eye } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { Word } from '../../api/vocabulary.api';
@@ -45,7 +45,6 @@ export function VocabularyViews({ isLoading, error, words, onRetry, onDetails }:
             className="min-w-11 px-3"
           >
             <Icon aria-hidden="true" size={17} />
-            <span>{t(labelKey)}</span>
           </Button>
         ))}
       </div>
@@ -84,7 +83,7 @@ function CardView({ isLoading, error, words, onRetry, onDetails }: ResultViewPro
                 {word.learningProgress && <span className="rounded-full bg-secondary px-2 py-1">{t('scoreSummary', { recognition: formatPercent(word.learningProgress.recognitionScore), recall: formatPercent(word.learningProgress.recallScore), production: formatPercent(word.learningProgress.productionScore) })}</span>}
               </div>
             </div>
-            <Button type="button" variant="secondary" aria-label={t('detailsFor', { word: word.word })} onClick={() => onDetails(word)}>{t('viewDetails')}</Button>
+            <Button type="button" variant="secondary" aria-label={t('detailsFor', { word: word.word })} className="min-w-11 px-3" onClick={() => onDetails(word)}><Eye aria-hidden="true" size={18} /></Button>
           </article>
         </Card>
       ))}
@@ -117,7 +116,7 @@ function TableView({ isLoading, error, words, onRetry, onDetails }: ResultViewPr
                 <td className="max-w-[18rem] px-4 py-4 text-muted">{word.definition}</td>
                 <td className="px-4 py-4 text-muted">{word.partOfSpeech || '—'}</td>
                 <td className="px-4 py-4 text-muted">{word.difficulty || '—'}</td>
-                <td className="px-4 py-4"><Button type="button" variant="secondary" aria-label={t('detailsFor', { word: word.word })} onClick={() => onDetails(word)}>{t('viewDetails')}</Button></td>
+                <td className="px-4 py-4"><Button type="button" variant="secondary" aria-label={t('detailsFor', { word: word.word })} className="min-w-11 px-3" onClick={() => onDetails(word)}><Eye aria-hidden="true" size={18} /></Button></td>
               </tr>
             ))}
           </tbody>

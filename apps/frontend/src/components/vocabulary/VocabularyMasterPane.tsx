@@ -2,6 +2,7 @@
  * @file VocabularyMasterPane.tsx
  * @description Accessible desktop vocabulary result list with keyboard selection and pagination.
  */
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { Word } from '../../api/vocabulary.api';
@@ -36,7 +37,7 @@ export function VocabularyMasterPane({ words, activeWordId, isLoading, error, pa
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border p-0.5 pl-4">
       <span className="text-sm font-semibold text-foreground">{t('resultCount', { count: total })}</span>
-      {total > 0 && <nav aria-label={t('pagination')} className="flex items-center justify-between p-0.5"><Button type="button" variant="secondary" className="min-h-10" disabled={page <= 1} onClick={() => onPage(page - 1)}>{tCommon('actions.previous')}</Button><span className="text-sm text-muted">{tCommon('pagination.pageOf', { page, totalPages })}</span><Button type="button" variant="secondary" className="min-h-10" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>{tCommon('actions.next')}</Button></nav>}
+      {total > 0 && <nav aria-label={t('pagination')} className="flex items-center gap-1"><Button type="button" variant="secondary" aria-label={tCommon('actions.previous')} className="min-w-11 px-2" disabled={page <= 1} onClick={() => onPage(page - 1)}><ChevronLeft aria-hidden="true" size={18} /></Button><Button type="button" variant="secondary" className="min-h-10 cursor-default px-3 text-xs font-semibold" tabIndex={-1}>{tCommon('pagination.pageOf', { page, totalPages })}</Button><Button type="button" variant="secondary" aria-label={tCommon('actions.next')} className="min-w-11 px-2" disabled={page >= totalPages} onClick={() => onPage(page + 1)}><ChevronRight aria-hidden="true" size={18} /></Button></nav>}
     </div>
   </Card>;
 }

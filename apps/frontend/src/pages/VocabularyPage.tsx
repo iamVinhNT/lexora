@@ -3,7 +3,7 @@
  * @description Responsive vocabulary management route with desktop master-detail and mobile dialogs.
  */
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { PageHeader } from '../components/layout/PageHeader';
@@ -38,16 +38,23 @@ export function VocabularyPage() {
   const wordsQuery = useWords(query);
   const words = wordsQuery.data?.items ?? [];
   const selectedWord = selectedWordId === null ? null : words.find((word) => word.id === selectedWordId) ?? words[0] ?? null;
-  const totalPages = wordsQuery.data ? Math.max(1, Math.ceil(wordsQuery.data.total / wordsQuery.data.limit)) : 1;
+  const [cachedTotal, setCachedTotal] = useState(0);
+  useEffect(() => {
+    if (wordsQuery.data?.total !== undefined) {
+      setCachedTotal(wordsQuery.data.total);
+    }
+  }, [wordsQuery.data?.total]);
+  const total = wordsQuery.data?.total ?? cachedTotal;
+  const totalPages = total > 0 ? Math.max(1, Math.ceil(total / totalLimit)) : 1;
 
   const resetPage = (setter: (value: string) => void, value: string) => { setter(value); setPage(1); };
   const clearDeleted = () => { setSelectedWordId(null); setDetailWord(null); };
   const editSelected = () => setEditingWord(isDesktop ? selectedWord : detailWord);
 
-  return <div data-testid="vocabulary-page" className="flex min-h-0 flex-col gap-4 lg:h-[calc(100dvh-6rem)] lg:gap-1 lg:[&>header>div>p]:hidden">
-    <PageHeader title={t('title')} subtitle={t('subtitle')} action={<Button type="button" onClick={() => setFormOpen(true)}><Plus aria-hidden="true" size={17} />{t('addWord')}</Button>} />
+  return <div data-testid="vocabulary-page" className="flex min-h-0 flex-col gap-4 lg:h-[calc(100dvh-6rem)] lg:gap-4 lg:[&>header>div>p]:hidden">
+    <PageHeader title={t('title')} subtitle={t('subtitle')} action={<Button type="button" aria-label={t('addWord')} onClick={() => setFormOpen(true)} className="min-w-11 px-3"><Plus aria-hidden="true" size={17} /></Button>} />
     <VocabularyToolbar search={search} difficulty={difficulty} status={status} tag={tag} onSearch={(value) => resetPage(setSearch, value)} onDifficulty={(value) => resetPage(setDifficulty, value)} onStatus={(value) => resetPage(setStatus, value)} onTag={(value) => resetPage(setTag, value)} />
-    {isDesktop ? <div className="grid min-h-0 flex-1 grid-cols-[minmax(350px,38%)_minmax(0,1fr)] gap-4 overflow-hidden"><VocabularyMasterPane words={words} activeWordId={selectedWord?.id ?? null} isLoading={wordsQuery.isLoading} error={wordsQuery.error} page={page} totalPages={totalPages} total={wordsQuery.data?.total ?? 0} onSelect={(word) => setSelectedWordId(word.id)} onRetry={() => void wordsQuery.refetch()} onPage={setPage} /><VocabularyDetailPane word={selectedWord} onEdit={editSelected} onDelete={() => setDetailWord(selectedWord)} /></div> : <><VocabularyViews isLoading={wordsQuery.isLoading} error={wordsQuery.error} words={words} onRetry={() => void wordsQuery.refetch()} onDetails={setDetailWord} /><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold text-foreground">{t('resultCount', { count: wordsQuery.data?.total ?? 0 })}</span>{wordsQuery.data && wordsQuery.data.total > 0 && <Pagination page={page} totalPages={totalPages} onPage={setPage} />}</div></>}
+    {isDesktop ? <div className="grid min-h-0 flex-1 grid-cols-[minmax(350px,38%)_minmax(0,1fr)] gap-4 overflow-hidden"><VocabularyMasterPane words={words} activeWordId={selectedWord?.id ?? null} isLoading={wordsQuery.isLoading} error={wordsQuery.error} page={page} totalPages={totalPages} total={total} onSelect={(word) => setSelectedWordId(word.id)} onRetry={() => void wordsQuery.refetch()} onPage={setPage} /><VocabularyDetailPane word={selectedWord} onEdit={editSelected} onDelete={() => setDetailWord(selectedWord)} /></div> : <><VocabularyViews isLoading={wordsQuery.isLoading} error={wordsQuery.error} words={words} onRetry={() => void wordsQuery.refetch()} onDetails={setDetailWord} /><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold text-foreground">{t('resultCount', { count: total })}</span>{total > 0 && <Pagination page={page} totalPages={totalPages} onPage={setPage} />}</div></>}
     {formOpen && <WordFormDialog onClose={() => setFormOpen(false)} />}
     {detailWord && !editingWord && <WordDetailDialog word={detailWord} onClose={() => setDetailWord(null)} onEdit={editSelected} onDeleted={clearDeleted} confirmOnOpen={isDesktop} />}
     {editingWord && <WordFormDialog word={editingWord} onClose={() => { setEditingWord(null); setDetailWord(null); setSelectedWordId(null); }} />}
@@ -70,5 +77,5 @@ function useMediaQuery(query: string) {
 function Pagination({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (page: number) => void }) {
   const { t } = useTranslation('vocabulary');
   const { t: tCommon } = useTranslation('common');
-  return <nav aria-label={t('pagination')} className="flex items-center justify-between"><Button type="button" variant="secondary" disabled={page <= 1} onClick={() => onPage(page - 1)}>{tCommon('actions.previous')}</Button><span className="text-sm text-muted">{tCommon('pagination.pageOf', { page, totalPages })}</span><Button type="button" variant="secondary" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>{tCommon('actions.next')}</Button></nav>;
+  return <nav aria-label={t('pagination')} className="flex items-center justify-between"><Button type="button" variant="secondary" aria-label={tCommon('actions.previous')} className="min-w-11 px-2" disabled={page <= 1} onClick={() => onPage(page - 1)}><ChevronLeft aria-hidden="true" size={18} /></Button><Button type="button" variant="secondary" className="min-h-10 cursor-default px-3 text-xs font-semibold" tabIndex={-1}>{tCommon('pagination.pageOf', { page, totalPages })}</Button><Button type="button" variant="secondary" aria-label={tCommon('actions.next')} className="min-w-11 px-2" disabled={page >= totalPages} onClick={() => onPage(page + 1)}><ChevronRight aria-hidden="true" size={18} /></Button></nav>;
 }

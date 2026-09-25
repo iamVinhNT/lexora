@@ -1,0 +1,103 @@
+/**
+ * @file shared-database.ts
+ * @description Resolves one per-user SQLite database and imports legacy local databases once.
+ */
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import Database from 'better-sqlite3';
+
+const TABLES = [
+  'users', 'words', 'word_families', 'collocations', 'examples', 'contexts',
+  'context_words', 'learning_progress', 'review_states', 'review_logs',
+  'tags', 'word_tags', 'learning_sessions', 'learning_session_items', 'learning_attempts',
+] as const;
+
+export function sharedDatabasePath(home = homedir()): string {
+  return join(home, '.lexora', 'data', 'lexora.db');
+}
+
+function legacyDatabasePaths(home: string, backendRoot: string): string[] {
+  return [
+    join(home, '.config', '@lexora', 'desktop', 'data', 'lexora.db'),
+    join(home, '.config', 'Lexora', 'data', 'lexora.db'),
+    join(backendRoot, 'data', 'lexora.db'),
+  ];
+}
+
+function mergeDatabase(target: Database.Database, sourcePath: string): void {
+  const source = new Database(sourcePath, { readonly: true, fileMustExist: true });
+  try {
+    if (source.pragma('integrity_check', { simple: true }) !== 'ok') {
+      throw new Error(`Legacy database failed integrity check: ${sourcePath}`);
+    }
+    target.pragma('foreign_keys = ON');
+    target.transaction(() => {
+      for (const table of TABLES) {
+        const sourceRows = source.prepare(`SELECT * FROM ${table}`).all() as Record<string, unknown>[];
+        if (!sourceRows.length) continue;
+        const columns = source.prepare(`PRAGMA table_info(${table})`).all() as { name: string; pk: number }[];
+        const keys = columns.filter((column) => column.pk).sort((a, b) => a.pk - b.pk).map((column) => column.name);
+        if (!keys.length) throw new Error(`Cannot merge table without primary key: ${table}`);
+        const names = columns.map((column) => column.name);
+        const existing = target.prepare(`SELECT * FROM ${table}`);
+        const rowsByKey = new Map((existing.all() as Record<string, unknown>[]).map((row) => [JSON.stringify(keys.map((key) => row[key])), row]));
+        const insert = target.prepare(`INSERT INTO ${table} (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`);
+        for (const row of sourceRows) {
+          const key = JSON.stringify(keys.map((name) => row[name]));
+          const prior = rowsByKey.get(key);
+          if (prior) {
+            if (names.some((name) => row[name] !== prior[name])) {
+              throw new Error(`Conflicting ${table} record ${key} in ${sourcePath}; original databases remain untouched`);
+            }
+            continue;
+          }
+          insert.run(...names.map((name) => row[name] as any));
+          rowsByKey.set(key, row);
+        }
+      }
+    })();
+  } finally {
+    source.close();
+  }
+}
+
+/** Creates the shared file only if absent; legacy files remain available for rollback. */
+export async function prepareSharedDatabase(path: string, home = homedir(), backendRoot = resolve(import.meta.dirname, '../../')): Promise<void> {
+  if (path !== sharedDatabasePath(home) || existsSync(path)) return;
+  const sources = legacyDatabasePaths(home, backendRoot).filter(existsSync);
+  if (!sources.length) return;
+
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const temporaryPath = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  try {
+    const base = new Database(sources[0], { readonly: true, fileMustExist: true });
+    try {
+      if (base.pragma('integrity_check', { simple: true }) !== 'ok') {
+        throw new Error(`Legacy database failed integrity check: ${sources[0]}`);
+      }
+      await base.backup(temporaryPath);
+    } finally {
+      base.close();
+    }
+    if (sources.length > 1) {
+      const target = new Database(temporaryPath);
+      try {
+        for (const source of sources.slice(1)) mergeDatabase(target, source);
+        if ((target.pragma('foreign_key_check') as unknown[]).length) throw new Error('Merged database has invalid foreign keys');
+        if (target.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('Merged database failed integrity check');
+      } finally {
+        target.close();
+      }
+    }
+    // link is exclusive: another process may finish the same migration first.
+    try {
+      const { linkSync } = await import('node:fs');
+      linkSync(temporaryPath, path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+  } finally {
+    if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
+  }
+}

@@ -44,6 +44,20 @@ describe('Vocabulary and context i18n', () => {
     expect(screen.getByText('Able to be trusted.')).toBeTruthy();
   });
 
+  it('localizes compact vocabulary icon actions and pagination names', async () => {
+    renderPage('vocabulary');
+
+    await screen.findByText('reliable');
+    expect(screen.getByRole('button', { name: 'Thêm từ' }).textContent).toBe('');
+    expect(screen.getByRole('button', { name: 'Trước' }).textContent).toBe('');
+    expect(screen.getByRole('button', { name: 'Sau' }).textContent).toBe('');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chi tiết reliable' }));
+    const dialog = await screen.findByRole('dialog', { name: 'reliable' });
+    expect(within(dialog).getByRole('button', { name: 'Sửa từ' }).textContent).toBe('');
+    expect(within(dialog).getByRole('button', { name: 'Xóa từ reliable' }).textContent).toBe('');
+  });
+
   it('localizes context controls and source labels without translating user content', async () => {
     expect(resources.vi.contexts).toHaveProperty('count_one');
     expect(resources.vi.contexts).toHaveProperty('count_other');
