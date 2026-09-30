@@ -214,6 +214,45 @@ describe('LearningSessionPage', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true));
     expect(screen.getByText(/Empty/)).toBeTruthy();
     expect(screen.getByText(/Attempt 2 of 2/)).toBeTruthy();
+    expect(screen.queryByText('Recall result: INVALID')).toBeNull();
+  });
+
+  it('shows AI score and feedback after grading a valid sentence', async () => {
+    vi.mocked(fetch).mockImplementation(routeFetch((url, init) => {
+      if (url.pathname === '/api/learning/session' && !init.method) return envelope({ activeSession: session({ ...baseItem, completedStep: 'RECALL' }, 'OUTPUT'), latestSession: null, sessions: [] });
+      if (url.pathname.endsWith('/step')) return envelope({
+        item: { ...baseItem, completedStep: 'OUTPUT', outputSentence: 'She occupies the room.', feedback: { outcome: 'VALID', attemptNumber: 1, canRetry: false, score: 84, explanation: 'Correct meaning and grammar.', suggestion: 'She occupies the front room.' }, word: baseItem.word },
+        cursor: cursor('ASSESS'),
+        feedback: { outcome: 'VALID', attemptNumber: 1, canRetry: false, score: 84, explanation: 'Correct meaning and grammar.', suggestion: 'She occupies the front room.' },
+      });
+      return undefined;
+    }));
+    renderPage();
+    await screen.findByRole('heading', { name: 'Output' });
+    fireEvent.change(screen.getByLabelText('Your sentence'), { target: { value: 'She occupies the room.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to Assess' }));
+    expect(await screen.findByText('84/100')).toBeTruthy();
+    expect(screen.getByText('Correct meaning and grammar.')).toBeTruthy();
+    expect(screen.getByText(/She occupies the front room/)).toBeTruthy();
+  });
+
+  it('keeps the Output sentence when AI grading fails', async () => {
+    let calls = 0;
+    vi.mocked(fetch).mockImplementation(routeFetch((url, init) => {
+      if (url.pathname === '/api/learning/session' && !init.method) return envelope({ activeSession: session({ ...baseItem, completedStep: 'RECALL' }, 'OUTPUT'), latestSession: null, sessions: [] });
+      if (url.pathname.endsWith('/step')) {
+        calls += 1;
+        return Promise.reject(new Error('AI unavailable')) as never;
+      }
+      return undefined;
+    }));
+    renderPage();
+    await screen.findByRole('heading', { name: 'Output' });
+    const sentence = screen.getByLabelText('Your sentence') as HTMLTextAreaElement;
+    fireEvent.change(sentence, { target: { value: 'She occupies the room.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to Assess' }));
+    await waitFor(() => expect(calls).toBe(1));
+    expect(sentence.value).toBe('She occupies the room.');
   });
 
   it('submits one assessment when a rating shortcut is pressed', async () => {
@@ -421,7 +460,7 @@ describe('LearningSessionPage', () => {
     expect(screen.queryByRole('button', { name: 'Saving…' })).toBeNull();
     fireEvent.change(screen.getByLabelText('Your sentence'), { target: { value: 'A reliable system works.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue to Assess' }));
-    expect(await screen.findByRole('button', { name: 'Saving…' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Grading…' })).toBeTruthy();
     resolveAction(envelope({ item: { ...baseItem, completedStep: 'OUTPUT', outputSentence: 'A reliable system works.' }, cursor: cursor('ASSESS'), feedback: null }));
     expect(await screen.findByRole('heading', { name: 'Assess' })).toBeTruthy();
   });

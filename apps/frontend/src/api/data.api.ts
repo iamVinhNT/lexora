@@ -17,8 +17,8 @@ export type ImportPreview = {
 };
 export type ImportCommitResult = { importedCount: number; wordIds: string[] };
 export type ExportResult = { format: ExportFormat; scope: 'words'; content?: string; items?: unknown[]; data?: unknown };
-export type BackupPayload = { version: 1; application: 'Lexora'; exportedAt: string; data: Record<string, unknown[]> };
-export type RestorePreview = { valid: boolean; version: number; application: string; exportedAt: string; tableCounts: Record<string, number>; totalRecords: number; previewToken: string; conflictSummary: { existingRecordsCount: number; willOverwrite: boolean; existingTableCounts: Record<string, number> } };
+export type BackupPayload = { version: 1 | 2 | 3; application: 'Lexora'; exportedAt: string; data: Record<string, unknown[]> };
+export type RestorePreview = { valid: boolean; version: number; application: string; exportedAt: string; tableCounts: Record<string, number>; totalRecords: number; previewToken: string; conflictSummary: { existingRecordsCount: number; willOverwrite: boolean; existingTableCounts: Record<string, number> }; grammarSummary?: { includedInBackup: boolean; willOverwrite: boolean; warning: string | null; backupTableCounts: { grammarLessonProgress: number; grammarExerciseAttempts: number }; existingTableCounts: { grammarLessonProgress: number; grammarExerciseAttempts: number } } };
 export type RestoreResult = { restored: boolean };
 export type ResetResult = { reset: boolean; scope: 'progress' | 'all' };
 

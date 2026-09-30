@@ -21,6 +21,8 @@ import {
   learningSessions,
   learningSessionItems,
   learningAttempts,
+  grammarLessonProgress,
+  grammarExerciseAttempts,
 } from '../../src/db/schema.js';
 import { getDb, createTables, assertLearningSchemaDowngradeSafe } from '../../src/db/client.js';
 
@@ -41,6 +43,15 @@ describe('Database Schema & Client', () => {
       expect(wordTags).toBeDefined();
       expect(learningSessions).toBeDefined();
       expect(learningSessionItems).toBeDefined();
+    });
+    it('maps both grammar learner tables to the existing SQLite schema', () => {
+      const db = getDb(':memory:');
+      try {
+        expect(db.select().from(grammarLessonProgress).all()).toEqual([]);
+        expect(db.select().from(grammarExerciseAttempts).all()).toEqual([]);
+      } finally {
+        db.sqlite.close();
+      }
     });
   });
 
@@ -190,6 +201,57 @@ describe('Database Schema & Client', () => {
         ]));
         createTables(sqlite);
         expect(sqlite.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'learning_session_items' ORDER BY name").all()).toEqual(migratedIndexes);
+      } finally {
+        sqlite.close();
+      }
+    });
+
+    it('adds feedback columns to legacy attempts without changing rows and remains idempotent', () => {
+      const sqlite = new Database(':memory:');
+      try {
+        sqlite.exec(`
+          CREATE TABLE learning_attempts (
+            id TEXT PRIMARY KEY,
+            session_item_id TEXT NOT NULL,
+            request_id TEXT NOT NULL UNIQUE,
+            type TEXT NOT NULL,
+            attempt_number INTEGER NOT NULL,
+            answer TEXT NOT NULL,
+            result TEXT NOT NULL,
+            performance_score INTEGER NOT NULL,
+            feedback_codes TEXT,
+            source TEXT NOT NULL DEFAULT 'LOCAL',
+            created_at TEXT NOT NULL
+          );
+          INSERT INTO learning_attempts
+            (id, session_item_id, request_id, type, attempt_number, answer, result, performance_score, feedback_codes, source, created_at)
+            VALUES ('legacy-attempt', 'legacy-item', 'legacy-request', 'OUTPUT', 1, 'old answer', 'INCORRECT', 25, '["grammar"]', 'LOCAL', '2026-01-01');
+        `);
+
+        expect(() => createTables(sqlite)).not.toThrow();
+        expect(sqlite.prepare('SELECT * FROM learning_attempts').get()).toEqual({
+          id: 'legacy-attempt',
+          session_item_id: 'legacy-item',
+          request_id: 'legacy-request',
+          type: 'OUTPUT',
+          attempt_number: 1,
+          answer: 'old answer',
+          result: 'INCORRECT',
+          performance_score: 25,
+          feedback_codes: '["grammar"]',
+          source: 'LOCAL',
+          created_at: '2026-01-01',
+          explanation: null,
+          suggestion: null,
+        });
+        expect(sqlite.prepare("PRAGMA table_info('learning_attempts')").all().map((column: { name: string }) => column.name)).toEqual(expect.arrayContaining(['explanation', 'suggestion']));
+
+        expect(() => createTables(sqlite)).not.toThrow();
+        expect(sqlite.prepare('SELECT * FROM learning_attempts').get()).toMatchObject({
+          id: 'legacy-attempt',
+          explanation: null,
+          suggestion: null,
+        });
       } finally {
         sqlite.close();
       }

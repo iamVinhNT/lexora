@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
+import { createGrammarTables } from './grammar-tables.js';
 import { groupSessionItems } from '../domain/learning/grouping.js';
 
 export type AppDatabase = BetterSQLite3Database<typeof schema> & {
@@ -27,6 +28,8 @@ function migrateLearningSchema(sqlite: Database.Database): void {
   const columns = (name: string) => new Set((sqlite.prepare(`PRAGMA table_info('${name}')`).all() as Array<{ name: string }>).map((column) => column.name));
   const migration = sqlite.transaction(() => {
     if (tableExists('review_logs') && !columns('review_logs').has('performance_score')) sqlite.exec('ALTER TABLE review_logs ADD COLUMN performance_score INTEGER');
+    if (tableExists('learning_attempts') && !columns('learning_attempts').has('explanation')) sqlite.exec('ALTER TABLE learning_attempts ADD COLUMN explanation TEXT');
+    if (tableExists('learning_attempts') && !columns('learning_attempts').has('suggestion')) sqlite.exec('ALTER TABLE learning_attempts ADD COLUMN suggestion TEXT');
     if (tableExists('learning_sessions') && !columns('learning_sessions').has('status')) sqlite.exec("ALTER TABLE learning_sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'IN_PROGRESS'");
     if (tableExists('learning_session_items') && tableExists('learning_sessions')) {
       const itemColumns = columns('learning_session_items');
@@ -240,9 +243,11 @@ export function createTables(sqlite: Database.Database): void {
        attempt_number INTEGER NOT NULL CHECK (attempt_number IN (1, 2)),
        answer TEXT NOT NULL,
        result TEXT NOT NULL,
-       performance_score INTEGER NOT NULL CHECK (performance_score BETWEEN 0 AND 100),
-       feedback_codes TEXT,
-       source TEXT NOT NULL DEFAULT 'LOCAL',
+        performance_score INTEGER NOT NULL CHECK (performance_score BETWEEN 0 AND 100),
+        feedback_codes TEXT,
+        explanation TEXT,
+        suggestion TEXT,
+        source TEXT NOT NULL DEFAULT 'LOCAL',
        created_at TEXT NOT NULL,
        UNIQUE(session_item_id, type, attempt_number)
      );
@@ -252,6 +257,11 @@ export function createTables(sqlite: Database.Database): void {
      CREATE INDEX IF NOT EXISTS idx_learning_sessions_status ON learning_sessions(status);
      CREATE INDEX IF NOT EXISTS idx_learning_sessions_started_at ON learning_sessions(started_at);
    `);
+  createGrammarTables(sqlite);
+
+  const attemptColumns = new Set((sqlite.prepare("PRAGMA table_info('learning_attempts')").all() as Array<{ name: string }>).map((column) => column.name));
+  if (!attemptColumns.has('explanation')) sqlite.exec('ALTER TABLE learning_attempts ADD COLUMN explanation TEXT');
+  if (!attemptColumns.has('suggestion')) sqlite.exec('ALTER TABLE learning_attempts ADD COLUMN suggestion TEXT');
 
   // Ensure exposure columns exist if context_words was created with older schema
   const contextWordsTable = sqlite

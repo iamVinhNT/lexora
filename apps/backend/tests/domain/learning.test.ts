@@ -7,6 +7,7 @@ import { groupSessionItems, type LearningWord } from '../../src/domain/learning/
 import { deriveLearningCursor, type LearningCursorItem, type LearningAttempt } from '../../src/domain/learning/cursor.js';
 import { evaluateOutput } from '../../src/domain/learning/output-evaluation.js';
 import { advanceStateOneLevel, deriveEffectiveRating, scoreAttempt } from '../../src/domain/learning/scoring.js';
+import { LangGraphOutputGrader, outputGradeSchema } from '../../src/domain/learning/ai-output-grader.js';
 
 const words = (count: number, difficulty = 'B1'): LearningWord[] => Array.from({ length: count }, (_, index) => ({ id: `word-${index + 1}`, difficulty }));
 function item(overrides: Partial<LearningCursorItem> = {}): LearningCursorItem {
@@ -64,5 +65,20 @@ describe('learning domain', () => {
   it('advances knowledge by one level without regression', () => {
     expect(advanceStateOneLevel('NEW', 'MASTERED')).toBe('LEARNING');
     expect(advanceStateOneLevel('MASTERED', 'LEARNING')).toBe('MASTERED');
+  });
+  it('accepts only bounded structured AI grades', () => {
+    expect(outputGradeSchema.parse({ score: 84, explanation: 'Correct use.', suggestion: 'She occupies the room.' }).score).toBe(84);
+    expect(() => outputGradeSchema.parse({ score: 101, explanation: 'Invalid.', suggestion: 'Retry.' })).toThrow();
+    expect(() => outputGradeSchema.parse({ score: 60.5, explanation: 'Invalid.', suggestion: 'Retry.' })).toThrow();
+  });
+  it('fails before any provider call when OpenAI is not configured', async () => {
+    const previous = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    try {
+      await expect(new LangGraphOutputGrader().grade({ word: 'occupy', definition: 'to fill a place', sentence: 'She occupies the room.' })).rejects.toThrow('AI grading is not configured');
+    } finally {
+      if (previous === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previous;
+    }
   });
 });

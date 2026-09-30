@@ -75,6 +75,27 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', { name: 'More' })).toBeNull();
   });
 
+  it('opens the grammar course from the mobile More menu without changing the four primary items', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ success: true, data: { isComplete: false, stages: [], nextLessonId: null } }), { status: 200, headers: { 'Content-Type': 'application/json' } }))));
+    renderApp();
+
+    expect(screen.getByRole('navigation', { name: /mobile/i }).querySelectorAll('a')).toHaveLength(4);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: /more navigation/i })).getByRole('link', { name: 'Grammar' }));
+
+    expect(await screen.findByRole('heading', { name: 'No published grammar lessons yet' })).toBeTruthy();
+  });
+
+  it('opens statistics from navigation instead of redirecting to overview', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline'))));
+    renderApp('/settings');
+
+    fireEvent.click(screen.getAllByRole('link', { name: 'Statistics' })[0]);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Statistics' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Overview' })).toBeNull();
+  });
+
   it('keeps desktop sidebar and mobile navigation available in the DOM', () => {
     renderApp();
 

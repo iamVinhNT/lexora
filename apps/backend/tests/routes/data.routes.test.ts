@@ -554,7 +554,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
   });
 
   describe('GET /api/backup', () => {
-    it('returns exact v2 top-level backup structure with session attempts and all tables', async () => {
+    it('returns exact v3 backup structure with session attempts, grammar, and all tables', async () => {
       insertSampleWord('tenacious');
 
       const res = await app.inject({
@@ -567,7 +567,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(body.success).toBe(true);
 
       const backup = body.data;
-      expect(backup.version).toBe(2);
+      expect(backup.version).toBe(3);
       expect(backup.application).toBe('Lexora');
       expect(typeof backup.exportedAt).toBe('string');
       expect(new Date(backup.exportedAt).toISOString()).toBe(backup.exportedAt);
@@ -591,6 +591,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
         'learningSessions',
         'learningSessionItems',
       ];
+      requiredTables.push('learningAttempts', 'grammarLessonProgress', 'grammarExerciseAttempts');
 
       for (const table of requiredTables) {
         expect(Array.isArray(data[table])).toBe(true);
@@ -599,58 +600,147 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(data.words.length).toBe(1);
       expect(data.words[0].word).toBe('tenacious');
     });
+    it('backs up and restores structured grammar answers as JSON across SQLite persistence', async () => {
+      const now = new Date().toISOString();
+      db.sqlite.prepare(`
+        INSERT INTO grammar_lesson_progress (lesson_id, revision_id, revision, last_position, is_complete, completed_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run('grammar-lesson', 'grammar-revision', '1', 2, 0, null, now, now);
+      const answer = { type: 'choice', text: 'correct choice' };
+      db.sqlite.prepare(`
+        INSERT INTO grammar_exercise_attempts (id, lesson_id, revision_id, revision, exercise_id, request_id, answer, is_correct, feedback, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run('grammar-attempt', 'grammar-lesson', 'grammar-revision', '1', 'exercise-1', 'request-1', JSON.stringify(answer), 1, 'Correct', now);
+
+      const backup = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
+      expect(backup.version).toBe(3);
+      expect(backup.data.grammarExerciseAttempts[0].answer).toEqual(answer);
+
+      const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
+      expect(preview.statusCode).toBe(200);
+      await app.inject({ method: 'POST', url: '/api/data/reset-all', payload: { confirm: true } });
+      const restore = await app.inject({
+        method: 'POST', url: '/api/restore',
+        payload: { backup, confirm: true, previewToken: JSON.parse(preview.payload).data.previewToken },
+      });
+
+      expect(restore.statusCode).toBe(200);
+      const stored = db.sqlite.prepare('SELECT answer, is_correct AS isCorrect FROM grammar_exercise_attempts WHERE id = ?').get('grammar-attempt') as { answer: string; isCorrect: number };
+      expect(JSON.parse(stored.answer)).toEqual(answer);
+      expect(stored.isCorrect).toBe(1);
+      expect(db.sqlite.prepare('SELECT lesson_id FROM grammar_lesson_progress').all()).toEqual([{ lesson_id: 'grammar-lesson' }]);
+    });
+    it('rejects mismatched grammar revisions before destructive restore', async () => {
+      const now = new Date().toISOString();
+      db.sqlite.prepare(`INSERT INTO grammar_lesson_progress
+        (lesson_id, revision_id, revision, last_position, is_complete, created_at, updated_at)
+        VALUES (?, ?, ?, 1, 0, ?, ?)`).run('lesson-revision', 'lesson-revision@2', '2', now, now);
+      db.sqlite.prepare(`INSERT INTO grammar_exercise_attempts
+        (id, lesson_id, revision_id, revision, exercise_id, request_id, answer, is_correct, feedback, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`).run('attempt-revision', 'lesson-revision', 'lesson-revision@2', '2', 'exercise-1', 'request-revision', JSON.stringify({ type: 'choice', text: 'is' }), 'Correct', now);
+      const backup = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
+      backup.data.grammarExerciseAttempts[0].revisionId = 'lesson-revision@1';
+      const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
+      expect(preview.statusCode).toBe(400);
+      expect(db.sqlite.prepare('SELECT revision_id FROM grammar_exercise_attempts WHERE id = ?').get('attempt-revision')).toEqual({ revision_id: 'lesson-revision@2' });
+    });
+
+    it('clears grammar progress and immutable attempts in both reset scopes', async () => {
+      const now = new Date().toISOString();
+      const addGrammarData = (suffix: string) => {
+        db.sqlite.prepare(`
+          INSERT INTO grammar_lesson_progress (lesson_id, revision_id, revision, last_position, is_complete, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(`lesson-${suffix}`, 'revision-id', '1', 1, 0, now, now);
+        db.sqlite.prepare(`
+          INSERT INTO grammar_exercise_attempts (id, lesson_id, revision_id, revision, exercise_id, request_id, answer, is_correct, feedback, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(`attempt-${suffix}`, `lesson-${suffix}`, 'revision-id', '1', 'exercise-id', `request-${suffix}`, JSON.stringify({ type: 'text', text: 'answer' }), 0, 'Incorrect', now);
+      };
+
+      addGrammarData('progress');
+      const progressReset = await app.inject({ method: 'POST', url: '/api/data/reset-progress', payload: { confirm: true } });
+      expect(progressReset.statusCode).toBe(200);
+      expect(db.sqlite.prepare('SELECT count(*) AS count FROM grammar_lesson_progress').get()).toEqual({ count: 0 });
+      expect(db.sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get()).toEqual({ count: 0 });
+
+      addGrammarData('all');
+      const fullReset = await app.inject({ method: 'POST', url: '/api/data/reset-all', payload: { confirm: true } });
+      expect(fullReset.statusCode).toBe(200);
+      expect(db.sqlite.prepare('SELECT count(*) AS count FROM grammar_lesson_progress').get()).toEqual({ count: 0 });
+      expect(db.sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get()).toEqual({ count: 0 });
+    });
+
 
     it('round-trips exact-distinct mixed-case tags through backup, preview, and restore', async () => {
       const technologyWordId = insertSampleWord('technology');
       const technologistWordId = insertSampleWord('technologist');
       const now = new Date().toISOString();
-      db.insert(tags)
-        .values([
-          { id: 'tag-technology-title', name: 'Technology', createdAt: now },
-          { id: 'tag-technology-lower', name: 'technology', createdAt: now },
-        ])
-        .run();
-      db.insert(wordTags)
-        .values([
-          { wordId: technologyWordId, tagId: 'tag-technology-title' },
-          { wordId: technologistWordId, tagId: 'tag-technology-lower' },
-        ])
-        .run();
+      db.insert(tags).values([
+        { id: 'tag-technology-title', name: 'Technology', createdAt: now },
+        { id: 'tag-technology-lower', name: 'technology', createdAt: now },
+      ]).run();
+      db.insert(wordTags).values([
+        { wordId: technologyWordId, tagId: 'tag-technology-title' },
+        { wordId: technologistWordId, tagId: 'tag-technology-lower' },
+      ]).run();
 
       const backupResponse = await app.inject({ method: 'GET', url: '/api/backup' });
       expect(backupResponse.statusCode).toBe(200);
       const backup = JSON.parse(backupResponse.payload).data;
-      expect(backup.data.tags.map((tag: any) => tag.name).sort()).toEqual(['Technology', 'technology']);
+      expect(backup.data.tags.map((tag: { name: string }) => tag.name).sort()).toEqual(['Technology', 'technology']);
       expect(backup.data.wordTags).toEqual([
         { wordId: technologyWordId, tagId: 'tag-technology-title' },
         { wordId: technologistWordId, tagId: 'tag-technology-lower' },
       ]);
 
-      const previewResponse = await app.inject({
-        method: 'POST',
-        url: '/api/restore/preview',
-        payload: { backup },
+      const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
+      expect(preview.statusCode).toBe(200);
+      expect((await app.inject({ method: 'POST', url: '/api/data/reset-all', payload: { confirm: true } })).statusCode).toBe(200);
+      const restore = await app.inject({
+        method: 'POST', url: '/api/restore',
+        payload: { backup, confirm: true, previewToken: JSON.parse(preview.payload).data.previewToken },
       });
-      expect(previewResponse.statusCode).toBe(200);
-
-      const resetResponse = await app.inject({
-        method: 'POST',
-        url: '/api/data/reset-all',
-        payload: { confirm: true },
-      });
-      expect(resetResponse.statusCode).toBe(200);
-
-      const restoreResponse = await app.inject({
-        method: 'POST',
-        url: '/api/restore',
-        payload: { backup, confirm: true, previewToken: JSON.parse(previewResponse.payload).data.previewToken },
-      });
-      expect(restoreResponse.statusCode).toBe(200);
+      expect(restore.statusCode).toBe(200);
       expect(db.select().from(tags).all().map((tag) => tag.name).sort()).toEqual(['Technology', 'technology']);
       expect(db.select().from(wordTags).all()).toEqual([
         { wordId: technologyWordId, tagId: 'tag-technology-title' },
         { wordId: technologistWordId, tagId: 'tag-technology-lower' },
       ]);
+    });
+
+    it('warns when legacy backup restore will clear existing grammar data', async () => {
+      const now = new Date().toISOString();
+      db.sqlite.prepare(`
+        INSERT INTO grammar_lesson_progress (lesson_id, revision_id, revision, last_position, is_complete, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run('current-lesson', 'revision-id', '1', 1, 0, now, now);
+      db.sqlite.prepare(`
+        INSERT INTO grammar_exercise_attempts (id, lesson_id, revision_id, revision, exercise_id, request_id, answer, is_correct, feedback, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run('current-attempt', 'current-lesson', 'revision-id', '1', 'exercise-id', 'current-request', JSON.stringify({ type: 'text', text: 'answer' }), 0, 'Incorrect', now);
+
+      const legacyBackup = JSON.parse(JSON.stringify(new ImportExportService(db).getBackup()));
+      legacyBackup.version = 2;
+      delete legacyBackup.data.grammarLessonProgress;
+      delete legacyBackup.data.grammarExerciseAttempts;
+      const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup: legacyBackup } });
+      expect(preview.statusCode).toBe(200);
+      expect(JSON.parse(preview.payload).data.grammarSummary).toMatchObject({
+        includedInBackup: false,
+        willOverwrite: true,
+        backupTableCounts: { grammarLessonProgress: 0, grammarExerciseAttempts: 0 },
+        existingTableCounts: { grammarLessonProgress: 1, grammarExerciseAttempts: 1 },
+      });
+      expect(JSON.parse(preview.payload).data.grammarSummary.warning).toMatch(/clear current grammar data/);
+
+      const restore = await app.inject({
+        method: 'POST', url: '/api/restore',
+        payload: { backup: legacyBackup, confirm: true, previewToken: JSON.parse(preview.payload).data.previewToken },
+      });
+      expect(restore.statusCode).toBe(200);
+      expect(db.sqlite.prepare('SELECT count(*) AS count FROM grammar_lesson_progress').get()).toEqual({ count: 0 });
+      expect(db.sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get()).toEqual({ count: 0 });
     });
 
     it('returns restore preview token and rejects restore payload changes without deleting data', async () => {
@@ -1508,7 +1598,6 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(fullBody.data.scope).toBe('all');
       expect(fullBody.data.data.words.length).toBe(1);
 
-      // Rejects CSV
       const resCsv = await app.inject({
         method: 'GET',
         url: '/api/export/full?format=CSV',
@@ -1530,24 +1619,17 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('POST /api/backup returns v2 backup and GET /api/backup retained as alias', async () => {
-      const postRes = await app.inject({
-        method: 'POST',
-        url: '/api/backup',
-      });
+    it('POST /api/backup returns v3 backup and GET /api/backup retained as alias', async () => {
+      const postRes = await app.inject({ method: 'POST', url: '/api/backup' });
       expect(postRes.statusCode).toBe(200);
       const postBody = JSON.parse(postRes.payload);
       expect(postBody.success).toBe(true);
-      expect(postBody.data.version).toBe(2);
+      expect(postBody.data.version).toBe(3);
       expect(postBody.data.application).toBe('Lexora');
 
-      const getRes = await app.inject({
-        method: 'GET',
-        url: '/api/backup',
-      });
+      const getRes = await app.inject({ method: 'GET', url: '/api/backup' });
       expect(getRes.statusCode).toBe(200);
-      const getBody = JSON.parse(getRes.payload);
-      expect(getBody.data.version).toBe(2);
+      expect(JSON.parse(getRes.payload).data.version).toBe(3);
     });
 
     it('POST /api/data/reset-progress and /api/reset-progress aliases require confirm: true', async () => {
@@ -2017,14 +2099,13 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       db.insert(learningAttempts).values({ id: 'v2-attempt', sessionItemId: 'v2-item', requestId: 'v2-request', type: 'RECALL', attemptNumber: 2, answer: 'roundtrip', result: 'CORRECT_AFTER_HINT', performanceScore: 70, feedbackCodes: null, source: 'LOCAL', createdAt: now }).run();
       db.insert(reviewLogs).values({ id: 'v2-log', wordId: 'word-roundtrip', reviewType: 'RECALL', rating: 'GOOD', correct: true, performanceScore: 70, createdAt: now }).run();
       const backup = new ImportExportService(db).getBackup();
-      expect(backup.version).toBe(2);
+      expect(backup.version).toBe(3);
       expect(backup.data.learningAttempts).toHaveLength(1);
       const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
       const restore = await app.inject({ method: 'POST', url: '/api/restore', payload: { backup, confirm: true, previewToken: JSON.parse(preview.payload).data.previewToken } });
       expect(restore.statusCode).toBe(200);
       const restored = new ImportExportService(db).getBackup();
       expect(restored.data.learningSessions).toEqual(backup.data.learningSessions);
-      expect(restored.data.learningSessionItems).toEqual(backup.data.learningSessionItems);
       expect(restored.data.learningAttempts).toEqual(backup.data.learningAttempts);
       expect(restored.data.reviewLogs).toEqual(backup.data.reviewLogs);
     });

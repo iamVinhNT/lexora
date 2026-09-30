@@ -18,7 +18,7 @@ const insightKeys: Record<string, { key: string; actionKey?: string }> = {
   'welcome-start': { key: 'welcomeStart', actionKey: 'welcomeStart' },
 };
 
-const errorCodes = new Set(['VALIDATION_ERROR', 'BAD_REQUEST', 'NOT_FOUND', 'CONFLICT', 'INTERNAL_ERROR', 'INVALID_RESPONSE', 'HTTP_ERROR']);
+const errorCodes = new Set(['VALIDATION_ERROR', 'BAD_REQUEST', 'NOT_FOUND', 'CONFLICT', 'SERVICE_UNAVAILABLE', 'INTERNAL_ERROR', 'INVALID_RESPONSE', 'HTTP_ERROR']);
 
 export function getLocalizedErrorMessage(error: unknown, t: PresentationTFunction): string {
   if (error instanceof ApiError && errorCodes.has(error.code)) return String(t(`common:errors.${error.code}`));

@@ -2,12 +2,13 @@
  * @file WordDetailContent.tsx
  * @description Shared presentation for vocabulary detail fields, progress, review metadata, and actions.
  */
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Volume2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { Word } from '../../api/vocabulary.api';
 import { formatDate, formatPercent } from '../../i18n/formatters';
 import { Button } from '../ui/Button';
+import { speakEnglishWord } from './speech';
 
 type WordDetailContentProps = {
   word: Word;
@@ -24,7 +25,18 @@ export function WordDetailContent({ word, onEdit, onDelete, fixedActions = true 
   return (
     <div className={fixedActions ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'space-y-6'}>
       <div className={fixedActions ? 'shrink-0 border-b border-border px-5 py-4 sm:px-7' : undefined}>
-        <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{word.word}</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{word.word}</h2>
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={t('speakWord', { word: word.word })}
+            className="min-h-11 min-w-11 px-3"
+            onClick={() => speakEnglishWord(word.word)}
+          >
+            <Volume2 aria-hidden="true" size={20} />
+          </Button>
+        </div>
         <p className="mt-2 text-lg text-foreground">{word.definition}</p>
         {word.translation && <p className="mt-1 text-sm text-muted">{word.translation}</p>}
         <p className="mt-2 text-sm text-muted">{[word.partOfSpeech, word.phonetic, word.difficulty].filter(Boolean).join(' · ')}</p>

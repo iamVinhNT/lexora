@@ -5,6 +5,7 @@
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/db/client.js';
 import { prepareSharedDatabase, sharedDatabasePath } from '../../src/db/shared-database.js';
@@ -71,5 +72,34 @@ describe('shared local database', () => {
     expect(() => getDb(path)).not.toThrow();
     expect(getDb(desktopPath).sqlite.prepare('SELECT definition FROM words').get()).toEqual({ definition: 'first' });
     expect(getDb(webPath).sqlite.prepare('SELECT definition FROM words').get()).toEqual({ definition: 'second' });
+  });
+
+  it('merges legacy rows with fewer columns into the expanded shared schema', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'lexora-shared-legacy-'));
+    roots.push(root);
+    const home = join(root, 'home');
+    const backendRoot = join(root, 'backend');
+    const primaryPath = join(home, '.config', '@lexora', 'desktop', 'data', 'lexora.db');
+    const legacyPath = join(home, '.config', 'Lexora', 'data', 'lexora.db');
+    mkdirSync(dirname(primaryPath), { recursive: true });
+    mkdirSync(dirname(legacyPath), { recursive: true });
+
+    const primary = getDb(primaryPath);
+    primary.sqlite.prepare("INSERT INTO words (id, word, definition, created_at) VALUES ('primary-word', 'primary', 'primary definition', '2026-09-20T00:00:00Z')").run();
+    primary.sqlite.close();
+
+    const legacy = new Database(legacyPath);
+    legacy.exec('CREATE TABLE words (id TEXT PRIMARY KEY, word TEXT NOT NULL, definition TEXT NOT NULL, created_at TEXT NOT NULL)');
+    legacy.prepare('INSERT INTO words VALUES (?, ?, ?, ?)').run('legacy-word', 'legacy', 'legacy definition', '2026-09-20T00:00:00Z');
+    legacy.close();
+
+    const path = sharedDatabasePath(home);
+    await prepareSharedDatabase(path, home, backendRoot);
+    const merged = getDb(path);
+    expect(merged.sqlite.prepare('SELECT id, word, updated_at FROM words ORDER BY word').all()).toEqual([
+      { id: 'legacy-word', word: 'legacy', updated_at: null },
+      { id: 'primary-word', word: 'primary', updated_at: null },
+    ]);
+    merged.sqlite.close();
   });
 });

@@ -9,7 +9,7 @@ export default {
   addTitle: 'Thêm từ', editTitle: 'Sửa {{word}}', required: 'Bắt buộc nhập {{field}}', chooseCefr: 'Chọn cấp độ CEFR', save: 'Lưu từ', saving: 'Đang lưu…', cancel: 'Hủy',
   wordFamilies: 'Họ từ', noWordFamilies: 'Chưa có họ từ.', noCollocations: 'Chưa có cụm từ.', noExamples: 'Chưa có ví dụ.', noContexts: 'Chưa liên kết ngữ cảnh.',
   progress3d: 'Tiến độ 3D', noProgress: 'Chưa ghi nhận tiến độ.', reviewState: 'Trạng thái ôn tập', due: 'Đến hạn {{date}} · {{repetitions}} lần lặp · {{lapses}} lần quên', noReviewState: 'Chưa ghi nhận trạng thái ôn tập.',
-  deleteTitle: 'Xóa từ', deleteDescription: 'Thao tác này sẽ xóa {{word}} và chi tiết từ vựng. Không thể hoàn tác.', deleting: 'Đang xóa…', confirmDelete: 'Xác nhận xóa',
+  deleteTitle: 'Xóa từ', deleteDescription: 'Thao tác này sẽ xóa {{word}} và chi tiết từ vựng. Không thể hoàn tác.', deleting: 'Đang xóa…', confirmDelete: 'Xác nhận xóa', speak: 'Phát âm', speakWord: 'Phát âm {{word}}',
   fields: { word: 'Từ', definition: 'Định nghĩa', translation: 'Bản dịch', phonetic: 'Phiên âm', partOfSpeech: 'Từ loại', difficulty: 'Độ khó', tags: 'Thẻ', collocations: 'Cụm từ', examples: 'Ví dụ' },
   scoreSummary: 'Nhận diện {{recognition}} · Ghi nhớ {{recall}} · Đặt câu {{production}}', scores: { recognition: 'Nhận diện', recall: 'Ghi nhớ', production: 'Đặt câu' },
   states: { NEW: 'Mới', LEARNING: 'Đang học', FAMILIAR: 'Quen thuộc', MASTERED: 'Thành thạo', MAINTENANCE: 'Duy trì' },

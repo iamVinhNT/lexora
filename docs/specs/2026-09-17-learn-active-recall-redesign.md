@@ -28,8 +28,8 @@ The redesign must make objective Recall and Output performance the primary learn
 
 ## 2. Non-goals
 
-- No AI grading integration.
-- No external service, credential, or runtime dependency.
+- Quyết định ngày 2026-09-26 thay thế hai non-goal này riêng cho bước Output: OpenAI qua LangChain.js và LangGraph.js chấm câu theo thang 0–100; ngưỡng đạt là 60.
+- `OPENAI_API_KEY` chỉ tồn tại trong environment backend. Có thể cấu hình `OPENAI_MODEL` và `OPENAI_TIMEOUT_MS`. Lỗi AI không ghi attempt và không làm mất lượt.
 - No speech recognition or pronunciation scoring.
 - No replacement of SM-2.
 - No gamified streak, sound, timer, countdown, or celebration layer inside Learn.

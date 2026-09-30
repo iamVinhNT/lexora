@@ -91,6 +91,25 @@ describe('buildApp', () => {
     expect(untrustedPreflight.statusCode).toBe(404);
   });
 
+  it.each(['PATCH', 'DELETE'])('allows browser preflight for %s on resource routes', async (method) => {
+    app = await buildApp({ dbPath: ':memory:', logger: false });
+
+    const preflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/words/test-word',
+      headers: {
+        origin: 'http://localhost:5173',
+        'access-control-request-method': method,
+        'access-control-request-headers': 'content-type',
+      },
+    });
+
+    expect(preflight.statusCode).toBe(204);
+    expect(preflight.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+    expect(String(preflight.headers['access-control-allow-methods']).split(/\s*,\s*/)).toContain(method);
+    expect(preflight.headers['access-control-allow-headers']).toContain('content-type');
+  });
+
   it('uses CORS_ORIGINS as an explicit allowlist', async () => {
     vi.stubEnv('CORS_ORIGINS', 'https://lexora.example, https://admin.lexora.example');
     app = await buildApp({ dbPath: ':memory:', logger: false });

@@ -149,6 +149,12 @@ export function RestoreCard({ onFile, desktopFiles, onSelect, preview, loading, 
       <h4 className="font-semibold text-foreground">{t('restorePreview')}</h4>
       <p className="text-sm text-foreground">{t('records', { count: preview.totalRecords, application: preview.application, version: preview.version })}</p>
       <p className="text-sm text-foreground">{preview.conflictSummary.willOverwrite ? t('overwrite', { count: preview.conflictSummary.existingRecordsCount }) : t('noOverwrite')}</p>
+      {preview.grammarSummary && <p className="text-sm text-foreground" role={preview.grammarSummary.willOverwrite ? 'alert' : undefined}>
+        {preview.grammarSummary.willOverwrite
+          ? t('grammarOverwrite', { count: preview.grammarSummary.existingTableCounts.grammarLessonProgress, attempts: preview.grammarSummary.existingTableCounts.grammarExerciseAttempts })
+          : t('grammarBackup', { count: preview.grammarSummary.backupTableCounts.grammarLessonProgress, attempts: preview.grammarSummary.backupTableCounts.grammarExerciseAttempts })}
+        {!preview.grammarSummary.includedInBackup && ` ${t('grammarAbsent')}`}
+      </p>}
       <Button type="button" variant="danger" onClick={onOpen}>{t('openRestore')}</Button>
     </div>}
   </Card>;

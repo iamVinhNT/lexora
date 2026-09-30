@@ -28,7 +28,7 @@ import { groupSessionItems } from '../domain/learning/grouping.js';
 import { AppError, ValidationError } from './vocabulary.service.js';
 import {
   backupSchema,
-  backupV2Schema,
+  backupV3Schema,
   type ImportPreviewInput,
   type ImportCommitInput,
   type ExportQuery,
@@ -98,6 +98,13 @@ export interface RestorePreviewResult {
     existingRecordsCount: number;
     willOverwrite: boolean;
     existingTableCounts: Record<string, number>;
+  };
+  grammarSummary: {
+    includedInBackup: boolean;
+    willOverwrite: boolean;
+    warning: string | null;
+    backupTableCounts: { grammarLessonProgress: number; grammarExerciseAttempts: number };
+    existingTableCounts: { grammarLessonProgress: number; grammarExerciseAttempts: number };
   };
   previewToken: string;
 }
@@ -611,38 +618,45 @@ export class ImportExportService {
   }
 
   getBackup(): BackupPayload {
-    const data = this.db.transaction((tx) => ({
-      users: tx.select().from(users).all(),
-      words: tx.select().from(words).all(),
-      wordFamilies: tx.select().from(wordFamilies).all(),
-      collocations: tx.select().from(collocations).all(),
-      examples: tx.select().from(examples).all(),
-      contexts: tx.select().from(contexts).all(),
-      contextWords: tx.select().from(contextWords).all(),
-      learningProgress: tx.select().from(learningProgress).all(),
-      reviewStates: tx.select().from(reviewStates).all(),
-      reviewLogs: tx.select().from(reviewLogs).all(),
-      tags: tx.select().from(tags).all(),
-      wordTags: tx.select().from(wordTags).all(),
-      learningSessions: tx.select().from(learningSessions).all(),
-      learningSessionItems: tx.select().from(learningSessionItems).all(),
-      learningAttempts: tx.select().from(learningAttempts).all(),
-    }));
-
-    const backup = {
-      version: 2,
-      exportedAt: new Date().toISOString(),
-      application: 'Lexora',
-      data,
-    };
-
-    return backupV2Schema.parse(backup);
+    const data = this.db.transaction((tx) => {
+      const grammarLessonProgress = this.db.sqlite.prepare(`
+        SELECT lesson_id AS lessonId, revision_id AS revisionId, revision, last_position AS lastPosition,
+          is_complete AS isComplete, completed_at AS completedAt, created_at AS createdAt, updated_at AS updatedAt
+        FROM grammar_lesson_progress
+      `).all() as Array<{ lessonId: string; revisionId: string; revision: string; lastPosition: number; isComplete: number; completedAt: string | null; createdAt: string; updatedAt: string }>;
+      const grammarExerciseAttempts = this.db.sqlite.prepare(`
+        SELECT id, lesson_id AS lessonId, revision_id AS revisionId, revision, exercise_id AS exerciseId,
+          request_id AS requestId, answer, is_correct AS isCorrect, feedback, created_at AS createdAt
+        FROM grammar_exercise_attempts
+      `).all() as Array<{ id: string; lessonId: string; revisionId: string; revision: string; exerciseId: string; requestId: string; answer: string; isCorrect: number; feedback: string; createdAt: string }>;
+      return {
+        users: tx.select().from(users).all(),
+        words: tx.select().from(words).all(),
+        wordFamilies: tx.select().from(wordFamilies).all(),
+        collocations: tx.select().from(collocations).all(),
+        examples: tx.select().from(examples).all(),
+        contexts: tx.select().from(contexts).all(),
+        contextWords: tx.select().from(contextWords).all(),
+        learningProgress: tx.select().from(learningProgress).all(),
+        reviewStates: tx.select().from(reviewStates).all(),
+        reviewLogs: tx.select().from(reviewLogs).all(),
+        tags: tx.select().from(tags).all(),
+        wordTags: tx.select().from(wordTags).all(),
+        learningSessions: tx.select().from(learningSessions).all(),
+        learningSessionItems: tx.select().from(learningSessionItems).all(),
+        learningAttempts: tx.select().from(learningAttempts).all(),
+        grammarLessonProgress: grammarLessonProgress.map((row) => ({ ...row, isComplete: Boolean(row.isComplete) })),
+        grammarExerciseAttempts: grammarExerciseAttempts.map((row) => ({ ...row, answer: JSON.parse(row.answer), isCorrect: Boolean(row.isCorrect) })),
+      };
+    });
+    return backupV3Schema.parse({ version: 3, exportedAt: new Date().toISOString(), application: 'Lexora', data });
   }
 
   previewRestore(backupPayload: unknown): RestorePreviewResult {
     const validated = backupSchema.parse(backupPayload);
     const { data } = validated;
-
+    const grammarLessonProgress = 'grammarLessonProgress' in data ? data.grammarLessonProgress : [];
+    const grammarExerciseAttempts = 'grammarExerciseAttempts' in data ? data.grammarExerciseAttempts : [];
     const tableCounts: Record<string, number> = {
       users: data.users.length,
       words: data.words.length,
@@ -656,13 +670,12 @@ export class ImportExportService {
       reviewLogs: data.reviewLogs.length,
       tags: data.tags.length,
       wordTags: data.wordTags.length,
-       learningSessions: data.learningSessions.length,
-       learningSessionItems: data.learningSessionItems.length,
-       learningAttempts: 'learningAttempts' in data ? data.learningAttempts.length : 0,
+      learningSessions: data.learningSessions.length,
+      learningSessionItems: data.learningSessionItems.length,
+      learningAttempts: 'learningAttempts' in data ? data.learningAttempts.length : 0,
+      grammarLessonProgress: grammarLessonProgress.length,
+      grammarExerciseAttempts: grammarExerciseAttempts.length,
     };
-
-    const totalRecords = Object.values(tableCounts).reduce((acc, count) => acc + count, 0);
-
     const existingTableCounts: Record<string, number> = {
       users: this.db.select().from(users).all().length,
       words: this.db.select().from(words).all().length,
@@ -676,12 +689,14 @@ export class ImportExportService {
       reviewLogs: this.db.select().from(reviewLogs).all().length,
       tags: this.db.select().from(tags).all().length,
       wordTags: this.db.select().from(wordTags).all().length,
-       learningSessions: this.db.select().from(learningSessions).all().length,
-       learningSessionItems: this.db.select().from(learningSessionItems).all().length,
-       learningAttempts: this.db.select().from(learningAttempts).all().length,
+      learningSessions: this.db.select().from(learningSessions).all().length,
+      learningSessionItems: this.db.select().from(learningSessionItems).all().length,
+      learningAttempts: this.db.select().from(learningAttempts).all().length,
+      grammarLessonProgress: Number((this.db.sqlite.prepare('SELECT count(*) AS count FROM grammar_lesson_progress').get() as { count: number }).count),
+      grammarExerciseAttempts: Number((this.db.sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get() as { count: number }).count),
     };
-
     const existingRecordsCount = Object.values(existingTableCounts).reduce((acc, count) => acc + count, 0);
+    const includesGrammar = validated.version === 3;
 
     return {
       valid: true,
@@ -689,18 +704,24 @@ export class ImportExportService {
       application: validated.application,
       exportedAt: validated.exportedAt,
       tableCounts,
-      totalRecords,
-      conflictSummary: {
-        existingRecordsCount,
-        willOverwrite: existingRecordsCount > 0,
-        existingTableCounts,
+      totalRecords: Object.values(tableCounts).reduce((acc, count) => acc + count, 0),
+      conflictSummary: { existingRecordsCount, willOverwrite: existingRecordsCount > 0, existingTableCounts },
+      grammarSummary: {
+        includedInBackup: includesGrammar,
+        willOverwrite: true,
+        warning: includesGrammar ? null : 'This backup does not contain grammar progress or attempts; restoring it will clear current grammar data.',
+        backupTableCounts: { grammarLessonProgress: grammarLessonProgress.length, grammarExerciseAttempts: grammarExerciseAttempts.length },
+        existingTableCounts: {
+          grammarLessonProgress: existingTableCounts.grammarLessonProgress,
+          grammarExerciseAttempts: existingTableCounts.grammarExerciseAttempts,
+        },
       },
-       previewToken: this.issuePreviewToken('restore', JSON.stringify(validated)),
+      previewToken: this.issuePreviewToken('restore', JSON.stringify(validated)),
     };
   }
 
   restoreBackup(input: unknown): { restored: boolean } {
-    if (!input || typeof input !== 'object' || (input as { confirm?: unknown }).confirm !== true) {
+    if (!input || typeof input !== 'object' || !('confirm' in input) || input.confirm !== true) {
       throw new ValidationError('Confirmation required: confirm must be true');
     }
     const validated = restoreSchema.parse(input);
@@ -710,7 +731,8 @@ export class ImportExportService {
     const { data } = validated.backup;
 
     this.db.transaction((tx) => {
-      // Reverse dependency deletion order
+      tx.run(sql`DELETE FROM grammar_exercise_attempts`);
+      tx.run(sql`DELETE FROM grammar_lesson_progress`);
       tx.delete(learningAttempts).run();
       tx.delete(learningSessionItems).run();
       tx.delete(learningSessions).run();
@@ -727,7 +749,6 @@ export class ImportExportService {
       tx.delete(words).run();
       tx.delete(users).run();
 
-      // Forward dependency insertion order
       for (const u of data.users) tx.insert(users).values(u).run();
       for (const w of data.words) tx.insert(words).values(w).run();
       for (const wf of data.wordFamilies) tx.insert(wordFamilies).values(wf).run();
@@ -748,7 +769,7 @@ export class ImportExportService {
         items.push(item);
         sessionItemsBySession.set(item.sessionId, items);
       }
-      for (const [sessionId, items] of sessionItemsBySession) {
+      for (const items of sessionItemsBySession.values()) {
         const legacyItems = items.map((item) => ({ id: item.id, difficulty: wordsById.get(item.wordId)?.difficulty }));
         const assignments = groupSessionItems(legacyItems).flat();
         const assignmentsById = new Map(assignments.map((assignment) => [assignment.id, assignment]));
@@ -758,6 +779,19 @@ export class ImportExportService {
         }
       }
       for (const attempt of ('learningAttempts' in data ? data.learningAttempts : [])) tx.insert(learningAttempts).values(attempt).run();
+
+      if (validated.backup.version === 3) {
+        const insertLesson = this.db.sqlite.prepare(`
+          INSERT INTO grammar_lesson_progress (lesson_id, revision_id, revision, last_position, is_complete, completed_at, created_at, updated_at)
+          VALUES (@lessonId, @revisionId, @revision, @lastPosition, @isComplete, @completedAt, @createdAt, @updatedAt)
+        `);
+        for (const row of validated.backup.data.grammarLessonProgress) insertLesson.run({ ...row, isComplete: Number(row.isComplete) });
+        const insertAttempt = this.db.sqlite.prepare(`
+          INSERT INTO grammar_exercise_attempts (id, lesson_id, revision_id, revision, exercise_id, request_id, answer, is_correct, feedback, created_at)
+          VALUES (@id, @lessonId, @revisionId, @revision, @exerciseId, @requestId, @answer, @isCorrect, @feedback, @createdAt)
+        `);
+        for (const row of validated.backup.data.grammarExerciseAttempts) insertAttempt.run({ ...row, answer: JSON.stringify(row.answer), isCorrect: Number(row.isCorrect) });
+      }
     });
 
     return { restored: true };
@@ -774,6 +808,8 @@ export class ImportExportService {
       this.db.transaction((tx) => {
         tx.delete(learningSessionItems).run();
         tx.delete(learningSessions).run();
+        tx.run(sql`DELETE FROM grammar_exercise_attempts`);
+        tx.run(sql`DELETE FROM grammar_lesson_progress`);
         tx.delete(reviewLogs).run();
 
         tx.update(learningProgress)
@@ -804,6 +840,8 @@ export class ImportExportService {
 
     if (input.scope === 'all') {
       this.db.transaction((tx) => {
+        tx.run(sql`DELETE FROM grammar_exercise_attempts`);
+        tx.run(sql`DELETE FROM grammar_lesson_progress`);
         tx.delete(learningSessionItems).run();
         tx.delete(learningSessions).run();
         tx.delete(reviewLogs).run();

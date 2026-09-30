@@ -327,6 +327,21 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('status').textContent).toContain('Restore completed.');
     expect(relevantKeys.every((key) => queryClient.getQueryState(key)?.isInvalidated)).toBe(true);
   });
+  it('warns that restoring an older backup clears existing grammar progress before confirmation', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({
+      valid: true, version: 2, application: 'Lexora', exportedAt: now, tableCounts: {}, totalRecords: 0,
+      previewToken: 'legacy-token', conflictSummary: { existingRecordsCount: 3, willOverwrite: true, existingTableCounts: {} },
+      grammarSummary: { includedInBackup: false, willOverwrite: true, warning: 'Legacy backup has no grammar data.',
+        backupTableCounts: { grammarLessonProgress: 0, grammarExerciseAttempts: 0 },
+        existingTableCounts: { grammarLessonProgress: 1, grammarExerciseAttempts: 2 } },
+    })));
+
+    renderSettings();
+    fireEvent.change(screen.getByLabelText('Restore backup file'), { target: { files: [fileWithText('backup.json', JSON.stringify(emptyBackup))] } });
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Restore backup' }).textContent).toContain('restoring it clears current grammar progress and attempts'));
+    expect(screen.getByRole('dialog', { name: 'Restore backup' }).textContent).toContain('1 lesson progress records and 2 attempts');
+    expect((screen.getByRole('button', { name: 'Restore backup' }) as HTMLButtonElement).disabled).toBe(true);
+  });
 
   it('refetches active consumers and updates cache after restore', async () => {
     const fetchMock = createLiveFetchMock('/api/restore', { restored: true });

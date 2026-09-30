@@ -28,6 +28,12 @@ const AnalyticsPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then(({ SettingsPage }) => ({ default: SettingsPage })),
 );
+const GrammarPage = lazy(() =>
+  import('./pages/GrammarPage').then(({ GrammarPage }) => ({ default: GrammarPage })),
+);
+const GrammarLessonPage = lazy(() =>
+  import('./pages/GrammarLessonPage').then(({ GrammarLessonPage }) => ({ default: GrammarLessonPage })),
+);
 
 export default function App() {
   return <Routes>
@@ -58,6 +64,8 @@ export default function App() {
           path="contexts"
           element={<ContextPage />}
         />
+        <Route path="grammar" element={<GrammarPage />} />
+        <Route path="grammar/:lessonId" element={<GrammarLessonPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

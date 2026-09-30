@@ -34,7 +34,7 @@ export default {
   },
   errors: {
     VALIDATION_ERROR: 'Please check the submitted information.', BAD_REQUEST: 'That request could not be completed.', NOT_FOUND: 'The requested item could not be found.',
-    CONFLICT: 'This action conflicts with existing data.', INTERNAL_ERROR: 'Something went wrong on the server.', INVALID_RESPONSE: 'The server returned an invalid response.',
+    CONFLICT: 'This action conflicts with existing data.', SERVICE_UNAVAILABLE: 'AI grading is temporarily unavailable. Your sentence was kept; please retry.', INTERNAL_ERROR: 'Something went wrong on the server.', INVALID_RESPONSE: 'The server returned an invalid response.',
     HTTP_ERROR: 'The request could not be completed.', generic: 'Something went wrong. Please try again.',
   },
   language: { label: 'Language', vietnamese: 'Tiếng Việt', english: 'English' },

@@ -8,11 +8,12 @@ import { registerApiErrorHandler } from './vocabulary.routes.js';
 import { SessionRepository } from '../repositories/session.repository.js';
 import { SessionService } from '../services/session.service.js';
 import { startSessionSchema, submitStepSchema } from '../schemas/session.schema.js';
+import type { OutputGrader } from '../domain/learning/ai-output-grader.js';
 
-export interface SessionRouteOptions { db?: AppDatabase; service?: SessionService; }
+export interface SessionRouteOptions { db?: AppDatabase; service?: SessionService; outputGrader?: OutputGrader; }
 export const sessionRoutes: FastifyPluginAsync<SessionRouteOptions> = async (fastify, opts) => {
   const db = opts.db ?? (fastify as any).db ?? getDb();
-  const service = opts.service ?? new SessionService(new SessionRepository(db));
+  const service = opts.service ?? new SessionService(new SessionRepository(db), opts.outputGrader);
   let base = '/api/learning/session';
   if (fastify.prefix === '/api' || fastify.prefix?.endsWith('/api')) base = '/learning/session';
   if (fastify.prefix === '/api/learning/session' || fastify.prefix?.endsWith('/api/learning/session')) base = '';
@@ -27,7 +28,7 @@ export const sessionRoutes: FastifyPluginAsync<SessionRouteOptions> = async (fas
     return reply.send({ success: true, data: { activeSession: active, latestSession: sessions[0] ?? null, sessions } });
   });
   fastify.get(`${base}/:id`, async (request, reply) => reply.send({ success: true, data: service.getSessionById((request.params as { id: string }).id) }));
-  fastify.post(`${base}/:id/step`, async (request, reply) => reply.send({ success: true, data: service.submitStep((request.params as { id: string }).id, submitStepSchema.parse(request.body)) }));
+  fastify.post(`${base}/:id/step`, async (request, reply) => reply.send({ success: true, data: await service.submitStep((request.params as { id: string }).id, submitStepSchema.parse(request.body)) }));
   fastify.post(`${base}/:id/complete`, async (request, reply) => reply.send({ success: true, data: service.completeSession((request.params as { id: string }).id) }));
   fastify.post(`${base}/:id/abandon`, async (request, reply) => reply.send({ success: true, data: service.abandonSession((request.params as { id: string }).id) }));
 };

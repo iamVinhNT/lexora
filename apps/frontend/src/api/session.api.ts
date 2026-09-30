@@ -15,8 +15,8 @@ export type LearningCursor = {
   phase: 'ENCODE' | 'RETRIEVE' | 'COMPLETE'; groupIndex: number; groupCount: number; groupSize: number;
   itemIndex: number; sessionPosition: number; step: SessionStep | null; itemId: string | null; wordId: string | null; attemptNumber: 1 | 2 | null;
 };
-export type LearningAttempt = { id: string; sessionItemId: string; type: 'RECALL' | 'OUTPUT'; attemptNumber: 1 | 2; answer: string; result: string; performanceScore: number; feedbackCodes?: string[] | null };
-export type LearningFeedback = { outcome: string; attemptNumber: 1 | 2 | null; canRetry: boolean; hint?: { firstLetter: string; letterCount: number }; revealedAnswer?: string; codes?: string[] };
+export type LearningAttempt = { id: string; sessionItemId: string; type: 'RECALL' | 'OUTPUT'; attemptNumber: 1 | 2; answer: string; result: string; performanceScore: number; feedbackCodes?: string[] | null; explanation?: string | null; suggestion?: string | null; source?: string };
+export type LearningFeedback = { outcome: string; attemptNumber: 1 | 2 | null; canRetry: boolean; score?: number; explanation?: string; suggestion?: string; hint?: { firstLetter: string; letterCount: number }; revealedAnswer?: string; codes?: string[] };
 export type SessionStartPayload = { mode: SessionMode; count: number; contextId?: string; topicId?: string };
 export type LearningOptions = { contexts: Array<{ id: string; title: string; wordCount: number }>; topics: Array<{ id: string; name: string; wordCount: number }>; availability: { newWords: number; weakWords: number; dueWords: number } };
 export type SessionExample = { sentence?: string | null; translation?: string | null } & Record<string, unknown>;

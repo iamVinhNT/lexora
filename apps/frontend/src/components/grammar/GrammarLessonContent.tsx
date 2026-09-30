@@ -1,0 +1,93 @@
+/**
+ * @file GrammarLessonContent.tsx
+ * @description Accessible lesson contents with authored formation, usage, context cues, and recap.
+ */
+import { useTranslation } from 'react-i18next';
+import type { GrammarLessonDetail } from '../../api/grammar.api';
+import { Card } from '../ui/Card';
+
+export function GrammarLessonContent({ lesson }: { lesson: GrammarLessonDetail }) {
+  const { t } = useTranslation('grammar');
+  const sections = [
+    { id: 'grammar-explanation', label: t('explanation') },
+    { id: 'grammar-pattern', label: t('pattern') },
+    { id: 'grammar-usage', label: t('whenToUse') },
+    { id: 'grammar-signals', label: t('signalWords') },
+    ...(lesson.examples.length ? [{ id: 'grammar-examples', label: t('examples') }] : []),
+    ...(lesson.contrasts.length ? [{ id: 'grammar-contrasts', label: t('contrasts') }] : []),
+    ...(lesson.commonMistakes.length ? [{ id: 'grammar-mistakes', label: t('commonMistakes') }] : []),
+    { id: 'grammar-check', label: t('learnerCheck') },
+    { id: 'grammar-summary', label: t('summary') },
+    ...(lesson.exercises.length ? [{ id: 'grammar-practice-heading', label: t('exercises') }] : []),
+    { id: 'grammar-tutor-heading', label: t('tutorTitle') },
+  ];
+
+  return <>
+    <nav aria-label={t('contents')} className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+      <p className="mb-2 text-sm font-semibold text-foreground">{t('contents')}</p>
+      <ol className="flex flex-wrap gap-x-2 gap-y-1">
+        {sections.map(({ id, label }) => <li key={id}><a href={`#${id}`} className="inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-sm text-primary hover:bg-primary-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{label}</a></li>)}
+      </ol>
+    </nav>
+
+    <section aria-labelledby="grammar-explanation">
+      <Card className="p-5 sm:p-7">
+        <h2 id="grammar-explanation" tabIndex={-1} className="scroll-mt-24 text-xl font-semibold text-foreground">{t('explanation')}</h2>
+        <p className="mt-3 whitespace-pre-line leading-7 text-foreground">{lesson.explanation}</p>
+      </Card>
+    </section>
+
+    <section aria-labelledby="grammar-pattern">
+      <Card className="space-y-4 p-5 sm:p-7">
+        <h2 id="grammar-pattern" tabIndex={-1} className="scroll-mt-24 text-xl font-semibold text-foreground">{t('pattern')}</h2>
+        <p className="whitespace-pre-line rounded-xl border border-primary/20 bg-primary-subtle p-4 text-sm leading-7 text-foreground">{lesson.guide.pattern}</p>
+        <details className="rounded-lg border border-border p-3">
+          <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('notationTitle')}</summary>
+          <p className="pt-2 text-sm leading-6 text-muted">{t('notationDescription')}</p>
+        </details>
+      </Card>
+    </section>
+
+    {([
+      { id: 'grammar-usage', label: t('whenToUse'), items: lesson.guide.whenToUse },
+      { id: 'grammar-signals', label: t('signalWords'), items: lesson.guide.signalWords },
+    ]).map(({ id, label, items }) => <section key={id} aria-labelledby={id}>
+      <Card className="p-5 sm:p-7">
+        <h2 id={id} tabIndex={-1} className="scroll-mt-24 text-xl font-semibold text-foreground">{label}</h2>
+        {id === 'grammar-signals' && <p className="mt-2 text-sm leading-6 text-muted">{t('signalNotice')}</p>}
+        <ul className="mt-3 list-disc space-y-3 pl-5 text-sm leading-7 text-foreground">{items.map((item) => <li key={item}>{item}</li>)}</ul>
+      </Card>
+    </section>)}
+
+    {lesson.examples.length > 0 && <section aria-labelledby="grammar-examples"><Card className="p-5 sm:p-7">
+      <h2 id="grammar-examples" tabIndex={-1} className="scroll-mt-24 text-xl font-semibold text-foreground">{t('examples')}</h2>
+      <ul className="mt-4 space-y-3">{lesson.examples.map((example, index) => <li key={`${index}-${example.english}`} className="rounded-xl bg-secondary/60 p-4"><p lang="en" className="font-medium leading-7 text-foreground">{example.english}</p><p lang="vi" className="mt-2 text-sm leading-6 text-muted">{example.vietnamese}</p></li>)}</ul>
+    </Card></section>}
+
+    {lesson.contrasts.length > 0 && <section aria-labelledby="grammar-contrasts"><Card className="p-5 sm:p-7">
+      <h2 id="grammar-contrasts" tabIndex={-1} className="scroll-mt-24 text-xl font-semibold text-foreground">{t('contrasts')}</h2>
+      <ul className="mt-4 space-y-3">{lesson.contrasts.map((contrast, index) => <li key={`${index}-${contrast.form}`} className="rounded-xl border border-border p-4"><p className="font-semibold leading-7 text-foreground">{contrast.form}</p><p className="mt-2 text-sm leading-6 text-foreground"><strong>{t('whyFits')}: </strong>{contrast.whyFits}</p><p className="mt-2 text-sm leading-6 text-muted"><strong>{t('whyNot')}: </strong>{contrast.whyNot}</p></li>)}</ul>
+    </Card></section>}
+
+    {lesson.commonMistakes.length > 0 && <section aria-labelledby="grammar-mistakes"><Card className="p-5 sm:p-7">
+      <h2 id="grammar-mistakes" tabIndex={-1} className="scroll-mt-24 text-xl font-semibold text-foreground">{t('commonMistakes')}</h2>
+      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-7 text-foreground">{lesson.commonMistakes.map((mistake, index) => <li key={`${index}-${mistake}`}>{mistake}</li>)}</ul>
+    </Card></section>}
+
+    <section aria-labelledby="grammar-check"><Card className="p-5 sm:p-7">
+      <h2 id="grammar-check" tabIndex={-1} className="scroll-mt-24 text-xl font-semibold text-foreground">{t('learnerCheck')}</h2>
+      <p className="mt-2 text-sm text-muted">{t('checkDescription')}</p>
+      <ol className="mt-3 list-decimal space-y-3 pl-5 text-sm leading-7 text-foreground">{lesson.guide.check.map((item) => <li key={item}>{item}</li>)}</ol>
+    </Card></section>
+
+    <section aria-labelledby="grammar-summary"><Card className="border-primary/30 bg-primary-subtle p-5 sm:p-7">
+      <h2 id="grammar-summary" tabIndex={-1} className="scroll-mt-24 text-xl font-semibold text-foreground">{t('summary')}</h2>
+      <p className="mt-3 text-sm leading-7 text-foreground">{lesson.summary}</p>
+    </Card></section>
+
+    {lesson.sources.length > 0 && <section aria-labelledby="grammar-sources"><Card className="p-5 sm:p-7">
+      <h2 id="grammar-sources" className="text-lg font-semibold text-foreground">{t('sources')}</h2>
+      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">{lesson.sources.map((source) => <li key={source.id}><a href={source.url} target="_blank" rel="noreferrer" className="break-words text-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{source.title}</a></li>)}</ul>
+    </Card></section>}
+  </>;
+}

@@ -34,7 +34,7 @@ export default {
   },
   errors: {
     VALIDATION_ERROR: 'Vui lòng kiểm tra thông tin đã gửi.', BAD_REQUEST: 'Không thể hoàn thành yêu cầu này.', NOT_FOUND: 'Không tìm thấy dữ liệu yêu cầu.',
-    CONFLICT: 'Thao tác này xung đột với dữ liệu hiện có.', INTERNAL_ERROR: 'Đã xảy ra lỗi trên máy chủ.', INVALID_RESPONSE: 'Máy chủ trả về phản hồi không hợp lệ.',
+    CONFLICT: 'Thao tác này xung đột với dữ liệu hiện có.', SERVICE_UNAVAILABLE: 'AI tạm thời chưa chấm được. Câu của bạn vẫn được giữ; hãy thử lại.', INTERNAL_ERROR: 'Đã xảy ra lỗi trên máy chủ.', INVALID_RESPONSE: 'Máy chủ trả về phản hồi không hợp lệ.',
     HTTP_ERROR: 'Không thể hoàn thành yêu cầu.', generic: 'Đã xảy ra lỗi. Vui lòng thử lại.',
   },
   language: { label: 'Ngôn ngữ', vietnamese: 'Tiếng Việt', english: 'English' },

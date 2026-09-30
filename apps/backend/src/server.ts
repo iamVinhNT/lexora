@@ -92,7 +92,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Fas
   signalEmitter.once('SIGTERM', handleSigterm);
 
   try {
-    const address = await app.listen({ host: options.host ?? '0.0.0.0', port });
+    const address = await app.listen({ host: options.host ?? '127.0.0.1', port });
     app.log.info({ address }, 'Lexora API listening');
     return app;
   } catch (error) {

@@ -13,7 +13,11 @@ import { sessionRoutes } from './routes/session.routes.js';
 import { reviewRoutes } from './routes/review.routes.js';
 import { analyticsRoutes } from './routes/analytics.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
+import { grammarRoutes } from './routes/grammar.routes.js';
 import { registerApiErrorHandler } from './routes/vocabulary.routes.js';
+import type { OutputGrader } from './domain/learning/ai-output-grader.js';
+import type { GrammarCurriculum } from './grammar/content/types.js';
+import type { GrammarTutorProvider } from './services/grammar-tutor.service.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -27,6 +31,11 @@ export interface BuildAppOptions {
   corsOrigins?: string;
   spaRoot?: string;
   spaContentSecurityPolicy?: string;
+  outputGrader?: OutputGrader;
+  /** @internal Test seam for reviewed grammar route fixtures. */
+  grammarCurriculum?: GrammarCurriculum;
+  /** @internal Offline test provider; production uses configured OpenAI. */
+  grammarTutorProvider?: GrammarTutorProvider;
   /** @internal Test seam for failures after database acquisition. */
   afterDbAcquired?: (app: FastifyInstance, db: AppDatabase) => void | Promise<void>;
 }
@@ -52,6 +61,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
     const allowedOrigins = getCorsOrigins(options.corsOrigins ?? process.env.CORS_ORIGINS);
     await app.register(cors, {
+      methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'],
       origin: (origin, callback) => {
         if (!origin) {
           callback(null, true);
@@ -70,7 +80,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
     await app.register(vocabularyRoutes, { db });
     await app.register(contextRoutes, { db });
-    await app.register(sessionRoutes, { db });
+    await app.register(sessionRoutes, { db, outputGrader: options.outputGrader });
+    await app.register(grammarRoutes, { db, curriculum: options.grammarCurriculum, tutorProvider: options.grammarTutorProvider });
     await app.register(reviewRoutes, { db });
     await app.register(analyticsRoutes, { db });
     await app.register(dataRoutes, { db });

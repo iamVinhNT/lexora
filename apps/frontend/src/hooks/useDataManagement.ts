@@ -9,6 +9,7 @@ import { contextKeys } from './useContexts';
 import { reviewKeys } from './useReviewQueue';
 import { sessionKeys } from './useLearningSession';
 import { wordKeys } from './useVocabulary';
+import { grammarKeys } from './useGrammar';
 
 export const dataKeys = { all: ['data-management'] as const };
 
@@ -19,6 +20,7 @@ function invalidateDataCaches(queryClient: ReturnType<typeof useQueryClient>) {
     queryClient.invalidateQueries({ queryKey: reviewKeys.all }),
     queryClient.invalidateQueries({ queryKey: sessionKeys.all }),
     queryClient.invalidateQueries({ queryKey: analyticsKeys.all }),
+    queryClient.invalidateQueries({ queryKey: grammarKeys.all }),
   ]);
 }
 

@@ -10,6 +10,7 @@ const timestampSchema = z.string().datetime({ offset: true }).transform((value) 
 const nonNegativeIntegerSchema = z.number().int().nonnegative();
 const scoreSchema = z.number().int().min(0).max(100);
 const easeFactorSchema = z.number().finite().min(1.3);
+const nonBlankStringSchema = z.string().min(1).refine((value) => value.trim().length > 0, 'Value must not be blank');
 
 const trimmedNameSchema = z
   .string()
@@ -227,6 +228,8 @@ export const learningAttemptRowSchema = z
     result: z.string().min(1),
     performanceScore: scoreSchema,
     feedbackCodes: z.string().nullable(),
+    explanation: z.string().nullable().default(null),
+    suggestion: z.string().nullable().default(null),
     source: z.string().min(1),
     createdAt: timestampSchema,
   })
@@ -270,6 +273,33 @@ export const learningSessionItemRowSchema = z
   })
   .strict();
 
+export const grammarLessonProgressRowSchema = z.object({
+  lessonId: nonBlankStringSchema,
+  revisionId: nonBlankStringSchema,
+  revision: nonBlankStringSchema,
+  lastPosition: nonNegativeIntegerSchema,
+  isComplete: z.boolean(),
+  completedAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+}).strict();
+
+export const grammarExerciseAttemptRowSchema = z.object({
+  id: nonBlankStringSchema,
+  lessonId: nonBlankStringSchema,
+  revisionId: nonBlankStringSchema,
+  revision: nonBlankStringSchema,
+  exerciseId: nonBlankStringSchema,
+  requestId: nonBlankStringSchema,
+  answer: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('choice'), text: z.string().min(1).max(2000).refine((value) => value.trim().length > 0, 'Value must not be blank') }).strict(),
+    z.object({ type: z.literal('text'), text: z.string().min(1).max(2000).refine((value) => value.trim().length > 0, 'Value must not be blank') }).strict(),
+  ]),
+  isCorrect: z.boolean(),
+  feedback: nonBlankStringSchema,
+  createdAt: timestampSchema,
+}).strict();
+
 type BackupDataShape = {
   users: z.infer<typeof userRowSchema>[];
   words: z.infer<typeof wordRowSchema>[];
@@ -286,6 +316,8 @@ type BackupDataShape = {
   learningSessions: z.infer<typeof learningSessionRowSchema>[];
   learningSessionItems: z.infer<typeof learningSessionItemRowSchema>[];
   learningAttempts: z.infer<typeof learningAttemptRowSchema>[];
+  grammarLessonProgress?: z.infer<typeof grammarLessonProgressRowSchema>[];
+  grammarExerciseAttempts?: z.infer<typeof grammarExerciseAttemptRowSchema>[];
 };
 
 function addIssue(ctx: z.RefinementCtx, message: string, path: (string | number)[] = []) {
@@ -395,6 +427,22 @@ function validateBackupRelations(data: BackupDataShape, ctx: z.RefinementCtx): v
   uniqueComposite(data.wordTags.map((row) => `${row.wordId}\u0000${row.tagId}`), 'wordTags');
   uniqueComposite(data.learningProgress.map((row) => row.wordId), 'learningProgress');
   uniqueComposite(data.reviewStates.map((row) => row.wordId), 'reviewStates');
+
+  const grammarLessons = new Map<string, { revisionId: string; revision: string }>();
+  for (const [index, row] of (data.grammarLessonProgress ?? []).entries()) {
+    if (grammarLessons.has(row.lessonId)) addIssue(ctx, `Duplicate lesson id: ${row.lessonId}`, ['grammarLessonProgress', index, 'lessonId']);
+    grammarLessons.set(row.lessonId, { revisionId: row.revisionId, revision: row.revision });
+  }
+  const grammarRequestIds = new Set<string>();
+  for (const [index, row] of (data.grammarExerciseAttempts ?? []).entries()) {
+    const progress = grammarLessons.get(row.lessonId);
+    if (!progress) addIssue(ctx, `Orphan grammar lesson reference: ${row.lessonId}`, ['grammarExerciseAttempts', index, 'lessonId']);
+    else if (progress.revisionId !== row.revisionId || progress.revision !== row.revision) {
+      addIssue(ctx, `Grammar attempt revision does not match lesson progress: ${row.lessonId}`, ['grammarExerciseAttempts', index, 'revisionId']);
+    }
+    if (grammarRequestIds.has(row.requestId)) addIssue(ctx, `Duplicate grammar request id: ${row.requestId}`, ['grammarExerciseAttempts', index, 'requestId']);
+    grammarRequestIds.add(row.requestId);
+  }
 }
 
 const backupTables = {
@@ -419,6 +467,13 @@ export const backupDataSchema = z.object({
   learningAttempts: z.array(learningAttemptRowSchema).default([]),
 }).strict().superRefine(validateBackupRelations);
 
+export const backupV3DataSchema = z.object({
+  ...backupTables,
+  learningAttempts: z.array(learningAttemptRowSchema).default([]),
+  grammarLessonProgress: z.array(grammarLessonProgressRowSchema),
+  grammarExerciseAttempts: z.array(grammarExerciseAttemptRowSchema),
+}).strict().superRefine(validateBackupRelations);
+
 export const backupV1DataSchema = z.object(backupTables).strict().superRefine((data, ctx) => {
   validateBackupRelations({ ...data, learningAttempts: [] }, ctx);
 });
@@ -430,21 +485,27 @@ const backupEnvelope = {
 
 export const backupV1Schema = z.object({ version: z.literal(1), ...backupEnvelope, data: backupV1DataSchema }).strict();
 export const backupV2Schema = z.object({ version: z.literal(2), ...backupEnvelope, data: backupDataSchema }).strict();
-export const backupSchema = z.union([backupV1Schema, backupV2Schema]);
+export const backupV3Schema = z.object({ version: z.literal(3), ...backupEnvelope, data: backupV3DataSchema }).strict();
+export const backupSchema = z.union([backupV1Schema, backupV2Schema, backupV3Schema]);
 
-export type BackupData = z.infer<typeof backupDataSchema>;
-export type BackupPayload = z.infer<typeof backupV2Schema>;
+export type BackupData = z.infer<typeof backupV3DataSchema>;
+export type BackupPayload = z.infer<typeof backupV3Schema>;
 
 const restoreEnvelope = z.object({ confirm: z.literal(true), previewToken: z.string().min(1) }).strict();
 
 export const restoreSchema = z.union([
   z.object({ backup: backupV1Schema, ...restoreEnvelope.shape }).strict(),
   z.object({ backup: backupV2Schema, ...restoreEnvelope.shape }).strict(),
+  z.object({ backup: backupV3Schema, ...restoreEnvelope.shape }).strict(),
   backupV1Schema.extend(restoreEnvelope.shape).strict().transform((val) => {
     const { confirm, previewToken, ...backup } = val;
     return { backup, confirm: true as const, previewToken };
   }),
   backupV2Schema.extend(restoreEnvelope.shape).strict().transform((val) => {
+    const { confirm, previewToken, ...backup } = val;
+    return { backup, confirm: true as const, previewToken };
+  }),
+  backupV3Schema.extend(restoreEnvelope.shape).strict().transform((val) => {
     const { confirm, previewToken, ...backup } = val;
     return { backup, confirm: true as const, previewToken };
   }),

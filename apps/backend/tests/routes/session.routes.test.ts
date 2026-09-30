@@ -15,12 +15,14 @@ const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0
 describe('redesigned learning session contract', () => {
   let db: AppDatabase;
   let app: FastifyInstance;
+  let scoreOutput: (sentence: string) => number;
 
   beforeEach(async () => {
     db = getDb(':memory:');
     app = Fastify();
+    scoreOutput = (sentence) => sentence.length < 12 ? 0 : 70;
     await app.register(vocabularyRoutes, { db });
-    await app.register(sessionRoutes, { db });
+    await app.register(sessionRoutes, { db, outputGrader: { grade: async ({ sentence }) => ({ score: scoreOutput(sentence), explanation: 'Mock grading result.', suggestion: sentence }) } });
     await app.ready();
     for (let i = 1; i <= 6; i++) {
       db.insert(words).values({ id: uuid(i), word: `word${i}`, definition: 'definition', difficulty: 'B1', createdAt: new Date().toISOString() }).run();
@@ -196,28 +198,118 @@ describe('redesigned learning session contract', () => {
     ]) expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload })).statusCode).toBe(200);
     const first = db.select().from(learningAttempts).all();
     expect(first).toHaveLength(2);
-    expect(first.find((attempt) => attempt.type === 'OUTPUT')).toMatchObject({ attemptNumber: 1, result: 'INVALID', performanceScore: 0, feedbackCodes: '["TOO_SHORT"]' });
+    expect(first.find((attempt) => attempt.type === 'OUTPUT')).toMatchObject({ attemptNumber: 1, result: 'INVALID', performanceScore: 0, source: 'AI' });
     const second = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'output-valid-two', wordId, step: 'OUTPUT', answer: `This ${session.items[0].word.word} example works.` } });
     expect(JSON.parse(second.payload).data.cursor).toMatchObject({ step: 'ASSESS', attemptNumber: null });
     expect(db.select().from(learningAttempts).all()).toHaveLength(3);
     expect(db.select().from(learningAttempts).all().find((attempt) => attempt.type === 'OUTPUT' && attempt.attemptNumber === 2)).toMatchObject({ result: 'VALID_AFTER_FEEDBACK', performanceScore: 70 });
   });
 
-  it('completes invalid Output attempt two with zero score and preserves both attempts', async () => {
+  it('completes a below-threshold Output after attempt two and records it as incorrect', async () => {
     const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
     const session = JSON.parse(start.payload).data;
     const wordId = session.items[0].wordId;
+    scoreOutput = () => 42;
     for (const payload of [
       { requestId: 'output-invalid-context', wordId, step: 'CONTEXT' },
       { requestId: 'output-invalid-understand', wordId, step: 'UNDERSTAND' },
       { requestId: 'output-invalid-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
-      { requestId: 'output-invalid-one', wordId, step: 'OUTPUT', answer: 'too short' },
-      { requestId: 'output-invalid-two', wordId, step: 'OUTPUT', answer: 'still too short' },
+      { requestId: 'output-invalid-one', wordId, step: 'OUTPUT', answer: 'This sentence uses the word.' },
+      { requestId: 'output-invalid-two', wordId, step: 'OUTPUT', answer: 'This revised sentence uses the word.' },
     ]) expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload })).statusCode).toBe(200);
     const outputAttempts = db.select().from(learningAttempts).all().filter((attempt) => attempt.type === 'OUTPUT');
     expect(JSON.parse((await app.inject({ method: 'GET', url: `/api/learning/session/${session.id}` })).payload).data.cursor).toMatchObject({ step: 'ASSESS', attemptNumber: null });
     expect(outputAttempts).toHaveLength(2);
-    expect(outputAttempts.map((attempt) => [attempt.attemptNumber, attempt.result, attempt.performanceScore])).toEqual([[1, 'INVALID', 0], [2, 'INVALID', 0]]);
+    expect(outputAttempts.map((attempt) => [attempt.attemptNumber, attempt.result, attempt.performanceScore])).toEqual([[1, 'INVALID', 42], [2, 'INVALID', 42]]);
+    expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'output-invalid-assess', wordId, step: 'ASSESS', assessmentRating: 'GOOD' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/complete` })).statusCode).toBe(200);
+    expect(db.sqlite.prepare("SELECT correct, performance_score AS performanceScore FROM review_logs WHERE word_id = ? AND review_type = 'PRODUCTION'").get(wordId)).toEqual({ correct: 0, performanceScore: 42 });
+  });
+
+  it('uses the inclusive 60-point Output pass threshold', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(start.payload).data;
+    const wordId = session.items[0].wordId;
+    for (const payload of [
+      { requestId: 'threshold-context', wordId, step: 'CONTEXT' },
+      { requestId: 'threshold-understand', wordId, step: 'UNDERSTAND' },
+      { requestId: 'threshold-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
+    ]) await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
+    scoreOutput = () => 59;
+    const below = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'threshold-below', wordId, step: 'OUTPUT', answer: 'This is the first boundary sentence.' } });
+    expect(JSON.parse(below.payload).data.feedback).toMatchObject({ score: 59, outcome: 'INVALID', canRetry: true });
+    scoreOutput = () => 60;
+    const passing = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'threshold-passing', wordId, step: 'OUTPUT', answer: 'This is the revised boundary sentence.' } });
+    expect(JSON.parse(passing.payload).data).toMatchObject({ cursor: { step: 'ASSESS' }, feedback: { score: 60, outcome: 'VALID_AFTER_FEEDBACK', canRetry: false } });
+  });
+
+  it('commits concurrent retries with the same Output request ID only once', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(start.payload).data;
+    const wordId = session.items[0].wordId;
+    for (const payload of [
+      { requestId: 'concurrent-context', wordId, step: 'CONTEXT' },
+      { requestId: 'concurrent-understand', wordId, step: 'UNDERSTAND' },
+      { requestId: 'concurrent-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
+    ]) await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
+    const payload = { requestId: 'concurrent-output', wordId, step: 'OUTPUT', answer: 'This sentence is graded concurrently.' };
+    const responses = await Promise.all([
+      app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload }),
+      app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload }),
+    ]);
+    expect(responses.map((response) => response.statusCode)).toEqual([200, 200]);
+    expect(JSON.parse(responses[1].payload)).toEqual(JSON.parse(responses[0].payload));
+    expect(db.select().from(learningAttempts).all().filter((attempt) => attempt.type === 'OUTPUT')).toHaveLength(1);
+  });
+
+  it('persists AI score and feedback, and returns them on resume', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(start.payload).data;
+    const wordId = session.items[0].wordId;
+    for (const payload of [
+      { requestId: 'ai-context', wordId, step: 'CONTEXT' },
+      { requestId: 'ai-understand', wordId, step: 'UNDERSTAND' },
+      { requestId: 'ai-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
+    ]) await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
+    app.close();
+    app = Fastify();
+    await app.register(vocabularyRoutes, { db });
+    await app.register(sessionRoutes, { db, outputGrader: { grade: async () => ({ score: 84, explanation: 'Correct meaning and grammar.', suggestion: 'She occupies the front room.' }) } });
+    await app.ready();
+    const output = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'ai-output', wordId, step: 'OUTPUT', answer: 'She occupies the room.' } });
+    expect(output.statusCode).toBe(200);
+    expect(JSON.parse(output.payload).data.feedback).toMatchObject({ score: 84, explanation: 'Correct meaning and grammar.', suggestion: 'She occupies the front room.' });
+    expect(db.select().from(learningAttempts).all().find((attempt) => attempt.type === 'OUTPUT')).toMatchObject({ performanceScore: 84, source: 'AI' });
+    const resumed = await app.inject({ method: 'GET', url: `/api/learning/session/${session.id}` });
+    expect(JSON.parse(resumed.payload).data.items[0].feedback).toMatchObject({ score: 84, explanation: 'Correct meaning and grammar.', suggestion: 'She occupies the front room.' });
+  });
+
+  it('does not consume an Output attempt when grading fails and allows same request ID retry', async () => {
+    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
+    const session = JSON.parse(start.payload).data;
+    const wordId = session.items[0].wordId;
+    for (const payload of [
+      { requestId: 'ai-fail-context', wordId, step: 'CONTEXT' },
+      { requestId: 'ai-fail-understand', wordId, step: 'UNDERSTAND' },
+      { requestId: 'ai-fail-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
+    ]) await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
+    app.close();
+    app = Fastify();
+    await app.register(vocabularyRoutes, { db });
+    let calls = 0;
+    await app.register(sessionRoutes, { db, outputGrader: { grade: async () => { if (++calls === 1) throw new Error('private-provider-detail'); return { score: 42, explanation: 'Wrong sense.', suggestion: 'Try another sentence.' }; } } });
+    await app.ready();
+    const payload = { requestId: 'retry-ai-id', wordId, step: 'OUTPUT', answer: 'She occupies the room.' };
+    const failed = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
+    expect(failed.statusCode).toBe(503);
+    expect(JSON.parse(failed.payload).error.code).toBe('SERVICE_UNAVAILABLE');
+    expect(failed.payload).not.toContain('private-provider-detail');
+    expect(db.select().from(learningAttempts).all().filter((attempt) => attempt.type === 'OUTPUT')).toHaveLength(0);
+    expect(JSON.parse((await app.inject({ method: 'GET', url: `/api/learning/session/${session.id}` })).payload).data.cursor).toMatchObject({ step: 'OUTPUT', attemptNumber: 1 });
+    const retried = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
+    expect(retried.statusCode).toBe(200);
+    expect(JSON.parse(retried.payload).data.feedback).toMatchObject({ score: 42, canRetry: true, attemptNumber: 1 });
+    expect(db.select().from(learningAttempts).all().filter((attempt) => attempt.type === 'OUTPUT')).toHaveLength(1);
   });
 
   it('makes repeated and concurrent completion idempotent', async () => {

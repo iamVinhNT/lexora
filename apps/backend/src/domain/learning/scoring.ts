@@ -6,6 +6,8 @@
 import type { VocabularyState } from '../knowledge/types.js';
 import type { ReviewRating } from '../spaced-repetition/types.js';
 
+export const OUTPUT_PASSING_SCORE = 60;
+
 export function scoreAttempt(attemptNumber: 1 | 2, passed: boolean): 0 | 70 | 100 {
   if (!passed) return 0;
   return attemptNumber === 1 ? 100 : 70;

@@ -30,7 +30,7 @@ function isAppError(error: unknown): error is ErrorWithStatus & { statusCode: nu
   const code = (error as ErrorWithStatus).code;
   return (
     Number.isInteger((error as ErrorWithStatus).statusCode) &&
-    (code === 'BAD_REQUEST' || code === 'CONFLICT' || code === 'NOT_FOUND' || code === 'VALIDATION_ERROR')
+    (code === 'BAD_REQUEST' || code === 'CONFLICT' || code === 'NOT_FOUND' || code === 'SERVICE_UNAVAILABLE' || code === 'VALIDATION_ERROR')
   );
 }
 

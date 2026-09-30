@@ -254,12 +254,45 @@ export const learningAttempts = sqliteTable('learning_attempts', {
   result: text('result').notNull(),
   performanceScore: integer('performance_score').notNull(),
   feedbackCodes: text('feedback_codes'),
+  explanation: text('explanation'),
+  suggestion: text('suggestion'),
   source: text('source').notNull().default('LOCAL'),
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
 }, (table) => ({
   itemIdx: index('idx_learning_attempts_session_item_id').on(table.sessionItemId),
   itemTypeIdx: index('idx_learning_attempts_item_type').on(table.sessionItemId, table.type),
   itemTypeAttemptUnique: uniqueIndex('uq_learning_attempts_item_type_attempt').on(table.sessionItemId, table.type, table.attemptNumber),
+}));
+
+// Grammar content remains bundled; only learner state is stored in SQLite.
+export const grammarLessonProgress = sqliteTable('grammar_lesson_progress', {
+  lessonId: text('lesson_id').notNull().primaryKey(),
+  revisionId: text('revision_id').notNull(),
+  revision: text('revision').notNull(),
+  lastPosition: integer('last_position').notNull().default(0),
+  isComplete: integer('is_complete', { mode: 'boolean' }).notNull().default(false),
+  completedAt: text('completed_at'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (table) => ({
+  updatedAtIdx: index('idx_grammar_lesson_progress_updated_at').on(table.updatedAt),
+}));
+
+export const grammarExerciseAttempts = sqliteTable('grammar_exercise_attempts', {
+  id: text('id').notNull().primaryKey(),
+  lessonId: text('lesson_id').notNull().references(() => grammarLessonProgress.lessonId, { onDelete: 'cascade' }),
+  revisionId: text('revision_id').notNull(),
+  revision: text('revision').notNull(),
+  exerciseId: text('exercise_id').notNull(),
+  requestId: text('request_id').notNull().unique(),
+  answer: text('answer').notNull(),
+  isCorrect: integer('is_correct', { mode: 'boolean' }).notNull(),
+  feedback: text('feedback').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => ({
+  lessonIdx: index('idx_grammar_exercise_attempts_lesson_id').on(table.lessonId),
+  exerciseIdx: index('idx_grammar_exercise_attempts_exercise_id').on(table.exerciseId),
+  createdAtIdx: index('idx_grammar_exercise_attempts_created_at').on(table.createdAt),
 }));
 
 // Relations definitions for Drizzle Relational Queries
@@ -404,3 +437,5 @@ export type LearningSession = typeof learningSessions.$inferSelect;
 export type NewLearningSession = typeof learningSessions.$inferInsert;
 export type LearningSessionItem = typeof learningSessionItems.$inferSelect;
 export type NewLearningSessionItem = typeof learningSessionItems.$inferInsert;
+export type GrammarLessonProgress = typeof grammarLessonProgress.$inferSelect;
+export type GrammarExerciseAttempt = typeof grammarExerciseAttempts.$inferSelect;

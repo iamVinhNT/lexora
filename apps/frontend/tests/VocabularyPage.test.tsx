@@ -455,4 +455,119 @@ describe('VocabularyPage', () => {
     await waitFor(() => expect(screen.getByTestId('vocabulary-analytics').textContent).toBe('4'));
     expect(dashboardCalls).toBe(4);
   });
+
+  describe('native vocabulary pronunciation', () => {
+    class MockUtterance {
+      text: string;
+      lang = '';
+      constructor(text: string) {
+        this.text = text;
+      }
+    }
+
+    const mockCancel = vi.fn();
+    const mockSpeak = vi.fn();
+
+    beforeEach(() => {
+      mockCancel.mockClear();
+      mockSpeak.mockClear();
+      vi.stubGlobal('SpeechSynthesisUtterance', MockUtterance);
+      vi.stubGlobal('speechSynthesis', {
+        cancel: mockCancel,
+        speak: mockSpeak,
+      });
+    });
+
+    it('speaks the active detail word via native speech synthesis without auto-speaking', async () => {
+      mockDesktopViewport();
+      const secondWord = { ...word, id: 'word-2', word: 'resilient', definition: 'Able to recover.' };
+      vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/word-1')) return response(word);
+        if (url.endsWith('/word-2')) return response(secondWord);
+        return response({ total: 2, page: 1, limit: 20, items: [word, secondWord] });
+      });
+
+      renderPage();
+      const results = await screen.findByRole('listbox', { name: /vocabulary/i });
+      const firstRow = await within(results).findByRole('option', { name: /reliable/i });
+
+      expect(mockSpeak).not.toHaveBeenCalled();
+
+      const detail = screen.getByRole('region', { name: /word details/i });
+      const speakButton = within(detail).getByRole('button', { name: /pronounce reliable/i });
+      fireEvent.click(speakButton);
+
+      expect(mockCancel).toHaveBeenCalledTimes(1);
+      expect(mockSpeak).toHaveBeenCalledTimes(1);
+      const utterance = mockSpeak.mock.calls[0][0] as MockUtterance;
+      expect(utterance.text).toBe('reliable');
+      expect(utterance.lang).toBe('en-US');
+
+      fireEvent.keyDown(firstRow, { key: 'ArrowDown' });
+      expect(within(detail).getByRole('heading', { name: 'resilient' })).toBeTruthy();
+      expect(mockSpeak).toHaveBeenCalledTimes(1);
+
+      const secondSpeakButton = within(detail).getByRole('button', { name: /pronounce resilient/i });
+      fireEvent.click(secondSpeakButton);
+
+      expect(mockCancel).toHaveBeenCalledTimes(2);
+      expect(mockSpeak).toHaveBeenCalledTimes(2);
+      const secondUtterance = mockSpeak.mock.calls[1][0] as MockUtterance;
+      expect(secondUtterance.text).toBe('resilient');
+      expect(secondUtterance.lang).toBe('en-US');
+    });
+
+    it('speaks current input in add dialog while preventing blank speech and preserving edit dialog', async () => {
+      renderPage();
+      await screen.findByText('reliable');
+
+      fireEvent.click(screen.getByRole('button', { name: /add word/i }));
+      const addDialog = screen.getByRole('dialog', { name: /add word/i });
+
+      const speakBtn = within(addDialog).getByRole('button', { name: /^pronounce$/i }) as HTMLButtonElement;
+      expect(speakBtn.disabled).toBe(true);
+
+      const wordInput = within(addDialog).getByRole('textbox', { name: /^word$/i });
+      fireEvent.change(wordInput, { target: { value: '   ' } });
+      expect(speakBtn.disabled).toBe(true);
+      fireEvent.click(speakBtn);
+      expect(mockSpeak).not.toHaveBeenCalled();
+
+      fireEvent.change(wordInput, { target: { value: 'scalable' } });
+      const activeSpeakBtn = within(addDialog).getByRole('button', { name: /pronounce scalable/i }) as HTMLButtonElement;
+      expect(activeSpeakBtn.disabled).toBe(false);
+
+      fireEvent.click(activeSpeakBtn);
+      expect(mockCancel).toHaveBeenCalledTimes(1);
+      expect(mockSpeak).toHaveBeenCalledTimes(1);
+      const utterance = mockSpeak.mock.calls[0][0] as MockUtterance;
+      expect(utterance.text).toBe('scalable');
+      expect(utterance.lang).toBe('en-US');
+
+      fireEvent.click(within(addDialog).getByRole('button', { name: /cancel/i }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: /add word/i })).toBeNull());
+
+      fireEvent.click(screen.getByRole('button', { name: /details for reliable/i }));
+      const detailDialog = await screen.findByRole('dialog', { name: /reliable/i });
+      fireEvent.click(within(detailDialog).getByRole('button', { name: /edit word/i }));
+      const editDialog = await screen.findByRole('dialog', { name: /edit reliable/i });
+
+      expect(within(editDialog).queryByRole('button', { name: /pronounce/i })).toBeNull();
+    });
+
+    it('does not crash when browser speech synthesis is unavailable', async () => {
+      vi.stubGlobal('speechSynthesis', undefined);
+      vi.stubGlobal('SpeechSynthesisUtterance', undefined);
+
+      renderPage();
+      await screen.findByText('reliable');
+
+      fireEvent.click(screen.getByRole('button', { name: /details for reliable/i }));
+      const detailDialog = await screen.findByRole('dialog', { name: /reliable/i });
+      const speakButton = within(detailDialog).getByRole('button', { name: /pronounce reliable/i });
+
+      expect(() => fireEvent.click(speakButton)).not.toThrow();
+    });
+  });
 });

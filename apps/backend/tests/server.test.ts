@@ -67,6 +67,8 @@ describe('server lifecycle', () => {
     expect(process.listenerCount('SIGINT')).toBe(beforeInt + 1);
     expect(process.listenerCount('SIGTERM')).toBe(beforeTerm + 1);
     expect((await app.inject({ method: 'GET', url: '/api/health' })).statusCode).toBe(200);
+    const address = app.server.address();
+    expect(address && typeof address !== 'string' ? address.address : null).toBe('127.0.0.1');
 
     await app.close();
     expect(process.listenerCount('SIGINT')).toBe(beforeInt);
