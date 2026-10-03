@@ -3,6 +3,14 @@
 
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Reorganized architecture documentation into numbered `docs/architecture/01-*` files.
+- Updated architecture docs to match current backend, frontend, database, desktop, grammar, backup, and brand implementations.
+- Updated module documentation and added Grammar Course module documentation.
+- Added detailed change records under [`changes-log/2026-10-03/`](./changes-log/2026-10-03/).
+
 ## [0.2.0] - 2026-09-30
 
 ### Added
