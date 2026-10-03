@@ -50,4 +50,5 @@ Thumbs.db
 opencode.json
 .agents/**
 AGENTS.md
+graphify-out/
 docs/
