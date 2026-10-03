@@ -7,19 +7,37 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { listWords } from '../src/api/vocabulary.api';
 import { resolveApiBaseUrl } from '../src/api/client';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.resetModules();
+});
 
 describe('resolveApiBaseUrl', () => {
   it('prefers configured deployment URL', () => {
-    expect(resolveApiBaseUrl('https://api.lexora.example', true, 'http://127.0.0.1:45000')).toBe('https://api.lexora.example');
+    expect(resolveApiBaseUrl('https://api.lexora.example', 'http://127.0.0.1:45000')).toBe('https://api.lexora.example');
   });
 
   it('uses current origin in production desktop bundle', () => {
-    expect(resolveApiBaseUrl('', true, 'http://127.0.0.1:45000')).toBe('http://127.0.0.1:45000');
+    expect(resolveApiBaseUrl('', 'http://127.0.0.1:45000')).toBe('http://127.0.0.1:45000');
   });
 
-  it('keeps standalone backend URL in development', () => {
-    expect(resolveApiBaseUrl('', false, 'http://localhost:5173')).toBe('http://localhost:3001');
+  it('sends development API requests to the LAN website, not the visitor loopback', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', '');
+    vi.stubEnv('PROD', false);
+    vi.stubGlobal('window', { location: { origin: 'http://192.168.1.23:5173' } });
+    vi.resetModules();
+    // The API origin is captured at module load; import after setting the visitor origin.
+    const { apiFetch } = await import('../src/api/client');
+    const fetchMock = vi.fn(async (_url: URL) => ({
+      ok: true,
+      json: async () => ({ success: true, data: { status: 'ok' } }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await apiFetch('/api/health');
+
+    expect(fetchMock.mock.calls[0][0].href).toBe('http://192.168.1.23:5173/api/health');
   });
 });
 

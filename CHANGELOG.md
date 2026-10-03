@@ -10,6 +10,7 @@
 - Updated architecture docs to match current backend, frontend, database, desktop, grammar, backup, and brand implementations.
 - Updated module documentation and added Grammar Course module documentation.
 - Added detailed change records under [`changes-log/2026-10-03/`](./changes-log/2026-10-03/).
+- Enabled LAN access to the web development server with same-origin API proxying; backend and desktop remain loopback-only.
 
 ## [0.2.0] - 2026-09-30
 

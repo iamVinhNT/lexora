@@ -25,11 +25,9 @@ type ApiEnvelope<T> =
 
 export function resolveApiBaseUrl(
   configuredUrl = import.meta.env.VITE_API_BASE_URL,
-  isProduction = import.meta.env.PROD,
   currentOrigin = window.location.origin,
 ): string {
-  if (configuredUrl) return configuredUrl;
-  return isProduction ? currentOrigin : 'http://localhost:3001';
+  return configuredUrl || currentOrigin;
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
