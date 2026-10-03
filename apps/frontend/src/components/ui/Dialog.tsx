@@ -129,7 +129,7 @@ export function Dialog({ title, children, onClose, wide = false, fixedContent = 
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`relative z-50 max-h-[90dvh] w-full rounded-2xl border border-border bg-surface shadow-xl ${fixedContent ? 'flex flex-col overflow-hidden p-0' : 'overflow-y-auto p-5 sm:p-6'} ${
+        className={`glass-panel relative z-50 max-h-[90dvh] w-full rounded-2xl shadow-xl ${fixedContent ? 'flex flex-col overflow-hidden p-0' : 'overflow-y-auto p-5 sm:p-6'} ${
           wide ? 'max-w-3xl' : 'max-w-xl'
         }`}
       >

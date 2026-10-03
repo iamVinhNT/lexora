@@ -21,7 +21,7 @@ export function Sidebar() {
       aria-label={t('primary')}
       data-state={isSidebarOpen ? 'expanded' : 'collapsed'}
       data-collapsible="icon"
-      className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-border bg-surface transition-[width] duration-200 ease-in-out lg:flex ${
+      className={`glass-nav fixed inset-y-0 left-0 z-30 hidden flex-col border-r transition-[width] duration-200 ease-in-out lg:flex ${
         isSidebarOpen ? 'w-64' : 'w-16'
       }`}
     >

@@ -72,7 +72,7 @@ export function AppShell() {
   }, [location.pathname]);
 
   return (
-    <div data-sidebar-open={isSidebarOpen} className="min-h-screen bg-background text-foreground">
+    <div data-sidebar-open={isSidebarOpen} className="lexora-app min-h-screen text-foreground">
       <div ref={appBackgroundRef} data-app-background>
         <SkipLink />
         <Sidebar />

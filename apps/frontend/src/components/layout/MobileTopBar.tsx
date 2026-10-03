@@ -9,7 +9,7 @@ import { LanguageSelector } from '../ui/LanguageSelector';
 
 export function MobileTopBar() {
   return (
-    <header className="sticky top-0 z-20 flex min-h-16 items-center justify-between border-b border-border bg-surface px-4 backdrop-blur lg:hidden">
+    <header className="glass-nav sticky top-0 z-20 flex min-h-16 items-center justify-between border-b px-4 lg:hidden">
       <Link
         to="/"
         className="text-lg font-bold tracking-tight text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"

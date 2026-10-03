@@ -22,7 +22,7 @@ export function MobileBottomNav({ moreTriggerRef }: MobileBottomNavProps) {
   return (
     <nav
       aria-label={t('mobile')}
-      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-surface px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+      className="glass-nav fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 px-1 pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       {mobileNavigation.map(({ labelKey, path, icon: Icon }) => (
         <NavLink

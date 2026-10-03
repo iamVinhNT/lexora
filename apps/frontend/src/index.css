@@ -20,6 +20,13 @@
   --color-danger: #b91c1c;
   --color-danger-foreground: #ffffff;
   --color-overlay: rgba(15, 23, 42, 0.4);
+  --app-background: linear-gradient(135deg, rgba(79, 70, 229, 0.06), transparent 38%),
+    radial-gradient(circle at 90% 8%, rgba(245, 158, 11, 0.1), transparent 30%),
+    var(--color-background);
+  --glass-surface: rgba(255, 255, 255, 0.74);
+  --glass-surface-strong: rgba(255, 255, 255, 0.88);
+  --glass-border: rgba(255, 255, 255, 0.72);
+  --glass-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
 }
 
 [data-theme='dark'] {
@@ -36,7 +43,15 @@
   --color-danger: #f87171;
   --color-danger-foreground: #450a0a;
   --color-overlay: rgba(2, 6, 23, 0.65);
+  --app-background: linear-gradient(135deg, rgba(99, 102, 241, 0.14), transparent 42%),
+    radial-gradient(circle at 88% 8%, rgba(245, 158, 11, 0.12), transparent 28%),
+    var(--color-background);
+  --glass-surface: rgba(17, 24, 39, 0.78);
+  --glass-surface-strong: rgba(17, 24, 39, 0.9);
+  --glass-border: rgba(148, 163, 184, 0.22);
+  --glass-shadow: 0 12px 32px rgba(2, 6, 23, 0.28);
 }
+
 
 html {
   background: var(--color-background);
@@ -48,8 +63,33 @@ html {
 body {
   min-width: 320px;
   min-height: 100vh;
-  background: var(--color-background);
+  background: var(--app-background);
   color: var(--color-foreground);
+}
+
+.lexora-app {
+  min-height: 100vh;
+  background: var(--app-background);
+}
+
+.glass-panel,
+.glass-nav {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.glass-nav {
+  background: var(--glass-surface-strong);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(16px)) or (backdrop-filter: blur(16px))) {
+  .glass-panel,
+  .glass-nav {
+    background: var(--color-surface);
+  }
 }
 
 * {
