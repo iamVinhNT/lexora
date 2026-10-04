@@ -69,6 +69,8 @@ jobs:
       RELEASE_VERSION: ${{ needs.validate.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -86,12 +88,31 @@ jobs:
         run: pnpm run desktop:smoke
       - name: Launch packaged AppImage
         shell: bash
-        run: timeout 30s xvfb-run -a "apps/desktop/release/Lexora-${RELEASE_VERSION}-x86_64.AppImage" --smoke-test
+        env:
+          DATABASE_PATH: ':memory:'
+        run: |
+          if timeout 30s xvfb-run -a "apps/desktop/release/Lexora-${RELEASE_VERSION}-x86_64.AppImage" \
+            --user-data-dir="$RUNNER_TEMP/lexora-appimage-smoke" --smoke-test; then
+            exit 0
+          else
+            status=$?
+            cat "$RUNNER_TEMP/lexora-appimage-smoke/logs/desktop.log" || true
+            exit "$status"
+          fi
       - name: Install and launch Debian package
         shell: bash
+        env:
+          DATABASE_PATH: ':memory:'
         run: |
           sudo apt-get install -y "./apps/desktop/release/lexora_${RELEASE_VERSION}_amd64.deb"
-          timeout 30s xvfb-run -a /opt/Lexora/lexora --smoke-test
+          if timeout 30s xvfb-run -a /opt/Lexora/lexora \
+            --user-data-dir="$RUNNER_TEMP/lexora-deb-smoke" --smoke-test; then
+            exit 0
+          else
+            status=$?
+            cat "$RUNNER_TEMP/lexora-deb-smoke/logs/desktop.log" || true
+            exit "$status"
+          fi
       - name: Collect Linux release assets
         shell: bash
         run: |

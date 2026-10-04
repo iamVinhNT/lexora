@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Desktop release smoke checks use separate AppImage/Debian profiles and in-memory databases, and report startup logs on failure. Manual package verification builds the requested immutable version tag.
+
 ## [0.3.0] - 2026-10-04
 
 ### Added
