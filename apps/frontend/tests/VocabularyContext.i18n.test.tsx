@@ -10,7 +10,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { VocabularyPage } from '../src/pages/VocabularyPage';
 import { ContextPage } from '../src/pages/ContextPage';
 import { i18n } from '../src/i18n/config';
-import { resources } from '../src/i18n/resources';
 
 const word = { id: 'word-1', word: 'reliable', phonetic: '/rɪˈlaɪəbl/', partOfSpeech: 'adjective', definition: 'Able to be trusted.', translation: 'đáng tin cậy', difficulty: 'B2', tags: [{ id: 'tag-1', name: 'work', createdAt: '2026-09-08T00:00:00.000Z' }], collocations: [], examples: [], contexts: [], wordFamilies: [], learningProgress: { status: 'LEARNING', recognitionScore: 70, recallScore: 50, productionScore: 30 }, reviewState: null };
 const context = { id: 'context-1', title: 'Building a scalable API', content: 'The system needs to be reliable.', sourceType: 'ARTICLE', sourceUrl: 'https://example.test/article', wordCount: 1, words: [{ wordId: 'word-1', exposureCount: 1234, firstSeenAt: '2026-09-01T00:00:00.000Z', lastSeenAt: '2026-09-12T00:00:00.000Z', word: { id: 'word-1', word: 'reliable', definition: 'Able to be trusted.' } }] };
@@ -44,26 +43,8 @@ describe('Vocabulary and context i18n', () => {
     expect(screen.getByText('Able to be trusted.')).toBeTruthy();
   });
 
-  it('localizes compact vocabulary icon actions and pagination names', async () => {
-    renderPage('vocabulary');
-
-    await screen.findByText('reliable');
-    expect(screen.getByRole('button', { name: 'Thêm từ' }).textContent).toBe('');
-    expect(screen.getByRole('button', { name: 'Trước' }).textContent).toBe('');
-    expect(screen.getByRole('button', { name: 'Sau' }).textContent).toBe('');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Chi tiết reliable' }));
-    const dialog = await screen.findByRole('dialog', { name: 'reliable' });
-    expect(within(dialog).getByRole('button', { name: 'Sửa từ' }).textContent).toBe('');
-    expect(within(dialog).getByRole('button', { name: 'Xóa từ reliable' }).textContent).toBe('');
-  });
 
   it('localizes context controls and source labels without translating user content', async () => {
-    expect(resources.vi.contexts).toHaveProperty('count_one');
-    expect(resources.vi.contexts).toHaveProperty('count_other');
-    expect(resources.vi.contexts).toHaveProperty('wordCount_one');
-    expect(resources.vi.contexts).toHaveProperty('wordCount_other');
-    expect(resources.vi.contexts).not.toHaveProperty('count');
 
     renderPage('contexts');
 

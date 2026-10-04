@@ -61,29 +61,30 @@ type ResultViewProps = VocabularyViewProps;
 
 function CardView({ isLoading, error, words, onRetry, onDetails }: ResultViewProps) {
   const { t } = useTranslation('vocabulary');
-  if (isLoading) return <VocabularyList isLoading={isLoading} error={error} words={words} onRetry={onRetry} onDetails={onDetails} />;
-  if (error) return <VocabularyList isLoading={isLoading} error={error} words={words} onRetry={onRetry} onDetails={onDetails} />;
-  if (words.length === 0) return <VocabularyList isLoading={isLoading} error={error} words={words} onRetry={onRetry} onDetails={onDetails} />;
+  if (isLoading || error || words.length === 0) return <VocabularyList isLoading={isLoading} error={error} words={words} onRetry={onRetry} onDetails={onDetails} />;
 
   return (
-    <section aria-label={t('cardView')} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <section aria-label={t('cardView')} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {words.map((word) => (
-        <Card key={word.id} className="flex h-full flex-col gap-4 p-5">
-          <article aria-label={word.word} className="flex h-full flex-col gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-semibold text-foreground">{word.word}</h2>
-                {word.partOfSpeech && <span className="text-sm text-muted">{word.partOfSpeech}</span>}
-                {word.difficulty && <span className="rounded-full bg-primary-subtle px-2 py-1 text-xs font-semibold text-primary">{word.difficulty}</span>}
+        <Card key={word.id} className="flex h-full flex-col gap-3 p-4">
+          <article aria-label={word.word} className="flex h-full flex-col gap-3">
+            <div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="truncate text-lg font-semibold text-foreground">{word.word}</h2>
+                  <p className="mt-1 break-words text-xs text-muted">{[word.partOfSpeech, word.difficulty].filter(Boolean).join(' · ')}</p>
+                </div>
+                <Button type="button" variant="ghost" aria-label={t('detailsFor', { word: word.word })} className="min-h-11 min-w-11 shrink-0 px-3" onClick={() => onDetails(word)}><Eye aria-hidden="true" size={18} /></Button>
               </div>
-              <p className="mt-2 text-sm leading-6 text-muted">{word.definition}</p>
-              <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
-                {word.tags.map((tag) => <span key={tag.id} className="rounded-full bg-secondary px-2 py-1">{tag.name}</span>)}
-                {word.learningProgress && <span className="rounded-full bg-secondary px-2 py-1">{t(`states.${word.learningProgress.status}`, { defaultValue: word.learningProgress.status })}</span>}
-                {word.learningProgress && <span className="rounded-full bg-secondary px-2 py-1">{t('scoreSummary', { recognition: formatPercent(word.learningProgress.recognitionScore), recall: formatPercent(word.learningProgress.recallScore), production: formatPercent(word.learningProgress.productionScore) })}</span>}
-              </div>
+              <p className="mt-2 text-sm leading-6 text-foreground">{word.definition}</p>
             </div>
-            <Button type="button" variant="secondary" aria-label={t('detailsFor', { word: word.word })} className="min-w-11 px-3" onClick={() => onDetails(word)}><Eye aria-hidden="true" size={18} /></Button>
+            {word.learningProgress ? (
+              <div className="grid grid-cols-3 gap-1.5 text-center text-xs">
+                <div className="rounded-lg bg-secondary px-1.5 py-2"><div className="font-semibold text-foreground">{formatPercent(word.learningProgress.recognitionScore)}</div><div className="mt-0.5 text-muted">{t('scores.recognition')}</div></div>
+                <div className="rounded-lg bg-secondary px-1.5 py-2"><div className="font-semibold text-foreground">{formatPercent(word.learningProgress.recallScore)}</div><div className="mt-0.5 text-muted">{t('scores.recall')}</div></div>
+                <div className="rounded-lg border border-accent bg-accent/10 px-1.5 py-2"><div className="font-semibold text-foreground">{formatPercent(word.learningProgress.productionScore)}</div><div className="mt-0.5 text-foreground">{t('scores.production')}</div></div>
+              </div>
+            ) : <p className="text-xs text-muted">{t('noProgress')}</p>}
           </article>
         </Card>
       ))}
@@ -97,7 +98,7 @@ function TableView({ isLoading, error, words, onRetry, onDetails }: ResultViewPr
 
   return (
     <Card className="overflow-hidden" aria-label={t('tableView')}>
-      <div className="overflow-x-auto">
+      <div role="region" aria-label={t('vocabularyTable')} tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary">
         <table className="w-full min-w-[40rem] text-left text-sm" aria-label={t('vocabularyTable')}>
           <caption className="sr-only">{t('vocabularyTable')}</caption>
           <thead className="border-b border-border text-muted">

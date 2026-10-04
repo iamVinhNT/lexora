@@ -51,7 +51,7 @@ export function LearningStepper({ currentStep, cursor }: LearningStepperProps) {
         </div>
       </div>
 
-      <ol aria-label={t('learningProgressAria')} className="grid grid-cols-5 gap-1.5 sm:gap-2">
+      <ol aria-label={t('learningProgressAria')} className="grid grid-cols-5 gap-1 sm:gap-2">
         {STEP_ORDER.map((step, index) => {
           const isCompleted = index < currentIndex;
           const isActive = index === currentIndex;
@@ -72,7 +72,7 @@ export function LearningStepper({ currentStep, cursor }: LearningStepperProps) {
                 }`}
               />
               <span
-                className={`truncate text-center text-[11px] sm:text-xs transition-colors ${
+                className={`text-center text-[10px] sm:text-xs leading-tight transition-colors break-words ${
                   isActive
                     ? 'font-semibold text-primary'
                     : isCompleted

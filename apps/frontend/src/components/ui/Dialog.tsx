@@ -109,7 +109,7 @@ export function Dialog({ title, children, onClose, wide = false, fixedContent = 
   return createPortal(
     <div
       ref={portalRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+      className={`fixed inset-0 z-50 flex items-end justify-center sm:items-center ${fixedContent ? 'p-0 sm:p-6' : 'p-2 sm:p-6'}`}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
@@ -129,12 +129,12 @@ export function Dialog({ title, children, onClose, wide = false, fixedContent = 
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`glass-panel relative z-50 max-h-[90dvh] w-full rounded-2xl shadow-xl ${fixedContent ? 'flex flex-col overflow-hidden p-0' : 'overflow-y-auto p-5 sm:p-6'} ${
+        className={`glass-panel relative z-50 w-full min-w-0 rounded-2xl shadow-xl ${fixedContent ? 'flex h-dvh max-h-dvh flex-col overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[90dvh] sm:rounded-2xl' : 'max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain p-4 sm:max-h-[90dvh] sm:p-6'} ${
           wide ? 'max-w-3xl' : 'max-w-xl'
         }`}
       >
-        <div className={`flex shrink-0 items-start justify-between gap-4 ${fixedContent ? 'border-b border-border px-5 py-3 sm:px-7' : ''}`}>
-          <h2 id={titleId} className="text-xl font-semibold text-foreground">
+        <div className={`flex shrink-0 items-start justify-between gap-3 ${fixedContent ? 'border-b border-border px-4 py-3 sm:px-7' : 'sticky top-0 z-10 bg-surface pb-3'}`}>
+          <h2 id={titleId} className="min-w-0 break-words text-lg font-semibold text-foreground sm:text-xl">
             {title}
           </h2>
           <button
@@ -142,12 +142,12 @@ export function Dialog({ title, children, onClose, wide = false, fixedContent = 
             type="button"
             aria-label={t('dialog.close', { title })}
             onClick={onClose}
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-muted hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <X aria-hidden="true" size={20} />
           </button>
         </div>
-        <div className={fixedContent ? 'min-h-0 flex-1 overflow-hidden' : 'mt-5'}>{children}</div>
+        <div className={fixedContent ? 'min-h-0 flex flex-1 overflow-hidden' : 'mt-5'}>{children}</div>
       </div>
     </div>,
     document.body,

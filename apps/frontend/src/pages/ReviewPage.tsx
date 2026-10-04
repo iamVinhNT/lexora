@@ -56,7 +56,13 @@ export function ReviewPage() {
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      if (!item || !isRevealed || submitMutation.isPending || (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable))) return;
+      if (!item || submitMutation.isPending || (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable))) return;
+      if (event.key === 'Enter' && !isRevealed) {
+        event.preventDefault();
+        setRevealedWordId(item.wordId);
+        return;
+      }
+      if (!isRevealed) return;
       const rating = ({ '1': 'AGAIN', '2': 'HARD', '3': 'GOOD', '4': 'EASY' } as Record<string, ReviewRating>)[event.key];
       if (!rating) return;
       event.preventDefault();
@@ -70,7 +76,7 @@ export function ReviewPage() {
   const showQueueCompletion = !taskId || studyTask.data?.isComplete === true;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       <PageHeader title={t('title')} subtitle={t('subtitle')} />
       <div aria-live="polite" className="sr-only">
         {queue.isLoading
@@ -97,16 +103,16 @@ export function ReviewPage() {
       {lastReview && <p role="status" aria-live="polite" className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-primary-subtle px-4 py-3 text-sm text-foreground">{t('saved', { rating: t(`rating.${lastReview.rating}`), interval: formatIntervalDays(lastReview.interval) })}</p>}
 
       {queue.isLoading && <LoadingState />}
-       {queue.isError && <ErrorState message={getLocalizedErrorMessage(queue.error, tCommon)} onRetry={() => void queue.refetch()} />}
+      {queue.isError && <ErrorState message={getLocalizedErrorMessage(queue.error, tCommon)} onRetry={() => void queue.refetch()} />}
       {!queue.isLoading && !queue.isError && item && <>
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
-           <span>{t('dueToday', { count: dueCount, formattedCount: formatNumber(dueCount) })}</span>
-           <span>{t('recallMode')}</span>
+        <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-2 sm:gap-4 rounded-xl border border-border bg-surface px-3.5 py-2.5 sm:px-4 sm:py-3 text-xs sm:text-sm text-muted">
+          <span>{t('dueToday', { count: dueCount, formattedCount: formatNumber(dueCount) })}</span>
+          <span>{t('recallMode')}</span>
         </div>
         {studyTask.data?.isComplete && taskId && <p role="status" className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">{tCalendar('warnings.backlogSeparate')}</p>}
         <ReviewCard item={item} isRevealed={isRevealed} isPending={submitMutation.isPending} onReveal={() => setRevealedWordId(item.wordId)} onRate={(rating) => void submitRating(rating)} />
-         {submitMutation.isError && <p role="alert" className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-secondary px-4 py-3 text-sm text-foreground">{getLocalizedErrorMessage(submitMutation.error, tCommon)}</p>}
-         {submitMutation.isPending && <p className="mx-auto w-full max-w-3xl text-sm text-muted">{t('saving')}</p>}
+        {submitMutation.isError && <p role="alert" className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-secondary px-4 py-3 text-sm text-foreground">{getLocalizedErrorMessage(submitMutation.error, tCommon)}</p>}
+        {submitMutation.isPending && <p className="mx-auto w-full max-w-3xl text-sm text-muted">{t('saving')}</p>}
       </>}
       {!queue.isLoading && !queue.isError && !item && (
         showQueueCompletion
@@ -146,10 +152,17 @@ function QuotaNotReachedState() {
 
 function LoadingState() {
   const { t } = useTranslation('review');
-  return <div role="status" className="mx-auto w-full max-w-3xl rounded-2xl border border-border bg-surface p-8 text-center text-sm text-muted">{t('loading')}</div>;
+  return <div role="status" className="mx-auto w-full max-w-3xl rounded-2xl border border-border bg-surface p-6 sm:p-8 text-center text-sm text-muted">{t('loading')}</div>;
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   const { t } = useTranslation('review');
-  return <div role="alert" className="mx-auto w-full max-w-3xl space-y-4 rounded-2xl border border-border bg-secondary p-6 text-foreground"><p>{message}</p><button type="button" onClick={onRetry} className="min-h-11 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('retry')}</button></div>;
+  return (
+    <div role="alert" className="mx-auto w-full max-w-3xl space-y-4 rounded-2xl border border-border bg-secondary p-4 sm:p-6 text-foreground">
+      <p>{message}</p>
+      <button type="button" onClick={onRetry} className="min-h-11 w-full sm:w-auto rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+        {t('retry')}
+      </button>
+    </div>
+  );
 }

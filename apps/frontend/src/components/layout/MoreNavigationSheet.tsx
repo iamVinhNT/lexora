@@ -46,6 +46,8 @@ export function MoreNavigationSheet({ triggerRef }: MoreNavigationSheetProps) {
   useEffect(() => {
     if (!isMoreOpen) return;
 
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     closeButtonRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeAndReturnFocus();
@@ -79,7 +81,10 @@ export function MoreNavigationSheet({ triggerRef }: MoreNavigationSheetProps) {
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+    };
   }, [isMoreOpen]);
 
   useEffect(() => {
@@ -116,7 +121,7 @@ export function MoreNavigationSheet({ triggerRef }: MoreNavigationSheetProps) {
   }, [isMoreOpen, locationSignature, triggerRef]);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia?.('(min-width: 1024px)');
+    const mediaQuery = window.matchMedia?.('(min-width: 768px)');
     if (!mediaQuery) return;
 
     const handleChange = (event: MediaQueryListEvent) => {
@@ -143,7 +148,7 @@ export function MoreNavigationSheet({ triggerRef }: MoreNavigationSheetProps) {
   if (!isMoreOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 lg:hidden">
+    <div className="fixed inset-0 z-50 md:hidden">
       <button
         type="button"
          aria-label={t('closeBackdrop')}
@@ -158,7 +163,7 @@ export function MoreNavigationSheet({ triggerRef }: MoreNavigationSheetProps) {
         aria-modal="true"
         aria-labelledby="more-navigation-title"
         tabIndex={-1}
-        className="absolute inset-x-0 bottom-0 rounded-t-2xl border border-border bg-surface p-5 shadow-lg"
+        className="absolute inset-x-0 bottom-0 max-h-[calc(100dvh-env(safe-area-inset-top))] overflow-y-auto overscroll-contain rounded-t-2xl border border-border bg-surface px-4 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-lg sm:mx-auto sm:max-w-lg sm:px-6"
       >
         <div className="flex items-center justify-between">
           <h2 id="more-navigation-title" className="text-lg font-semibold text-foreground">
@@ -174,7 +179,7 @@ export function MoreNavigationSheet({ triggerRef }: MoreNavigationSheetProps) {
             <X aria-hidden="true" size={20} />
           </button>
         </div>
-        <nav aria-label={t('moreLinks')} className="mt-4 grid gap-1">
+        <nav aria-label={t('moreLinks')} className="mt-4 grid grid-cols-2 gap-2">
           {moreNavigation.map(({ labelKey, path, icon: Icon }) => (
             <NavLink
               key={path}
@@ -184,7 +189,7 @@ export function MoreNavigationSheet({ triggerRef }: MoreNavigationSheetProps) {
                 closeMore();
               }}
               className={({ isActive }) =>
-                `flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                `flex min-h-16 min-w-0 flex-col items-start justify-center gap-2 rounded-xl border border-border px-3 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   isActive ? 'bg-primary-subtle text-primary' : 'text-muted hover:bg-secondary hover:text-foreground'
                 }`
               }

@@ -75,9 +75,9 @@ export function ImportCard({ format, onFormatChange, importName, onFile, desktop
   const importButtonLabel = tCommon('actions.importItems', { count: preview?.validCount ?? 0 });
 
   return (
-    <Card className="space-y-5 p-5">
+    <Card className="min-w-0 space-y-5 p-4 sm:p-5">
       <CardHeading icon={<FileUp aria-hidden="true" size={20} />} title={t('importVocabulary')} description={t('importDescription')} />
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="import-format" className="text-sm font-semibold text-foreground">{t('importFormat')}</label>
           <Select value={format} onValueChange={(value) => onFormatChange(value as ImportFormat)}>
@@ -90,13 +90,13 @@ export function ImportCard({ format, onFormatChange, importName, onFile, desktop
           {desktopFiles ? (
             <Button id="import-file" type="button" variant="secondary" className="mt-2" onClick={onSelect}>{t('importFile')}</Button>
           ) : (
-            <input id="import-file" type="file" accept=".txt,.csv,.json" onChange={(event) => onFile(event.target.files?.[0])} className={`${inputClass} mt-2 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2`} />
+            <input id="import-file" type="file" accept=".txt,.csv,.json" onChange={(event) => onFile(event.target.files?.[0])} className={`${inputClass} mt-2 min-w-0 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2`} />
           )}
         </div>
       </div>
-      {importName && <p className="text-sm text-muted">{t('selected', { name: importName })}</p>}
+      {importName && <p className="break-words text-sm text-muted">{t('selected', { name: importName })}</p>}
       {loading && <p role="status" className="text-sm text-muted">{t('preparing')}</p>}
-      {preview && <div className="space-y-4 rounded-xl border border-border bg-secondary p-4">
+      {preview && <div className="min-w-0 space-y-4 rounded-xl border border-border bg-secondary p-3 sm:p-4">
         <h4 className="font-semibold text-foreground">{t('importPreview')}</h4>
         <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <Summary label={t('valid')} value={preview.validCount} />
@@ -121,7 +121,7 @@ export type ExportCardProps = { onExport: () => void; onBackup: () => void; expo
 export function ExportCard({ onExport, onBackup, exportPending, backupPending, error }: ExportCardProps) {
   const { t } = useTranslation('settings');
   const { t: tCommon } = useTranslation('common');
-  return <Card className="space-y-5 p-5">
+  return <Card className="min-w-0 space-y-5 p-4 sm:p-5">
     <CardHeading icon={<Download aria-hidden="true" size={20} />} title={t('exportBackup')} description={t('exportDescription')} />
     <div className="flex flex-col gap-3 sm:flex-row">
        <Button type="button" variant="secondary" onClick={onExport} disabled={exportPending}>{exportPending ? t('exporting') : tCommon('actions.exportVocabulary')}</Button>
@@ -137,16 +137,16 @@ export function RestoreCard({ onFile, desktopFiles, onSelect, preview, loading, 
   const { t } = useTranslation('settings');
   const { t: tCommon } = useTranslation('common');
   const { t: tCalendar } = useTranslation('calendar');
-  return <Card className="space-y-5 p-5">
+  return <Card className="min-w-0 space-y-5 p-4 sm:p-5">
     <CardHeading icon={<FileUp aria-hidden="true" size={20} />} title={t('restore')} description={t('restoreDescription')} />
     <label htmlFor="restore-file" className="text-sm font-semibold text-foreground">{t('restoreFile')}</label>
     {desktopFiles ? (
       <Button id="restore-file" type="button" variant="secondary" onClick={onSelect}>{t('restoreFile')}</Button>
     ) : (
-      <input id="restore-file" type="file" accept=".json,application/json" onChange={(event) => onFile(event.target.files?.[0])} className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2`} />
+      <input id="restore-file" type="file" accept=".json,application/json" onChange={(event) => onFile(event.target.files?.[0])} className={`${inputClass} min-w-0 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2`} />
     )}
      {loading && <p role="status" className="text-sm text-muted">{tCommon('status.preparingRestore')}</p>}
-    {preview && <div className="space-y-3 rounded-xl border border-border bg-secondary p-4">
+    {preview && <div className="min-w-0 space-y-3 break-words rounded-xl border border-border bg-secondary p-3 sm:p-4">
       <h4 className="font-semibold text-foreground">{t('restorePreview')}</h4>
       <p className="text-sm text-foreground">{t('records', { count: preview.totalRecords, application: preview.application, version: preview.version })}</p>
       <p className="text-sm text-foreground">{preview.conflictSummary?.willOverwrite ? t('overwrite', { count: preview.conflictSummary.existingRecordsCount }) : t('noOverwrite')}</p>
@@ -172,9 +172,9 @@ export function RestoreCard({ onFile, desktopFiles, onSelect, preview, loading, 
 export function DangerCard({ onProgress, onAll }: { onProgress: () => void; onAll: () => void }) {
   const { t } = useTranslation('settings');
   const { t: tCalendar } = useTranslation('calendar');
-  return <Card className="space-y-5 border-danger p-5">
+  return <Card className="min-w-0 space-y-5 border-danger p-4 sm:p-5">
     <CardHeading icon={<ShieldAlert aria-hidden="true" className="text-danger" size={20} />} title={t('dangerZone')} description={t('dangerDescription')} />
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid min-w-0 gap-3 sm:grid-cols-2">
       <div><p className="font-semibold text-foreground">{t('resetProgress')}</p><p className="mt-1 text-sm text-muted">{t('resetDescription')} {tCalendar('backup.resetProgressDescription')}</p><Button type="button" variant="danger" className="mt-4" onClick={onProgress}>{t('resetProgress')}</Button></div>
       <div><p className="font-semibold text-foreground">{t('deleteAll')}</p><p className="mt-1 text-sm text-muted">{t('deleteAllDescription')} {tCalendar('backup.resetAllDescription')}</p><Button type="button" variant="danger" className="mt-4" onClick={onAll}>{t('deleteAll')}</Button></div>
     </div>
@@ -182,7 +182,7 @@ export function DangerCard({ onProgress, onAll }: { onProgress: () => void; onAl
 }
 
 export function CardHeading({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
-  return <div className="flex items-start gap-3"><span className="mt-1 text-primary">{icon}</span><div><h3 className="font-semibold text-foreground">{title}</h3><p className="mt-1 text-sm text-muted">{description}</p></div></div>;
+  return <div className="flex min-w-0 items-start gap-3"><span className="mt-1 shrink-0 text-primary">{icon}</span><div className="min-w-0 break-words"><h3 className="font-semibold text-foreground">{title}</h3><p className="mt-1 text-sm text-muted">{description}</p></div></div>;
 }
 
 export function Summary({ label, value }: { label: string; value: number }) {

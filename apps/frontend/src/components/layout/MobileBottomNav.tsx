@@ -22,7 +22,7 @@ export function MobileBottomNav({ moreTriggerRef }: MobileBottomNavProps) {
   return (
     <nav
       aria-label={t('mobile')}
-      className="glass-nav fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 px-1 pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="glass-nav fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 gap-1 border-t border-border px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:hidden"
     >
       {mobileNavigation.map(({ labelKey, path, icon: Icon }) => (
         <NavLink
@@ -30,13 +30,13 @@ export function MobileBottomNav({ moreTriggerRef }: MobileBottomNavProps) {
           to={path}
           end={path === '/'}
           className={({ isActive }) =>
-            `flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
-              isActive ? 'text-primary' : 'text-muted hover:text-foreground'
+            `flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-medium leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset sm:text-[11px] ${
+              isActive ? 'bg-primary-subtle text-primary' : 'text-muted hover:bg-secondary hover:text-foreground'
             }`
           }
         >
-          <Icon aria-hidden="true" size={19} strokeWidth={1.8} />
-          {t(labelKey)}
+          <Icon aria-hidden="true" size={20} strokeWidth={1.8} className="shrink-0" />
+          <span className="w-full whitespace-nowrap text-center">{t(labelKey)}</span>
         </NavLink>
       ))}
       <button
@@ -46,7 +46,7 @@ export function MobileBottomNav({ moreTriggerRef }: MobileBottomNavProps) {
         aria-expanded={isMoreOpen}
         aria-controls="more-navigation"
         onClick={openMore}
-        className="flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-medium text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+        className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-medium leading-4 transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset sm:text-[11px] ${isMoreOpen ? 'bg-primary-subtle text-primary' : 'text-muted'}`}
       >
         <MoreHorizontal aria-hidden="true" size={19} strokeWidth={1.8} />
         {t('more')}

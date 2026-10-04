@@ -276,7 +276,7 @@ export function DataManagementPanel() {
     onResetProgress: () => { setProgressPhrase(''); setProgressOpen(true); }, onDeleteAll: () => { setAllPhrase(''); setAllOpen(true); },
   };
 
-  return <section aria-labelledby="data-title" className="space-y-4">
+  return <section aria-labelledby="data-title" className="min-w-0 space-y-4">
     <div><h2 id="data-title" className="text-xl font-semibold text-foreground">{t('dataManagement')}</h2><p className="mt-1 text-sm text-muted">{t('dataDescription')}</p></div>
     <div aria-live="polite" className="sr-only">{status}</div>
     {status && <p role="status" className="rounded-xl border border-border bg-primary-subtle px-4 py-3 text-sm text-foreground">{status}</p>}

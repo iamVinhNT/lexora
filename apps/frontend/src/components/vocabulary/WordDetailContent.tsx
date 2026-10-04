@@ -15,18 +15,19 @@ type WordDetailContentProps = {
   onEdit: () => void;
   onDelete: () => void;
   fixedActions?: boolean;
+  hideHeading?: boolean;
 };
 
-export function WordDetailContent({ word, onEdit, onDelete, fixedActions = true }: WordDetailContentProps) {
+export function WordDetailContent({ word, onEdit, onDelete, fixedActions = true, hideHeading = false }: WordDetailContentProps) {
   const { t } = useTranslation('vocabulary');
   const { t: tCommon } = useTranslation('common');
   const progress = word.learningProgress;
 
   return (
-    <div className={fixedActions ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'space-y-6'}>
+    <div className={`min-w-0 ${fixedActions ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'space-y-6'}`}>
       <div className={fixedActions ? 'shrink-0 border-b border-border px-5 py-4 sm:px-7' : undefined}>
-        <div className="flex items-center gap-3">
-          <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{word.word}</h2>
+        <div className={`flex items-center ${hideHeading ? 'justify-end' : 'gap-3'}`}>
+          {!hideHeading && <h2 className="min-w-0 break-words text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{word.word}</h2>}
           <Button
             type="button"
             variant="ghost"
@@ -37,9 +38,9 @@ export function WordDetailContent({ word, onEdit, onDelete, fixedActions = true 
             <Volume2 aria-hidden="true" size={20} />
           </Button>
         </div>
-        <p className="mt-2 text-lg text-foreground">{word.definition}</p>
-        {word.translation && <p className="mt-1 text-sm text-muted">{word.translation}</p>}
-        <p className="mt-2 text-sm text-muted">{[word.partOfSpeech, word.phonetic, word.difficulty].filter(Boolean).join(' · ')}</p>
+        <p className="mt-2 break-words text-lg text-foreground">{word.definition}</p>
+        {word.translation && <p className="mt-1 break-words text-sm text-muted">{word.translation}</p>}
+        <p className="mt-2 break-words text-sm text-muted">{[word.partOfSpeech, word.phonetic, word.difficulty].filter(Boolean).join(' · ')}</p>
       </div>
       <div data-testid={fixedActions ? 'word-detail-scroll-area' : undefined} className={fixedActions ? 'min-h-0 flex-1 overflow-y-auto space-y-6 px-5 py-5 sm:px-7 pr-1' : 'space-y-6'}>
         <DetailList title={t('wordFamilies')} items={word.wordFamilies.map((item) => `${item.word.word} (${item.relationship})`)} empty={t('noWordFamilies')} />
@@ -61,7 +62,7 @@ export function WordDetailContent({ word, onEdit, onDelete, fixedActions = true 
         {word.reviewState ? <p className="mt-2 text-sm text-muted">{t('due', { date: formatDate(word.reviewState.dueAt), repetitions: word.reviewState.repetitions, lapses: word.reviewState.lapses })}</p> : <p className="mt-2 text-sm text-muted">{t('noReviewState')}</p>}
       </section>
       </div>
-      <div className={`${fixedActions ? 'shrink-0 border-t border-border bg-surface p-3 pt-4 sm:px-7' : ''} flex flex-col-reverse gap-3 sm:flex-row sm:justify-end`}>
+      <div className={`${fixedActions ? 'shrink-0 border-t border-border bg-surface p-3 pt-4 sm:px-7' : ''} flex flex-row justify-end gap-3`}>
         <Button type="button" variant="secondary" aria-label={tCommon('actions.editWord')} className="min-h-11 min-w-11 px-3" onClick={onEdit}><Pencil aria-hidden="true" size={18} /></Button>
         <Button type="button" variant="ghost" aria-label={`${tCommon('actions.deleteWord')} ${word.word}`} className="min-h-11 min-w-11 px-3" onClick={onDelete}><Trash2 aria-hidden="true" size={18} /></Button>
       </div>
@@ -70,7 +71,7 @@ export function WordDetailContent({ word, onEdit, onDelete, fixedActions = true 
 }
 
 function DetailList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
-  return <section><h3 className="font-semibold text-foreground">{title}</h3>{items.length ? <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">{items.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="mt-2 text-sm text-muted">{empty}</p>}</section>;
+  return <section><h3 className="font-semibold text-foreground">{title}</h3>{items.length ? <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">{items.map((item) => <li className="break-words" key={item}>{item}</li>)}</ul> : <p className="mt-2 text-sm text-muted">{empty}</p>}</section>;
 }
 
 function Score({ label, value, emphasized = false }: { label: string; value: number; emphasized?: boolean }) {

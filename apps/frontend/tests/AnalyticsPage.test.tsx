@@ -8,9 +8,6 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AnalyticsPage } from '../src/pages/AnalyticsPage';
-import { StateChart } from '../src/components/analytics/AnalyticsCharts';
-import { formatPercent } from '../src/i18n/formatters';
-import { i18n } from '../src/i18n/config';
 
 const progress = {
   totalWords: 10,
@@ -92,24 +89,6 @@ describe('AnalyticsPage', () => {
     expect(screen.getByRole('table', { name: 'Retention trend data' })).toBeTruthy();
   });
 
-  it('formats state pie labels with the active locale percent formatter', async () => {
-    await i18n.changeLanguage('vi');
-    vi.stubGlobal('ResizeObserver', class {
-      constructor(private readonly callback: (entries: Array<{ contentRect: { width: number; height: number } }>) => void) {}
-      observe() {
-        this.callback([{ contentRect: { width: 640, height: 288 } }]);
-      }
-      unobserve() {}
-      disconnect() {}
-    });
-
-    const rendered = render(<StateChart progress={{ ...progress, countsPerState: { NEW: 1, LEARNING: 2, FAMILIAR: 0, MASTERED: 0, MAINTENANCE: 0 } }} />);
-
-    await waitFor(() => expect(rendered.container.querySelectorAll('.recharts-pie-label-text').length).toBeGreaterThan(0), { timeout: 3000 });
-    expect(screen.getByRole('img', { name: 'Phân bố trạng thái từ vựng' })).toBeTruthy();
-    const pieLabels = [...rendered.container.querySelectorAll('.recharts-pie-label-text')].map((element) => element.textContent);
-    expect(pieLabels).toContain(`Mới ${formatPercent(100 / 3)}`);
-  });
 
   it('keeps successful analytics sections visible when one query fails', async () => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {

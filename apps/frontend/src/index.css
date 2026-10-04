@@ -58,17 +58,18 @@ html {
   color: var(--color-foreground);
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
 }
 
 body {
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--app-background);
   color: var(--color-foreground);
 }
 
 .lexora-app {
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--app-background);
 }
 
@@ -76,6 +77,7 @@ body {
 .glass-nav {
   border: 1px solid var(--glass-border);
   background: var(--glass-surface);
+  min-width: 0;
   box-shadow: var(--glass-shadow);
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
@@ -123,6 +125,25 @@ a {
 h1[tabindex='-1']:focus {
   outline: none;
   box-shadow: none;
+}
+
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']),
+  textarea:not([hidden]),
+  select:not([hidden]) {
+    font-size: 1rem;
+  }
+}
+
+@media (min-width: 768px) {
+  html {
+    scroll-padding-top: 1.5rem;
+  }
+}
+
+main,
+[role='dialog'] {
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-reduced-motion: reduce) {

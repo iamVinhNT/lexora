@@ -29,24 +29,24 @@ export function ReviewRatingControls({ item, isRevealed, isPending, onRate }: Re
          <h3 id="review-rating-heading" className="text-sm font-semibold text-foreground">{t('rateRecall')}</h3>
          <p className="mt-1 text-sm text-muted">{isRevealed ? t('chooseRating') : t('revealBeforeRating')}</p>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-         {ratings.map(({ value, shortcut }) => {
-           const label = getLocalizedEnumLabel(t, 'rating', value);
-           const interval = formatIntervalPreview(item.intervalPreviews[value]);
-           return (
-           <button
-            key={value}
-            type="button"
-            disabled={!isRevealed || isPending}
-            onClick={() => onRate(value)}
-            className="min-h-14 rounded-xl border border-border bg-surface px-3 py-3 text-left text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary-subtle disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-             aria-label={t('ratingButton', { label, interval })}
-          >
-            <span className="block">{label}</span>
-             <span className="mt-1 block text-xs font-normal text-muted">{interval} · {shortcut}</span>
-           </button>
-           );
-         })}
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-4">
+        {ratings.map(({ value, shortcut }) => {
+          const label = getLocalizedEnumLabel(t, 'rating', value);
+          const interval = formatIntervalPreview(item.intervalPreviews[value]);
+          return (
+            <button
+              key={value}
+              type="button"
+              disabled={!isRevealed || isPending}
+              onClick={() => onRate(value)}
+              className="flex min-h-14 flex-col justify-center rounded-xl border border-border bg-surface p-2.5 text-left text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary-subtle disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:px-3 sm:py-3"
+              aria-label={t('ratingButton', { label, interval })}
+            >
+              <span className="block leading-snug">{label}</span>
+              <span className="mt-1 block text-xs font-normal text-muted leading-tight break-words">{interval} · {shortcut}</span>
+            </button>
+          );
+        })}
       </div>
     </section>
   );

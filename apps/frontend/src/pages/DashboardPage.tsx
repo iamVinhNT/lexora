@@ -25,7 +25,7 @@ export function DashboardPage() {
   const totalWords = data ? Object.values(data.stateBreakdown).reduce((sum, count) => sum + count, 0) : 0;
   const hasData = totalWords > 0 || Boolean(data?.todayReviews || data?.todayLearned || data?.dueCount);
 
-  return <div className="space-y-10">
+  return <div className="space-y-8 xl:space-y-10">
     <PageHeader title={t('title')} subtitle={t('subtitle')} />
     <TodayStudyPlanCard enabled={Boolean(data)} suppressErrors />
     {dashboard.isLoading && <DashboardSkeleton />}
@@ -34,7 +34,7 @@ export function DashboardPage() {
     {data && hasData && <DashboardData data={data} totalWords={totalWords} />}
     <section aria-labelledby="learning-path-title" className="space-y-4">
       <div><h2 id="learning-path-title" className="text-xl font-semibold tracking-tight text-foreground">{t('learningPath')}</h2><p className="mt-1 text-sm text-muted">{t('learningPathDescription')}</p></div>
-      <ol className="grid gap-3 sm:grid-cols-5">{learningPath.map((step, index) => <li key={step} className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 sm:block"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-primary sm:mb-3">{index + 1}</span><span className="text-sm font-semibold text-foreground">{t(`steps.${step}`)}</span></li>)}</ol>
+      <ol className="grid grid-cols-2 gap-3 lg:grid-cols-5">{learningPath.map((step, index) => <li key={step} className="flex min-w-0 items-center gap-2 rounded-xl border border-border bg-surface p-3 last:col-span-2 lg:block lg:p-4 lg:last:col-span-1"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-primary lg:mb-3">{index + 1}</span><span className="text-sm font-semibold text-foreground">{t(`steps.${step}`)}</span></li>)}</ol>
     </section>
   </div>;
 }
@@ -48,7 +48,7 @@ function DashboardData({ data, totalWords }: { data: NonNullable<ReturnType<type
   return <>
     <section aria-labelledby="today-title" className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h2 id="today-title" className="text-xl font-semibold tracking-tight text-foreground">{t('today')}</h2><p className="mt-1 text-sm text-muted">{t('todayDescription')}</p></div><Link to={nextAction.href} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">{nextAction.icon}{nextAction.label}</Link></div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4 xl:gap-4">
         <MetricCard label={t('reviewsToday')} value={formatNumber(data.todayReviews)} />
         <MetricCard label={t('wordsPracticedToday')} value={formatNumber(data.todayLearned)} />
         <MetricCard label={t('overallAccuracy')} value={data.overallAccuracy === null ? t('accuracyUnavailable') : formatPercent(data.overallAccuracy)} />
@@ -57,18 +57,18 @@ function DashboardData({ data, totalWords }: { data: NonNullable<ReturnType<type
     </section>
     <section aria-labelledby="workspace-title" className="space-y-4">
       <div><h2 id="workspace-title" className="text-xl font-semibold tracking-tight text-foreground">{t('workspace')}</h2><p className="mt-1 text-sm text-muted">{t('workspaceDescription', { count: totalWords })}</p></div>
-      <Card className="grid gap-3 p-5 sm:grid-cols-5">{vocabularyStates.map((state) => <div key={state}><p className="text-sm text-muted">{t(`states.${state}`)}</p><p className="mt-1 text-2xl font-bold text-foreground">{formatNumber(data.stateBreakdown[state])}</p></div>)}</Card>
+      <Card className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 sm:p-5 xl:grid-cols-5">{vocabularyStates.map((state) => <div key={state} className="min-w-0"><p className="text-sm text-muted">{t(`states.${state}`)}</p><p className="mt-1 text-2xl font-bold text-foreground">{formatNumber(data.stateBreakdown[state])}</p></div>)}</Card>
     </section>
   </>;
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {
-  return <Card className="p-5"><p className="text-sm font-medium text-muted">{label}</p><p className="mt-3 text-2xl font-bold text-foreground">{value}</p></Card>;
+  return <Card className="min-w-0 p-4 sm:p-5"><p className="text-sm font-medium text-muted">{label}</p><p className="mt-2 text-2xl font-bold text-foreground sm:mt-3">{value}</p></Card>;
 }
 
 function DashboardSkeleton() {
   const { t } = useTranslation('dashboard');
-  return <div role="status" aria-label={t('loading')} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <Card key={index} className="h-28 animate-pulse bg-secondary" />)}</div>;
+  return <div role="status" aria-label={t('loading')} className="grid grid-cols-2 gap-3 xl:grid-cols-4 xl:gap-4">{Array.from({ length: 4 }, (_, index) => <Card key={index} className="h-28 animate-pulse bg-secondary" />)}</div>;
 }
 
 function ErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {

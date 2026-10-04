@@ -101,10 +101,10 @@ export function LearningSessionPage() {
         </h1>
       ) : (
         <header className="mx-auto w-full max-w-3xl">
-          <h1 tabIndex={-1} className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+          <h1 tabIndex={-1} className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl md:text-4xl">
             {t('title')}
           </h1>
-          <p className="mt-2 text-muted">{t('subtitle')}</p>
+          <p className="mt-1.5 sm:mt-2 text-sm sm:text-base text-muted">{t('subtitle')}</p>
         </header>
       )}
 
@@ -196,15 +196,15 @@ function ActiveSession({
 
   if (!currentItem || !cursor?.step) {
     return (
-      <div className="mx-auto max-w-xl space-y-4 rounded-2xl border border-border bg-surface p-6">
-        <h2 className="text-2xl font-semibold text-foreground">{t('sessionReady')}</h2>
-        <p className="text-muted">{t('allAssessmentsRecorded')}</p>
+      <div className="mx-auto max-w-xl space-y-4 rounded-2xl border border-border bg-surface p-4 sm:p-6">
+        <h2 className="text-xl sm:text-2xl font-semibold text-foreground">{t('sessionReady')}</h2>
+        <p className="text-muted text-sm sm:text-base">{t('allAssessmentsRecorded')}</p>
         {submitError && <p role="alert" className="text-sm text-red-700 dark:text-red-200">{submitError}</p>}
         <button
           type="button"
           disabled={isPending}
           onClick={() => void onComplete(session.id)}
-          className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+          className="min-h-11 w-full sm:w-auto inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
         >
           {tCommon('actions.completeSession')}
         </button>
@@ -262,15 +262,15 @@ function ActiveSession({
 
 function LoadingState() {
   const { t } = useTranslation('learning');
-  return <div role="status" className="mx-auto max-w-xl rounded-2xl border border-border bg-surface p-8 text-center text-sm text-muted">{t('loading')}</div>;
+  return <div role="status" className="mx-auto max-w-xl rounded-2xl border border-border bg-surface p-6 sm:p-8 text-center text-sm text-muted">{t('loading')}</div>;
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   const { t } = useTranslation('learning');
   return (
-    <div role="alert" className="mx-auto max-w-xl space-y-4 rounded-2xl border border-red-300 bg-red-50 p-6 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
+    <div role="alert" className="mx-auto max-w-xl space-y-4 rounded-2xl border border-red-300 bg-red-50 p-4 sm:p-6 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
       <p>{message}</p>
-      <button type="button" onClick={onRetry} className="min-h-11 rounded-lg border border-current px-4 py-2 text-sm font-semibold">
+      <button type="button" onClick={onRetry} className="min-h-11 w-full sm:w-auto rounded-lg border border-current px-4 py-2 text-sm font-semibold">
         {t('retry')}
       </button>
     </div>

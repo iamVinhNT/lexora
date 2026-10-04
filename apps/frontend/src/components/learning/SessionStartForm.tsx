@@ -187,7 +187,7 @@ export function SessionStartForm({
   return (
     <form
       onSubmit={submit}
-      className="mx-auto w-full max-w-2xl space-y-6 rounded-2xl border border-border bg-surface p-6 shadow-sm sm:p-8"
+      className="mx-auto w-full max-w-2xl space-y-5 sm:space-y-6 rounded-2xl border border-border bg-surface p-4 sm:p-6 md:p-8 shadow-sm"
       noValidate
     >
       <div>
@@ -231,7 +231,7 @@ export function SessionStartForm({
         </label>
 
         {/* Visual Mode Chips */}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-3 gap-2">
           {SESSION_MODES.map((option) => {
             const isSelected = mode === option;
             const badgeCount = getAvailabilityCount(option, options);
@@ -245,13 +245,13 @@ export function SessionStartForm({
                   setMode(option);
                   setValidationError('');
                 }}
-                className={`flex items-center justify-between rounded-xl border p-2.5 text-left text-xs sm:text-sm font-medium transition-all ${
+                className={`flex min-h-11 items-center justify-between rounded-xl border p-2.5 sm:p-3 text-left text-xs sm:text-sm font-medium transition-all ${
                   isSelected
                     ? 'border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary'
                     : 'border-border bg-background hover:border-primary/40 text-foreground'
                 } disabled:opacity-50`}
               >
-                <span className="truncate">{getLocalizedEnumLabel(t, 'mode', option)}</span>
+                <span className="truncate min-[360px]:whitespace-normal">{getLocalizedEnumLabel(t, 'mode', option)}</span>
                 {typeof badgeCount === 'number' && (
                   <span
                     className={`ml-1.5 inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -330,11 +330,11 @@ export function SessionStartForm({
       )}
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <label htmlFor="word-count" className="text-sm font-semibold text-foreground">
             {t('wordCount')}
           </label>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             {COUNT_PRESETS.map((preset) => (
               <button
                 key={preset}
@@ -342,7 +342,7 @@ export function SessionStartForm({
                 aria-pressed={count === String(preset)}
                 disabled={taskStartDisabled}
                 onClick={() => setCount(String(preset))}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
+                className={`min-h-11 min-w-11 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
                   count === String(preset)
                     ? 'bg-primary text-primary-foreground shadow-xs'
                     : 'border border-border bg-background text-muted hover:border-primary/40 hover:text-foreground'
@@ -392,7 +392,7 @@ export function SessionStartForm({
       <button
         type="submit"
         disabled={taskStartDisabled}
-        className="min-h-11 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
+        className="min-h-12 w-full rounded-xl bg-primary px-4 py-3 text-sm sm:text-base font-semibold text-primary-foreground shadow-sm transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
       >
         {isPending ? t('starting') : t('start')}
       </button>

@@ -50,7 +50,7 @@ export function WordFormDialog({ word, onClose }: Props) {
     request.then(onClose).catch(() => undefined);
   };
 
-  return <Dialog title={word ? t('editTitle', { word: word.word }) : t('addTitle')} onClose={onClose} wide><form onSubmit={submit} className="space-y-5" noValidate>
+  return <Dialog title={word ? t('editTitle', { word: word.word }) : t('addTitle')} onClose={onClose} wide><form onSubmit={submit} className="min-w-0 space-y-5" noValidate>
     <div className="grid gap-4 sm:grid-cols-2">
       <Field
         label={t('fields.word')}
@@ -87,7 +87,7 @@ const noDifficultyValue = '__no_difficulty__';
 
 function Field({ label, value, error, onChange, required = false, action }: { label: string; value: string; error?: string; onChange: (value: string) => void; required?: boolean; action?: React.ReactNode }) {
   const id = label.toLowerCase().replaceAll(' ', '-');
-  const inputEl = <input id={id} value={value} onChange={(event) => onChange(event.target.value)} className={action ? controlClass.replace('mt-2 ', '') : controlClass} required={required} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} />;
+  const inputEl = <input id={id} value={value} onChange={(event) => onChange(event.target.value)} className={action ? `${controlClass.replace('mt-2 ', '')} min-w-0 flex-1` : controlClass} required={required} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} />;
   return (
     <div>
       <label htmlFor={id} className="text-sm font-semibold text-foreground">{label}{required && <span aria-hidden="true"> *</span>}</label>
@@ -100,5 +100,5 @@ function Field({ label, value, error, onChange, required = false, action }: { la
 function TextAreaField({ label, hint, value, onChange }: { label: string; hint: string; value: string; onChange: (value: string) => void }) {
   const id = label.toLowerCase().replaceAll(' ', '-');
   const hintId = `${id}-hint`;
-  return <div><label htmlFor={id} className="text-sm font-semibold text-foreground">{label}</label><span id={hintId} className="ml-2 text-xs text-muted">({hint})</span><textarea id={id} value={value} onChange={(event) => onChange(event.target.value)} rows={3} className={`${controlClass} resize-y`} aria-describedby={hintId} /></div>;
+  return <div className="min-w-0"><label htmlFor={id} className="text-sm font-semibold text-foreground">{label}</label><span id={hintId} className="mt-1 block text-xs text-muted">{hint}</span><textarea id={id} value={value} onChange={(event) => onChange(event.target.value)} rows={3} className={`${controlClass} resize-y`} aria-describedby={hintId} /></div>;
 }

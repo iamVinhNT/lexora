@@ -77,7 +77,7 @@ export function AppShell() {
         <SkipLink />
         <Sidebar />
         <div
-          className={`min-h-screen transition-[padding] duration-200 ease-in-out ${
+          className={`min-h-dvh min-w-0 transition-[padding] duration-200 ease-in-out md:pl-20 ${
             isSidebarOpen ? 'lg:pl-64' : 'lg:pl-16'
           }`}
         >
@@ -85,7 +85,7 @@ export function AppShell() {
           <main
             ref={mainRef}
             id="main-content"
-            className="mx-auto min-h-[calc(100vh-4rem)] max-w-[1400px] px-4 pb-28 pt-8 sm:px-6 lg:min-h-screen lg:px-10 lg:pb-12 lg:pt-12"
+            className="mx-auto min-h-[calc(100dvh-4rem)] min-w-0 max-w-[1400px] px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-6 sm:px-6 md:min-h-dvh md:pb-10 md:pt-8 lg:px-8 lg:py-10 xl:px-10 xl:py-12"
           >
             <Outlet />
           </main>

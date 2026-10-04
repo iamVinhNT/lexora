@@ -12,14 +12,14 @@ type PageHeaderProps = {
 
 export function PageHeader({ title, subtitle, action }: PageHeaderProps) {
   return (
-    <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <h1 tabIndex={-1} className="text-3xl font-bold tracking-tight text-foreground focus:outline-none sm:text-4xl">
+    <header className="flex min-w-0 flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+      <div className="min-w-0 lg:flex-1 lg:basis-80">
+        <h1 tabIndex={-1} className="break-words text-2xl font-bold tracking-tight text-foreground focus:outline-none sm:text-3xl xl:text-4xl">
           {title}
         </h1>
-        <p className="mt-3 max-w-2xl text-base leading-7 text-muted">{subtitle}</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted sm:text-base sm:leading-7">{subtitle}</p>
       </div>
-      {action}
+      {action && <div className="flex min-w-0 flex-wrap items-center gap-2 lg:max-w-full [&>button]:flex-1 sm:[&>button]:flex-none [&>a]:flex-1 sm:[&>a]:flex-none">{action}</div>}
     </header>
   );
 }

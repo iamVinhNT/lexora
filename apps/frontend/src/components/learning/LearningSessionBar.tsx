@@ -23,9 +23,9 @@ export function LearningSessionBar({
   const wordLabel = t('wordProgress', { current: currentWord, total: totalWords });
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-4 py-1">
-      <div className="flex items-center gap-3">
-        <span className="text-sm font-semibold tracking-tight text-foreground">
+    <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-2 sm:gap-4 py-1">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <span className="shrink-0 text-xs sm:text-sm font-semibold tracking-tight text-foreground">
           {wordLabel}
         </span>
         <div
@@ -34,7 +34,7 @@ export function LearningSessionBar({
           aria-valuemin={1}
           aria-valuemax={totalWords}
           aria-label={wordLabel}
-          className="h-1.5 w-24 overflow-hidden rounded-full bg-secondary sm:w-32"
+          className="h-1.5 w-16 min-w-12 sm:w-32 overflow-hidden rounded-full bg-secondary"
         >
           <div
             className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
@@ -47,7 +47,7 @@ export function LearningSessionBar({
         type="button"
         onClick={onAbandon}
         disabled={isPending}
-        className="inline-flex min-h-11 items-center justify-center rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg px-2.5 py-2 text-xs sm:px-3 sm:text-sm font-medium text-muted transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
       >
         {tCommon('actions.abandonSession')}
       </button>

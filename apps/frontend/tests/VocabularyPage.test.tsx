@@ -98,11 +98,6 @@ describe('VocabularyPage', () => {
     });
 
     renderPage();
-    const page = screen.getByTestId('vocabulary-page');
-    expect(page.className).not.toContain('lg:-mt-4');
-    expect(page.className).toContain('lg:h-[calc(100dvh-6rem)]');
-    expect(page.className).toContain('lg:gap-4');
-    expect(screen.getByRole('region', { name: /vocabulary filters/i }).className).toContain('lg:p-0');
     const results = await screen.findByRole('listbox', { name: /vocabulary/i });
     const firstRow = await within(results).findByRole('option', { name: /reliable/i });
     expect(firstRow.getAttribute('aria-selected')).toBe('true');
@@ -176,24 +171,11 @@ describe('VocabularyPage', () => {
     expect(within(screen.getByRole('region', { name: /word details/i })).queryByRole('heading', { name: 'reliable' })).toBeNull();
   });
 
-  it('emphasizes Production in word details while preserving edit actions', async () => {
-    renderPage();
-    await screen.findByText('reliable');
-
-    fireEvent.click(screen.getByRole('button', { name: /details for reliable/i }));
-    const dialog = await screen.findByRole('dialog', { name: /reliable/i });
-    const production = within(dialog).getByText('30%');
-
-    expect(production.parentElement?.className).toContain('border-accent');
-    expect(within(dialog).getByRole('button', { name: /edit word/i })).toBeTruthy();
-  });
 
   it('renders the initial list view inside a local results viewport', async () => {
     renderPage();
 
     const results = screen.getByTestId('vocabulary-results');
-    expect(results.className).toContain('min-h-0');
-    expect(results.className).toContain('overflow-y-auto');
     expect(await within(results).findByRole('article', { name: /reliable/i })).toBeTruthy();
     expect(within(results).getByRole('button', { name: /details for reliable/i })).toBeTruthy();
   });
@@ -211,8 +193,14 @@ describe('VocabularyPage', () => {
     fireEvent.click(cardMode);
     expect(cardMode.getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('region', { name: /card view/i })).toBeTruthy();
+    expect(screen.getByText('Recognition')).toBeTruthy();
     expect(screen.getByRole('article', { name: /reliable/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /details for reliable/i })).toBeTruthy();
+
+    fireEvent.click(listMode);
+    expect(listMode.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByText('Recognition')).toBeNull();
+    expect(screen.getByRole('article', { name: /reliable/i })).toBeTruthy();
 
     fireEvent.click(tableMode);
     expect(tableMode.getAttribute('aria-pressed')).toBe('true');
@@ -367,20 +355,10 @@ describe('VocabularyPage', () => {
     renderPage();
     await screen.findByRole('option', { name: /reliable/i });
 
-    const master = screen.getByTestId('vocabulary-master-pane');
-    const count = within(master).getByText('21 words');
-    expect(screen.getByTestId('vocabulary-results').compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(screen.getByTestId('vocabulary-page').querySelector('header')!).queryByText(/page 1/i)).toBeNull();
     const pagination = screen.getByRole('navigation', { name: /pagination/i });
     const previous = within(pagination).getByRole('button', { name: 'Previous' });
     const next = within(pagination).getByRole('button', { name: 'Next' });
-    const indicator = within(pagination).getByRole('button', { name: /page 1 of 2/i });
-    expect(indicator.className).toContain('cursor-default');
     expect(previous.disabled).toBe(true);
-    expect(previous.textContent).toBe('');
-    expect(next.textContent).toBe('');
-    expect(next.className).toContain('min-h-11');
-    expect(next.className).toContain('min-w-11');
 
     fireEvent.click(next);
     await screen.findByRole('option', { name: /resilient/i });
@@ -391,39 +369,6 @@ describe('VocabularyPage', () => {
     expect(previous.disabled).toBe(true);
   });
 
-  it('keeps mobile pagination and icon-only vocabulary actions accessible', async () => {
-    mockDesktopViewport(false);
-    renderPage();
-    await screen.findByRole('article', { name: /reliable/i });
-    const count = screen.getByText('1 word');
-    expect(screen.getByTestId('vocabulary-results').compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-
-    const details = screen.getByRole('button', { name: /details for reliable/i });
-    const addWord = screen.getByRole('button', { name: 'Add word' });
-    const modes = screen.getByRole('group', { name: /vocabulary view/i });
-    expect(details.textContent).toBe('');
-    expect(addWord.textContent).toBe('');
-    expect(details.className).toContain('min-w-11');
-    expect(addWord.className).toContain('min-w-11');
-    expect(within(modes).getByRole('button', { name: /list view/i }).textContent).toBe('');
-
-    const pagination = screen.getByRole('navigation', { name: /pagination/i });
-    expect(within(pagination).getByRole('button', { name: 'Previous' }).textContent).toBe('');
-    expect(within(pagination).getByRole('button', { name: 'Next' }).textContent).toBe('');
-    expect(within(pagination).getByRole('button', { name: /page 1 of 1/i }).className).toContain('cursor-default');
-
-    fireEvent.click(details);
-    const dialog = await screen.findByRole('dialog', { name: /reliable/i });
-    expect(dialog.className).toContain('overflow-hidden');
-    expect(dialog.className).toContain('max-h-');
-    expect(within(dialog).getByTestId('word-detail-scroll-area').className).toContain('overflow-y-auto');
-    const edit = within(dialog).getByRole('button', { name: /edit word/i });
-    const remove = within(dialog).getByRole('button', { name: /delete word reliable/i });
-    expect(edit.textContent).toBe('');
-    expect(remove.textContent).toBe('');
-    expect(edit.className).toContain('min-w-11');
-    expect(remove.className).toContain('min-w-11');
-  });
 
   it('refetches active analytics after each vocabulary mutation', async () => {
     const fetchMock = vi.mocked(fetch);

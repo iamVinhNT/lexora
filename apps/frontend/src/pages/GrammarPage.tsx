@@ -26,16 +26,16 @@ export function GrammarPage() {
   }), { completed: 0, total: 0 });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       <PageHeader title={t('title')} subtitle={t('subtitle')} action={
-        nextLesson ? <Link to={`/grammar/${encodeURIComponent(nextLesson.id)}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">{t('continueCourse')}<ArrowRight aria-hidden="true" size={17} /></Link> : undefined
+        nextLesson ? <Link to={`/grammar/${encodeURIComponent(nextLesson.id)}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 w-full sm:w-auto text-center">{t('continueCourse')}<ArrowRight aria-hidden="true" size={17} /></Link> : undefined
       } />
 
       {course.isLoading && <p role="status" aria-busy="true" className="rounded-xl border border-border bg-surface p-5 text-sm text-muted">{t('loading')}</p>}
       {course.isError && <div role="alert" className="space-y-4 rounded-xl border border-border bg-secondary p-5"><p className="text-sm text-foreground">{getLocalizedErrorMessage(course.error, tCommon)}</p><Button type="button" variant="secondary" onClick={() => void course.refetch()}>{t('retry')}</Button></div>}
       {data && !hasLessons && <Card><EmptyState title={t('unpublishedTitle')} description={t('unpublishedDescription')} /></Card>}
       {data && hasLessons && <>
-        {totals && <Card className="space-y-3 p-5">
+        {totals && <Card className="space-y-3 p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-base font-semibold text-foreground">{t('courseProgress')}</h2>
             <p className="text-sm text-muted">{t('completedLessons', totals)}</p>
@@ -56,10 +56,10 @@ export function GrammarPage() {
                 const isInProgress = Boolean(lesson.progress && !isComplete);
                 const status = isComplete ? t('completed') : isInProgress ? t('inProgress') : t('notStarted');
                 return <li key={lesson.id}>
-                  <Link to={`/grammar/${encodeURIComponent(lesson.id)}`} aria-label={`${lesson.title}. ${status}. ${isInProgress ? t('resumeLesson') : t('openLesson')}`} className="flex h-full min-h-36 flex-col gap-3 rounded-2xl border border-border bg-surface p-5 shadow-sm transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                  <Link to={`/grammar/${encodeURIComponent(lesson.id)}`} aria-label={`${lesson.title}. ${status}. ${isInProgress ? t('resumeLesson') : t('openLesson')}`} className="flex h-full min-h-32 sm:min-h-36 flex-col gap-2.5 sm:gap-3 rounded-2xl border border-border bg-surface p-4 sm:p-5 shadow-sm transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                     <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">{isComplete ? <CheckCircle2 aria-hidden="true" size={16} className="text-primary" /> : <Circle aria-hidden="true" size={16} />}{status}</span>
                     <span className="font-semibold text-foreground">{lesson.title}</span>
-                    <span className="text-sm leading-6 text-muted">{lesson.objective}</span>
+                    <span className="text-sm leading-relaxed text-muted line-clamp-3">{lesson.objective}</span>
                   </Link>
                 </li>;
               })}

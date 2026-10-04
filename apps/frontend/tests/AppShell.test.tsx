@@ -32,7 +32,7 @@ function mockViewport(matches = false) {
     get matches() {
       return currentMatches;
     },
-    media: '(min-width: 1024px)',
+    media: '(min-width: 768px)',
     onchange: null,
     addEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.add(listener),
     removeEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener),
@@ -191,6 +191,21 @@ describe('AppShell', () => {
     const background = document.querySelector('[data-app-background]');
     expect(background?.getAttribute('aria-hidden')).toBe('true');
     expect(background?.hasAttribute('inert')).toBe(true);
+  });
+
+  it('locks background scrolling while More is open and restores it after dismissal', async () => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'auto';
+    try {
+      renderApp();
+      fireEvent.click(screen.getByRole('button', { name: 'More' }));
+      expect(document.body.style.overflow).toBe('hidden');
+
+      fireEvent.keyDown(screen.getByRole('dialog', { name: /more navigation/i }), { key: 'Escape' });
+      await waitFor(() => expect(document.body.style.overflow).toBe('auto'));
+    } finally {
+      document.body.style.overflow = previousOverflow;
+    }
   });
 
   it('closes More navigation after a navigation action without restoring More focus', async () => {

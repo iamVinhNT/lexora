@@ -21,7 +21,7 @@ export function WordDetailDialog({ word, onClose, onEdit, onDeleted, confirmOnOp
   const deleteMutation = useDeleteWord();
   const [confirming, setConfirming] = React.useState(confirmOnOpen);
   if (confirming) return <DeleteWordDialog word={activeWord} onClose={confirmOnOpen ? onClose : () => setConfirming(false)} onDeleted={onDeleted} mutation={deleteMutation} />;
-  return <Dialog title={activeWord.word} onClose={onClose} wide fixedContent><WordDetailContent word={activeWord} onEdit={onEdit} onDelete={() => setConfirming(true)} fixedActions /></Dialog>;
+  return <Dialog title={activeWord.word} onClose={onClose} wide fixedContent><WordDetailContent word={activeWord} onEdit={onEdit} onDelete={() => setConfirming(true)} fixedActions hideHeading /></Dialog>;
 }
 
 function DeleteWordDialog({ word, onClose, onDeleted, mutation }: { word: Word; onClose: () => void; onDeleted: () => void; mutation: ReturnType<typeof useDeleteWord> }) {

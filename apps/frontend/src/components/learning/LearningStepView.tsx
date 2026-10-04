@@ -140,7 +140,7 @@ export function LearningStepView({
 
   return (
     <section
-      className="mx-auto w-full max-w-2xl rounded-2xl border border-border bg-surface p-6 shadow-sm sm:p-8 space-y-6"
+      className="mx-auto w-full max-w-2xl rounded-2xl border border-border bg-surface p-4 sm:p-6 md:p-8 shadow-sm space-y-6"
       aria-labelledby="learning-step-heading"
     >
       <LearningStepper currentStep={step} cursor={cursor} />
@@ -150,7 +150,7 @@ export function LearningStepView({
           id="learning-step-heading"
           ref={headingRef}
           tabIndex={-1}
-          className="text-2xl font-bold tracking-tight text-foreground focus:outline-none sm:text-3xl"
+          className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-foreground focus:outline-none"
         >
           {stepLabels[step]}
         </h2>
@@ -172,7 +172,7 @@ export function LearningStepView({
 
       {step === 'CONTEXT' && (
         <form onSubmit={(event) => { event.preventDefault(); onSubmit({}); }} className="space-y-6">
-          <div className="rounded-xl border border-border border-l-4 border-l-primary bg-secondary/30 p-5 sm:p-6 text-lg sm:text-xl leading-relaxed text-foreground shadow-none">
+          <div className="rounded-xl border border-border border-l-4 border-l-primary bg-secondary/30 p-4 sm:p-6 text-base sm:text-lg md:text-xl leading-relaxed text-foreground shadow-none break-words">
             {word.contextSentence || t('contextReady')}
           </div>
           <p className="text-sm sm:text-base text-muted">{t('contextPrompt')}</p>
@@ -182,9 +182,9 @@ export function LearningStepView({
 
       {step === 'UNDERSTAND' && (
         <form onSubmit={(event) => { event.preventDefault(); onSubmit({}); }} className="space-y-6">
-          <div className="rounded-xl border border-border bg-secondary/30 p-5 sm:p-6 space-y-3">
-            <div className="flex flex-wrap items-baseline gap-3">
-              <span className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
+          <div className="rounded-xl border border-border bg-secondary/30 p-4 sm:p-6 space-y-3">
+            <div className="flex flex-wrap items-baseline gap-2 sm:gap-3">
+              <span className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground break-words">
                 {word.headword || word.word}
               </span>
               {word.phonetic && (
@@ -235,7 +235,7 @@ export function LearningStepView({
               {t('recallRevealed', { answer: recallRevealedAnswer })}
             </p>
           )}
-          <div className="rounded-xl border border-border bg-secondary/30 p-5 sm:p-6 text-lg sm:text-xl leading-relaxed text-foreground">
+          <div className="rounded-xl border border-border bg-secondary/30 p-4 sm:p-6 text-base sm:text-lg md:text-xl leading-relaxed text-foreground break-words">
             {item.clozeSentence || word.contextSentence || t('recallPrompt')}
           </div>
           <div className="space-y-2">
@@ -249,7 +249,7 @@ export function LearningStepView({
               value={recallAnswer}
               onChange={(event) => { setRecallAnswer(event.target.value); setRecallError(''); }}
               disabled={isPending}
-              className="min-h-12 w-full rounded-lg border border-border bg-background px-3 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="min-h-12 w-full rounded-xl border border-border bg-background px-3.5 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
           </div>
           {recallError && <p role="alert" className="text-sm text-red-700 dark:text-red-200">{recallError}</p>}
@@ -258,7 +258,7 @@ export function LearningStepView({
       )}
 
       {step === 'OUTPUT' && (
-        <form onSubmit={submit} className="space-y-6 pb-24 sm:pb-0">
+        <form onSubmit={submit} className="space-y-6">
           <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-1.5 text-sm">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted">{tCommon('labels.word')}:</span>
             <span className="font-semibold text-foreground">{word.headword || word.word}</span>
@@ -287,14 +287,14 @@ export function LearningStepView({
               }}
               disabled={isPending}
               aria-describedby="user-sentence-help"
-              className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
             <p id="user-sentence-help" className="text-sm text-muted">
               {t('outputHelp', { word: word.headword || word.word })}
             </p>
           </div>
           {outputError && <p role="alert" className="text-sm text-red-700 dark:text-red-200">{outputError}</p>}
-          <div className="sticky bottom-[65px] -mx-1 border-t border-border bg-background/95 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+          <div>
             <SubmitButton isPending={isPending} disabled={!userSentence.trim()} label={nextLabel} pendingLabel={t('grading')} />
           </div>
         </form>
@@ -303,7 +303,7 @@ export function LearningStepView({
       {step === 'ASSESS' && (
         <div className="space-y-6" aria-label={t('assessmentControls')}>
           <p className="text-base text-muted">{t('assessmentPrompt')}</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-4">
             {(Object.entries(ratingLabels) as [AssessmentRating, string][]).map(([rating, label], index) => (
               <button
                 key={rating}
@@ -311,7 +311,7 @@ export function LearningStepView({
                 aria-label={`${index + 1}. ${label}`}
                 disabled={isPending}
                 onClick={() => onSubmit({ assessmentRating: rating })}
-                className={`min-h-14 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground shadow-sm transition-colors ${ratingStyles[rating]} disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 flex flex-col items-center justify-center`}
+                className={`min-h-14 rounded-xl border border-border bg-surface p-2.5 sm:px-4 sm:py-3 text-sm font-semibold text-foreground shadow-sm transition-colors ${ratingStyles[rating]} disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 flex flex-col items-center justify-center`}
               >
                 <span>{label}</span>
                 <kbd
@@ -341,7 +341,7 @@ function SubmitButton({ isPending, disabled, label, pendingLabel }: { isPending:
     <button
       type="submit"
       disabled={isPending || disabled}
-      className="min-h-11 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      className="min-h-11 w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-primary px-6 py-2.5 text-sm sm:text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
       {isPending ? pendingLabel ?? t('saving') : label}
     </button>
@@ -350,7 +350,7 @@ function SubmitButton({ isPending, disabled, label, pendingLabel }: { isPending:
 
 function InfoList({ title, values, empty }: { title: string; values: string[]; empty: string }) {
   return (
-    <section aria-label={title} className="rounded-xl border border-border bg-secondary/20 p-4 sm:p-5">
+    <section aria-label={title} className="rounded-xl border border-border bg-secondary/20 p-3.5 sm:p-5">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">{title}</h3>
       {values.length > 0 ? (
         <ul className="mt-2.5 list-disc space-y-1.5 pl-5 text-sm text-foreground">
