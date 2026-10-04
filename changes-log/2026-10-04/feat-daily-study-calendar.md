@@ -15,6 +15,12 @@
 - Learning, direct review, and grammar completion links to study tasks. Progress counts committed, distinct evidence rather than manual checkboxes; late completion does not rewrite an overdue day as completed on time.
 - Task-aware launch/resume flows and unavailable grammar revision handling.
 
+## Task form UI
+
+- Create/edit task forms use shadcn Dialog, Select, Input, Label, Alert, Button, and Calendar/Popover components. Existing API payloads, validation, version-conflict handling, and other dialog consumers remain unchanged.
+- Date selection preserves civil dates across browser and study time zones. Opening the calendar focuses the selected day; keyboard selection and nested Escape restore focus without closing the task form prematurely.
+- The nested date picker uses Radix's [modal Popover](https://www.radix-ui.com/primitives/docs/components/popover#root) so the outer Dialog's scroll lock does not block calendar wheel input. Available-height limits keep the calendar inside short viewports.
+
 ## Compatibility and data safety
 
 - Calendar state lives in SQLite alongside existing learner data, shared by web and desktop.
@@ -42,4 +48,6 @@ Module 09, the module index, architecture overview/schema, and related learning/
 - Isolated staged-tree verification — `pnpm build` passed for backend, frontend, and desktop; the backend suite passed all 503 tests on that checkout.
 - Staged-tree API smoke — 10 real TCP requests passed against an in-memory database, exercising preferences, calendar, stable-ID creation replay, version conflicts, reschedule, and cancellation.
 - Isolated staged-tree frontend/desktop checks — `pnpm --filter @lexora/frontend test && pnpm --filter @lexora/desktop test` passed 199 frontend tests and 60 desktop tests. The lower frontend count excludes unrelated working-tree tests and incidental assertions removed from the calendar navigation test file.
+- Task form UI checks — `pnpm --filter @lexora/frontend build` passed TypeScript and production compilation; `pnpm --filter @lexora/frontend test` passed 196 tests across 25 files.
+- Task form browser smoke — real Vite/Fastify backed only by in-memory SQLite exercised learning/context, review, and grammar creation; editing, cancellation, retained input after a version conflict, and invalid target/missing-context rejection. Verified 320/375/768/1440px layouts, EN/VI, light/dark, civil dates in America/Los_Angeles and Asia/Tokyo, keyboard focus/selection, nested Escape, and native wheel scrolling in a 768×375 viewport. Optional context/course fetches were cancelled when closing forms; no uncaught application error observed.
 - Verification limit — the real Electron IPC harness was skipped because `chrome-sandbox` is not root-owned with mode 4755; no claim of real Electron IPC verification.

@@ -13,6 +13,7 @@
 - Preserve study tasks, preferences, transfer history, and evidence links when upgrading legacy calendar/grammar schemas or merging shared web/desktop databases.
 
 ### Changed
+- Replaced study task create/edit form controls with shadcn UI, including a localized, keyboard-accessible date picker that remains scrollable on short screens.
 - Reorganized architecture documentation into numbered `docs/architecture/01-*` files.
 - Updated architecture docs to match current backend, frontend, database, desktop, grammar, backup, and brand implementations.
 - Updated module documentation and added Grammar Course module documentation.

@@ -1,8 +1,8 @@
 /**
  * @file StudyTaskDialog.tsx
- * @description Localized create, edit, and cancel form for calendar study tasks.
+ * @description Shadcn create, edit, and cancel form for calendar study tasks.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ApiError } from '../../api/client';
@@ -12,13 +12,16 @@ import { getLocalizedErrorMessage } from '../../i18n/presentation';
 import { useContexts } from '../../hooks/useContexts';
 import { useGrammarCourse } from '../../hooks/useGrammar';
 import { useStudyTaskMutations } from '../../hooks/useStudyCalendar';
+import { Alert, AlertDescription } from '../ui/Alert';
 import { Button } from '../ui/Button';
-import { Dialog } from '../ui/Dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/DialogPrimitives';
+import { Input } from '../ui/Input';
+import { Label } from '../ui/Label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
+import { StudyTaskDatePicker } from './StudyTaskDatePicker';
 
 type Props = { task?: StudyTaskView | null; date: CivilDate; onClose: () => void };
 type FormState = { scheduledDate: string; kind: StudyTaskInput['kind']; mode: 'new_words' | 'context' | 'topic' | 'weak_words'; contextId: string; topicId: string; lessonId: string; revisionId: string; revision: string; target: string };
-
-const controlClass = 'mt-2 min-h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary';
 
 function makeId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -42,6 +45,9 @@ function initialForm(task: StudyTaskView | null | undefined, date: CivilDate): F
 export function StudyTaskDialog({ task, date, onClose }: Props) {
   const { t } = useTranslation('calendar');
   const { t: tCommon } = useTranslation('common');
+  const formId = useId();
+  const emptySelection = `${formId}-empty`;
+  const returnFocusRef = useRef<HTMLElement | null>(typeof document === 'undefined' ? null : document.activeElement as HTMLElement);
   const [createdId] = useState(makeId);
   const [form, setForm] = useState<FormState>(() => initialForm(task, date));
   const [error, setError] = useState<unknown>(null);
@@ -101,64 +107,93 @@ export function StudyTaskDialog({ task, date, onClose }: Props) {
     }
   };
 
+  const title = isEditing ? t('actions.edit') : t('actions.create');
+
   return (
-    <Dialog title={isEditing ? t('actions.edit') : t('actions.create')} onClose={onClose} wide>
-      <form className="min-w-0 space-y-5" onSubmit={submit} noValidate>
-        {Boolean(error) && <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{String(error instanceof ApiError && error.code === 'CONFLICT' ? t('forms.conflict') : getLocalizedErrorMessage(error, tCommon))}</p>}
-        {saved && <p role="status" className="text-sm text-muted">{t('forms.saved')}</p>}
-        {task?.isUnavailable && <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{t('forms.selectedContentUnavailable')}</p>}
-        {activeSession && <p role="alert" className="rounded-lg border border-border bg-secondary p-3 text-sm text-muted">{t('forms.activeSession')}</p>}
-        <Field label={t('forms.scheduledDate')}>
-          <input aria-label={t('forms.scheduledDate')} className={controlClass} type="date" value={form.scheduledDate} onChange={(event) => setField('scheduledDate', event.target.value)} required />
-        </Field>
-        <Field label={t('forms.kind')}>
-          <select className={controlClass} value={form.kind} onChange={(event) => setField('kind', event.target.value as FormState['kind'])}>
-            <option value="LEARN_WORDS">{t('taskKinds.learn')}</option>
-            <option value="REVIEW_WORDS">{t('taskKinds.review')}</option>
-            <option value="GRAMMAR">{t('taskKinds.grammar')}</option>
-          </select>
-        </Field>
-        {form.kind === 'LEARN_WORDS' && <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-          <Field label={t('forms.mode')}>
-            <select className={controlClass} value={form.mode} onChange={(event) => setField('mode', event.target.value as FormState['mode'])}>
-              <option value="new_words">{tCommon('actions.learnNewWords')}</option>
-              <option value="context">{t('forms.context')}</option>
-              <option value="topic">{t('forms.topic')}</option>
-              <option value="weak_words">{t('taskKinds.learn')}</option>
-            </select>
-          </Field>
-          {form.mode === 'context' && <Field label={t('forms.context')}>
-            <select className={controlClass} value={form.contextId} onChange={(event) => setField('contextId', event.target.value)}>
-              <option value="">{t('forms.context')}</option>
-              {contexts.data?.items.map((context) => <option key={context.id} value={context.id}>{context.title}</option>)}
-            </select>
-          </Field>}
-          {form.mode === 'topic' && <Field label={t('forms.topic')}>
-            <input className={controlClass} value={form.topicId} onChange={(event) => setField('topicId', event.target.value)} />
-          </Field>}
-        </div>}
-        {form.kind === 'GRAMMAR' && <Field label={t('forms.lesson')}>
-          <select className={controlClass} value={form.lessonId} onChange={(event) => {
-            const next = lessons.find((lesson) => lesson.id === event.target.value);
-            setForm((current) => ({ ...current, lessonId: event.target.value, revisionId: next?.revisionId ?? '', revision: next?.revision ?? '' }));
-          }}>
-            <option value="">{t('forms.lesson')}</option>
-            {lessons.map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}
-          </select>
-        </Field>}
-        <Field label={t('forms.target')}>
-          <input className={controlClass} type="number" min={1} step={1} inputMode="numeric" value={form.kind === 'GRAMMAR' ? '1' : form.target} onChange={(event) => setField('target', event.target.value)} disabled={form.kind === 'GRAMMAR'} required />
-        </Field>
-        <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:flex-wrap sm:justify-end">
-          {task && <Button type="button" variant="danger" onClick={() => void cancelTask()} disabled={isPending || activeSession}>{t('actions.cancel')}</Button>}
-          <Button type="button" variant="secondary" onClick={onClose} disabled={isPending}>{tCommon('actions.cancel')}</Button>
-          <Button type="submit" disabled={isPending || activeSession || !validDate || !validTarget || !validParams}>{isPending ? t('actions.saving') : t('actions.save')}</Button>
-        </div>
-      </form>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        closeLabel={tCommon('dialog.close', { title })}
+        aria-modal="true"
+        aria-describedby={undefined}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          returnFocusRef.current?.focus();
+        }}
+      >
+        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+        <form className="min-w-0 space-y-5" onSubmit={submit} noValidate>
+          {Boolean(error) && <Alert variant="destructive"><AlertDescription>{String(error instanceof ApiError && error.code === 'CONFLICT' ? t('forms.conflict') : getLocalizedErrorMessage(error, tCommon))}</AlertDescription></Alert>}
+          {saved && <Alert role="status"><AlertDescription>{t('forms.saved')}</AlertDescription></Alert>}
+          {task?.isUnavailable && <Alert variant="destructive"><AlertDescription>{t('forms.selectedContentUnavailable')}</AlertDescription></Alert>}
+          {activeSession && <Alert><AlertDescription>{t('forms.activeSession')}</AlertDescription></Alert>}
+          <div className="space-y-2">
+            <Label htmlFor={`${formId}-date`}>{t('forms.scheduledDate')}</Label>
+            <StudyTaskDatePicker id={`${formId}-date`} value={form.scheduledDate} onChange={(value) => setField('scheduledDate', value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`${formId}-kind`}>{t('forms.kind')}</Label>
+            <Select value={form.kind} onValueChange={(value) => setField('kind', value as FormState['kind'])}>
+              <SelectTrigger id={`${formId}-kind`}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="LEARN_WORDS">{t('taskKinds.learn')}</SelectItem>
+                <SelectItem value="REVIEW_WORDS">{t('taskKinds.review')}</SelectItem>
+                <SelectItem value="GRAMMAR">{t('taskKinds.grammar')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {form.kind === 'LEARN_WORDS' && <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor={`${formId}-mode`}>{t('forms.mode')}</Label>
+              <Select value={form.mode} onValueChange={(value) => setField('mode', value as FormState['mode'])}>
+                <SelectTrigger id={`${formId}-mode`}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="new_words">{tCommon('actions.learnNewWords')}</SelectItem>
+                  <SelectItem value="context">{t('forms.context')}</SelectItem>
+                  <SelectItem value="topic">{t('forms.topic')}</SelectItem>
+                  <SelectItem value="weak_words">{t('taskKinds.learn')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {form.mode === 'context' && <div className="min-w-0 space-y-2">
+              <Label htmlFor={`${formId}-context`}>{t('forms.context')}</Label>
+              <Select value={form.contextId || emptySelection} onValueChange={(value) => setField('contextId', value === emptySelection ? '' : value)}>
+                <SelectTrigger id={`${formId}-context`} className="min-w-0 [&>span]:min-w-0 [&>span]:truncate"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-w-[calc(100vw-1rem)]">
+                  <SelectItem value={emptySelection}>{t('forms.context')}</SelectItem>
+                  {contexts.data?.items.map((context) => <SelectItem key={context.id} value={context.id}>{context.title}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>}
+            {form.mode === 'topic' && <div className="space-y-2">
+              <Label htmlFor={`${formId}-topic`}>{t('forms.topic')}</Label>
+              <Input id={`${formId}-topic`} value={form.topicId} onChange={(event) => setField('topicId', event.target.value)} />
+            </div>}
+          </div>}
+          {form.kind === 'GRAMMAR' && <div className="min-w-0 space-y-2">
+            <Label htmlFor={`${formId}-lesson`}>{t('forms.lesson')}</Label>
+            <Select value={form.lessonId || emptySelection} onValueChange={(value) => {
+              const lessonId = value === emptySelection ? '' : value;
+              const next = lessons.find((lesson) => lesson.id === lessonId);
+              setForm((current) => ({ ...current, lessonId, revisionId: next?.revisionId ?? '', revision: next?.revision ?? '' }));
+            }}>
+              <SelectTrigger id={`${formId}-lesson`} className="min-w-0 [&>span]:min-w-0 [&>span]:truncate"><SelectValue /></SelectTrigger>
+              <SelectContent className="max-w-[calc(100vw-1rem)]">
+                <SelectItem value={emptySelection}>{t('forms.lesson')}</SelectItem>
+                {lessons.map((lesson) => <SelectItem key={lesson.id} value={lesson.id}>{lesson.title}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>}
+          <div className="space-y-2">
+            <Label htmlFor={`${formId}-target`}>{t('forms.target')}</Label>
+            <Input id={`${formId}-target`} type="number" min={1} step={1} inputMode="numeric" value={form.kind === 'GRAMMAR' ? '1' : form.target} onChange={(event) => setField('target', event.target.value)} disabled={form.kind === 'GRAMMAR'} required />
+          </div>
+          <DialogFooter>
+            {task && <Button type="button" variant="danger" onClick={() => void cancelTask()} disabled={isPending || activeSession}>{t('actions.cancel')}</Button>}
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isPending}>{tCommon('actions.cancel')}</Button>
+            <Button type="submit" disabled={isPending || activeSession || !validDate || !validTarget || !validParams}>{isPending ? t('actions.saving') : t('actions.save')}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
     </Dialog>
   );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block text-sm font-medium text-foreground">{label}{children}</label>;
 }

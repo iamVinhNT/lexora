@@ -2,7 +2,7 @@
  * @file Button.tsx
  * @description Reusable semantic button styles for primary and secondary actions.
  */
-import type { ButtonHTMLAttributes } from 'react';
+import { forwardRef, type ButtonHTMLAttributes } from 'react';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
@@ -17,11 +17,12 @@ const variantClasses: Record<ButtonVariant, string> = {
   danger: 'bg-danger text-danger-foreground hover:opacity-90',
 };
 
-export function Button({ className = '', variant = 'primary', ...props }: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({ className = '', variant = 'primary', ...props }, ref) {
   return (
     <button
+      ref={ref}
       className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${variantClasses[variant]} ${className}`}
       {...props}
     />
   );
-}
+});
