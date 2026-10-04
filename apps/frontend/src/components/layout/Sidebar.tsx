@@ -32,9 +32,13 @@ export function Sidebar() {
           aria-label="Lexora"
           className="flex min-h-11 min-w-11 items-center justify-center gap-2.5 rounded-lg text-xl font-bold tracking-tight text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary font-bold text-primary-foreground">
-            L
-          </span>
+          <img
+            src={`${import.meta.env.BASE_URL}favicon.svg`}
+            alt=""
+            width={36}
+            height={36}
+            className="h-9 w-9 shrink-0"
+          />
           <span className={isSidebarOpen ? 'hidden lg:inline' : 'sr-only'}>Lexora</span>
         </Link>
         <SidebarTrigger className="hidden lg:inline-flex" />
