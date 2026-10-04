@@ -10,6 +10,7 @@ import {
   getStudyPreferences,
   getStudyTask,
   patchStudyTask,
+  previewAiStudyPlan,
   previewStudyPlan,
   putStudyPreferences,
   type CivilDate,
@@ -60,6 +61,9 @@ export function useStudyTask(taskId: string) {
 
 export function useStudyPlanPreview() {
   return useMutation({ mutationFn: previewStudyPlan });
+}
+export function useAiStudyPlanPreview() {
+  return useMutation({ mutationFn: previewAiStudyPlan });
 }
 
 export function useStudyPreferencesMutation() {

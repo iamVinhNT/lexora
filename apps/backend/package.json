@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "node --env-file-if-exists=../../.env --import tsx --watch src/server.ts",
     "build": "tsc",
     "test": "vitest run",
     "verify:runtime": "pnpm run build && node scripts/runtime-smoke.mjs"

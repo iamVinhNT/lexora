@@ -97,7 +97,27 @@ export type StudyPlanPreview = {
     availableCount: number | null;
   }>;
 };
-
+export type AiStudyPlanSuggestion =
+  | (Extract<TaskParams, { kind: 'LEARN_WORDS' }> & { scheduledDate: CivilDate; targetCount: number })
+  | (Extract<TaskParams, { kind: 'REVIEW_WORDS' }> & { scheduledDate: CivilDate; targetCount: number })
+  | (Extract<TaskParams, { kind: 'GRAMMAR' }> & { scheduledDate: CivilDate; targetCount: 1 });
+export type AiStudyPlanChoices = {
+  days: Array<{ date: CivilDate; isStudyDay: boolean }>;
+  dueCounts: Array<{ date: CivilDate; availableCount: number; maxQuantity: number }>;
+  learningModes: Array<{ mode: 'new_words' | 'weak_words'; availableCount: number; maxQuantity: number }>;
+  contexts: Array<{ id: string; title: string; availableCount: number; maxQuantity: number }>;
+  topics: Array<{ id: string; title: string; availableCount: number; maxQuantity: number }>;
+  grammar: Array<{ lessonId: string; revisionId: string; revision: string; title: string; maxQuantity: 1 }>;
+  occupiedSlots: Array<{ date: CivilDate; kind: 'LEARN_WORDS' | 'REVIEW_WORDS' | 'GRAMMAR'; lessonId: string | null }>;
+};
+export type AiStudyPlanPreview = {
+  timeZone: string;
+  generatedAt: string;
+  from: CivilDate;
+  to: CivilDate;
+  suggestions: AiStudyPlanSuggestion[];
+  choices: AiStudyPlanChoices;
+};
 export function getStudyPreferences() {
   return apiFetch<StudyPreferences | null>('/api/study-preferences');
 }
@@ -117,7 +137,9 @@ export function getStudyTask(id: string) {
 export function previewStudyPlan() {
   return apiFetch<StudyPlanPreview>('/api/study-plan-previews', { method: 'POST', body: {} });
 }
-
+export function previewAiStudyPlan(locale: 'en' | 'vi') {
+  return apiFetch<AiStudyPlanPreview>('/api/ai-study-plan-previews', { method: 'POST', body: { locale } });
+}
 export function createStudyTask(input: StudyTaskInput) {
   return apiFetch<StudyTaskView>('/api/study-tasks', { method: 'POST', body: input });
 }

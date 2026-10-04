@@ -7,6 +7,8 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/app.js';
 import { getGrammarCurriculum } from '../../src/grammar/content/manifest.js';
 import type { GrammarCurriculum } from '../../src/grammar/content/types.js';
+import { readAiStudyPlannerConfig, type AiStudyPlannerDependencies } from '../../src/services/ai-study-planner.service.js';
+import { reviewLogs, reviewStates, words } from '../../src/db/schema.js';
 
 const apps: FastifyInstance[] = [];
 const today = new Date().toISOString().slice(0, 10);
@@ -23,8 +25,9 @@ function publishedFixture(): GrammarCurriculum {
   return curriculum;
 }
 
-async function createApp(curriculum = publishedFixture()): Promise<FastifyInstance> {
-  const app = await buildApp({ dbPath: ':memory:', logger: false, grammarCurriculum: curriculum });
+async function createApp(curriculum = publishedFixture(), aiStudyPlanner?: AiStudyPlannerDependencies): Promise<FastifyInstance> {
+  const app = await buildApp({ dbPath: ':memory:', logger: false, grammarCurriculum: curriculum,
+    ...(aiStudyPlanner ? { aiStudyPlanner } : {}) });
   apps.push(app);
   return app;
 }
@@ -116,5 +119,120 @@ describe('study HTTP routes', () => {
     expect(mismatch.statusCode).toBe(409);
     expect(mismatch.json().error.details.reason).toBe('REVISION_MISMATCH');
     expect(app.db.sqlite.prepare('SELECT id FROM study_tasks WHERE id = ?').get('grammar-mismatch')).toBeUndefined();
+  });
+  it('returns an editable AI preview without changing tasks, review evidence, or due dates', async () => {
+    const app = await createApp(undefined, {
+      env: { API_KEY: 'fixture-key', AI_MODEL: 'fixture-model' },
+      generate: async () => ({ suggestions: [] }),
+    });
+    await app.inject({ method: 'PUT', url: '/api/study-preferences', payload: {
+      timeZone: 'UTC', studyDays: [1, 2, 3, 4, 5, 6, 7], learningTarget: 2, reviewTarget: 2, grammarTarget: 0,
+    } });
+    await app.inject({ method: 'POST', url: '/api/study-tasks', payload: {
+      id: 'ai-existing-review', kind: 'REVIEW_WORDS', scheduledDate: today, targetCount: 1, source: 'MANUAL',
+    } });
+    app.db.insert(words).values({ id: 'ai-due-word', word: 'canary-word', definition: 'canary-definition',
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }).run();
+    app.db.insert(reviewStates).values({ id: 'ai-due-state', wordId: 'ai-due-word', dueAt: new Date(Date.now() - 60_000).toISOString() }).run();
+    app.db.insert(reviewLogs).values({ id: 'ai-existing-log', wordId: 'ai-due-word', reviewType: 'RECALL', rating: 'GOOD',
+      answer: 'canary-answer', createdAt: new Date().toISOString() }).run();
+    const tasksBefore = app.db.sqlite.prepare('SELECT * FROM study_tasks ORDER BY id').all();
+    const dueBefore = app.db.sqlite.prepare('SELECT * FROM review_states ORDER BY id').all();
+    const logsBefore = app.db.sqlite.prepare('SELECT * FROM review_logs ORDER BY id').all();
+
+    const response = await app.inject({ method: 'POST', url: '/api/ai-study-plan-previews', payload: { locale: 'vi' } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({ timeZone: 'UTC', from: today, suggestions: [] });
+    expect(app.db.sqlite.prepare('SELECT * FROM study_tasks ORDER BY id').all()).toEqual(tasksBefore);
+    expect(app.db.sqlite.prepare('SELECT * FROM review_states ORDER BY id').all()).toEqual(dueBefore);
+    expect(app.db.sqlite.prepare('SELECT * FROM review_logs ORDER BY id').all()).toEqual(logsBefore);
+  });
+
+  it('maps model-output errors to a stable response without returning provider details', async () => {
+    const app = await createApp(undefined, {
+      env: { API_KEY: 'fixture-key', AI_MODEL: 'fixture-model' },
+      generate: async () => ({ providerSecret: 'DO_NOT_EXPOSE' }),
+    });
+    const response = await app.inject({ method: 'POST', url: '/api/ai-study-plan-previews', payload: { locale: 'en' } });
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({ success: false, error: { code: 'AI_INVALID_RESPONSE', message: 'AI planner returned an invalid response' } });
+    expect(response.payload).not.toContain('DO_NOT_EXPOSE');
+    expect(app.db.sqlite.prepare('SELECT * FROM study_tasks').all()).toEqual([]);
+  });
+
+  it('rejects unsupported AI planner request fields', async () => {
+    const app = await createApp(undefined, { env: { API_KEY: 'fixture-key' }, generate: async () => ({ suggestions: [] }) });
+    const response = await app.inject({ method: 'POST', url: '/api/ai-study-plan-previews', payload: { locale: 'en', candidates: [] } });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ success: false, error: { code: 'VALIDATION_ERROR' } });
+  });
+  it('maps missing planner credentials to a stable error without calling a provider', async () => {
+    const savedApiKey = process.env.API_KEY;
+    const savedBaseUrl = process.env.BASE_URL;
+    delete process.env.API_KEY;
+    delete process.env.BASE_URL;
+    try {
+      const app = await createApp();
+      const response = await app.inject({ method: 'POST', url: '/api/ai-study-plan-previews', payload: { locale: 'en' } });
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({ success: false, error: { code: 'AI_NOT_CONFIGURED' } });
+    } finally {
+      if (savedApiKey === undefined) delete process.env.API_KEY; else process.env.API_KEY = savedApiKey;
+      if (savedBaseUrl === undefined) delete process.env.BASE_URL; else process.env.BASE_URL = savedBaseUrl;
+    }
+  });
+  it('rejects invalid planner configuration before provider access', async () => {
+    const previous = { API_KEY: process.env.API_KEY, BASE_URL: process.env.BASE_URL, AI_MODEL: process.env.AI_MODEL, AI_TIMEOUT_MS: process.env.AI_TIMEOUT_MS };
+    const request = async () => (await createApp()).inject({ method: 'POST', url: '/api/ai-study-plan-previews', payload: { locale: 'en' } });
+    const expectNotConfigured = (response: Awaited<ReturnType<typeof request>>) => {
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({ success: false, error: { code: 'AI_NOT_CONFIGURED' } });
+    };
+    try {
+      process.env.API_KEY = 'test-key';
+      process.env.BASE_URL = 'not-a-url';
+      process.env.AI_MODEL = 'fixture-model';
+      expectNotConfigured(await request());
+
+      process.env.BASE_URL = 'https://provider.example/v1';
+      delete process.env.AI_MODEL;
+      expectNotConfigured(await request());
+
+      delete process.env.BASE_URL;
+      process.env.AI_TIMEOUT_MS = '30001';
+      expectNotConfigured(await request());
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
+  });
+});
+describe('AI planner provider configuration', () => {
+  it('uses the official endpoint default and a named model for custom providers', () => {
+    expect(readAiStudyPlannerConfig({ API_KEY: 'fixture-key' })).toMatchObject({
+      baseURL: 'https://api.openai.com/v1', model: 'gpt-4o-mini', timeoutMs: 15_000,
+    });
+    expect(readAiStudyPlannerConfig({ API_KEY: 'fixture-key', BASE_URL: 'https://provider.example/v1', AI_MODEL: 'custom-model' }))
+      .toMatchObject({ baseURL: 'https://provider.example/v1', model: 'custom-model', timeoutMs: 15_000 });
+  });
+
+  it('rejects missing credentials, malformed or credential-bearing URLs, missing custom models, and unsafe timeouts', () => {
+    const invalidConfigurations: NodeJS.ProcessEnv[] = [
+      {},
+      { API_KEY: 'fixture-key', BASE_URL: 'not-a-url', AI_MODEL: 'fixture-model' },
+      { API_KEY: 'fixture-key', BASE_URL: 'https://user:pass@provider.example/v1', AI_MODEL: 'fixture-model' },
+      { API_KEY: 'fixture-key', BASE_URL: 'https://provider.example/v1' },
+      { API_KEY: 'fixture-key', AI_TIMEOUT_MS: '0' },
+      { API_KEY: 'fixture-key', AI_TIMEOUT_MS: '30001' },
+    ];
+    for (const env of invalidConfigurations) {
+      let error: unknown;
+      try { readAiStudyPlannerConfig(env); } catch (caught) { error = caught; }
+      expect(error).toMatchObject({ statusCode: 503, code: 'AI_NOT_CONFIGURED' });
+    }
+    expect(readAiStudyPlannerConfig({ API_KEY: 'fixture-key', AI_TIMEOUT_MS: '1' }).timeoutMs).toBe(1);
+    expect(readAiStudyPlannerConfig({ API_KEY: 'fixture-key', AI_TIMEOUT_MS: '30000' }).timeoutMs).toBe(30_000);
   });
 });

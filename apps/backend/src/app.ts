@@ -17,9 +17,11 @@ import { grammarRoutes } from './routes/grammar.routes.js';
 import { studyRoutes } from './routes/study.routes.js';
 import { GrammarRepository } from './repositories/grammar.repository.js';
 import { StudyRepository } from './repositories/study.repository.js';
+import { AnalyticsRepository } from './repositories/analytics.repository.js';
 import { StudyCalendarRepository } from './repositories/study-calendar.repository.js';
 import { GrammarService } from './services/grammar.service.js';
 import { StudyService } from './services/study.service.js';
+import { AiStudyPlannerService, type AiStudyPlannerDependencies } from './services/ai-study-planner.service.js';
 import { getGrammarCurriculum } from './grammar/content/manifest.js';
 import { registerApiErrorHandler } from './routes/vocabulary.routes.js';
 import type { OutputGrader } from './domain/learning/ai-output-grader.js';
@@ -43,6 +45,8 @@ export interface BuildAppOptions {
   grammarCurriculum?: GrammarCurriculum;
   /** @internal Offline test provider; production uses configured OpenAI. */
   grammarTutorProvider?: GrammarTutorProvider;
+  /** @internal Offline provider and environment fixture for AI planner route tests. */
+  aiStudyPlanner?: AiStudyPlannerDependencies;
   /** @internal Test seam for failures after database acquisition. */
   afterDbAcquired?: (app: FastifyInstance, db: AppDatabase) => void | Promise<void>;
 }
@@ -80,11 +84,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
     const grammarCurriculum = options.grammarCurriculum ?? getGrammarCurriculum();
     const grammarService = new GrammarService(grammarCurriculum, new GrammarRepository(db.sqlite));
-    const studyService = new StudyService(
-      new StudyRepository(db),
-      new StudyCalendarRepository(db),
-      grammarService,
-    );
+    const studyRepository = new StudyRepository(db);
+    const calendarRepository = new StudyCalendarRepository(db);
+    const studyService = new StudyService(studyRepository, calendarRepository, grammarService);
+    const analyticsRepository = new AnalyticsRepository(db);
+    const aiPlanner = new AiStudyPlannerService(studyRepository, calendarRepository, grammarService, analyticsRepository, options.aiStudyPlanner);
     app.get('/api/health', async () => ({
       success: true,
       data: { status: 'ok', app: 'Lexora API' },
@@ -94,7 +98,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await app.register(contextRoutes, { db });
     await app.register(sessionRoutes, { db, outputGrader: options.outputGrader });
     await app.register(grammarRoutes, { db, curriculum: grammarCurriculum, service: grammarService, tutorProvider: options.grammarTutorProvider });
-    await app.register(studyRoutes, { service: studyService });
+    await app.register(studyRoutes, { service: studyService, aiPlanner });
     await app.register(reviewRoutes, { db });
     await app.register(analyticsRoutes, { db });
     await app.register(dataRoutes, { db });

@@ -12,10 +12,13 @@ import {
   studyTaskInputSchema,
   taskPatchSchema,
 } from '../schemas/study.schema.js';
+import { aiStudyPlannerRequestSchema } from '../schemas/ai-study-planner.schema.js';
+import type { AiStudyPlannerService } from '../services/ai-study-planner.service.js';
 import { registerApiErrorHandler } from './vocabulary.routes.js';
 
 export interface StudyRouteOptions {
   service: StudyService;
+  aiPlanner: AiStudyPlannerService;
 }
 
 export const studyRoutes: FastifyPluginAsync<StudyRouteOptions> = async (fastify, options) => {
@@ -45,7 +48,11 @@ export const studyRoutes: FastifyPluginAsync<StudyRouteOptions> = async (fastify
     studyPlanPreviewInputSchema.parse(request.body);
     return reply.status(200).send({ success: true, data: options.service.previewPlan(new Date().toISOString()) });
   });
-
+  fastify.post(`${base}/ai-study-plan-previews`, async (request, reply) => {
+    const input = aiStudyPlannerRequestSchema.parse(request.body);
+    const preview = await options.aiPlanner.preview(input.locale, new Date().toISOString());
+    return reply.status(200).send({ success: true, data: preview });
+  });
   fastify.post(`${base}/study-tasks`, async (request, reply) => {
     const input = studyTaskInputSchema.parse(request.body);
     const result = options.service.createTask(input, new Date().toISOString());

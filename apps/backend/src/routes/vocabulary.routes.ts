@@ -30,7 +30,8 @@ function isAppError(error: unknown): error is ErrorWithStatus & { statusCode: nu
   if (!(error instanceof Error)) return false;
   const typed = error as ErrorWithStatus;
   return Number.isInteger(typed.statusCode) && typed.statusCode! >= 400
-    && (typed.statusCode! < 500 || typed.statusCode === 503) && typeof typed.code === 'string';
+    && (typed.statusCode! < 500 || typed.statusCode === 502 || typed.statusCode === 503 || typed.statusCode === 504)
+    && typeof typed.code === 'string';
 }
 
 function isClientDatabaseConstraintError(error: ErrorWithStatus): boolean {

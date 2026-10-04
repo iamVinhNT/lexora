@@ -14,6 +14,7 @@ import { addCivilDays, civilDateAt } from '../utils/calendar-date';
 import { CalendarGrid } from '../components/calendar/CalendarGrid';
 import { DayDetailPanel } from '../components/calendar/DayDetailPanel';
 import { StudyPlanPreviewDialog } from '../components/calendar/StudyPlanPreviewDialog';
+import { AiStudyPlanPreviewDialog } from '../components/calendar/AiStudyPlanPreviewDialog';
 import { StudyMoveDialog } from '../components/calendar/StudyMoveDialog';
 import { StudyTaskDialog } from '../components/calendar/StudyTaskDialog';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -59,6 +60,7 @@ export function CalendarPage() {
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [movingTask, setMovingTask] = useState<StudyTaskView | null>(null);
   const [showPlanPreview, setShowPlanPreview] = useState(false);
+  const [showAiPlanPreview, setShowAiPlanPreview] = useState(false);
 
   const preferencesQuery = useStudyPreferences();
   const timeZone = preferencesQuery.data?.timeZone;
@@ -155,6 +157,9 @@ export function CalendarPage() {
           <div className="grid w-full min-w-0 grid-cols-2 items-stretch gap-2 sm:flex sm:w-auto sm:items-center">
             <Button type="button" variant="secondary" onClick={() => setShowPlanPreview(true)}>
               {t('generate')}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setShowAiPlanPreview(true)}>
+              {t('generateAi')}
             </Button>
             <Button type="button" onClick={openCreateTask}>
               {t('actions.create')}
@@ -307,6 +312,14 @@ export function CalendarPage() {
         <StudyPlanPreviewDialog
           onClose={() => {
             setShowPlanPreview(false);
+            void calendarQuery.refetch();
+          }}
+        />
+      )}
+      {showAiPlanPreview && (
+        <AiStudyPlanPreviewDialog
+          onClose={() => {
+            setShowAiPlanPreview(false);
             void calendarQuery.refetch();
           }}
         />

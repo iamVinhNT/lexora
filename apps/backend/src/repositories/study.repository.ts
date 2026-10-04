@@ -2,9 +2,9 @@
  * @file study.repository.ts
  * @description Persistence and direct evidence queries for local study calendar state.
  */
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import type { AppDatabase } from '../db/client.js';
-import { contexts, studyPreferences, studyTasks, tags } from '../db/schema.js';
+import { contexts, contextWords, learningProgress, studyPreferences, studyTasks, tags, wordTags, words } from '../db/schema.js';
 import { civilDateAt } from '../domain/study/calendar-date.js';
 import { studyPreferencesInputSchema, studyTaskInputSchema, taskPatchSchema, type StudyPreferences, type StudyPreferencesInput, type StudyTask, type StudyTaskInput, type TaskParams, type TaskPatch, type TaskWriteResult } from '../schemas/study.schema.js';
 import { applyTaskPatch, studyTaskFromRow } from './study-task-mutations.js';
@@ -42,6 +42,21 @@ export class StudyRepository {
       .onConflictDoUpdate({ target: studyPreferences.id, set: { timeZone: parsed.timeZone, studyDays: JSON.stringify(parsed.studyDays),
         learningTarget: parsed.learningTarget, reviewTarget: parsed.reviewTarget, grammarTarget: parsed.grammarTarget, updatedAt: now } }).run();
     return this.getPreferences()!;
+  }
+
+  getPlannerCandidates() {
+    const newWordCount = this.db.select({ count: sql<number>`count(*)` }).from(words)
+      .leftJoin(learningProgress, eq(learningProgress.wordId, words.id))
+      .where(or(eq(learningProgress.status, 'NEW'), isNull(learningProgress.id), isNull(learningProgress.lastStudiedAt))).all()[0]?.count ?? 0;
+    const contextsList = this.db.select({ id: contexts.id, title: contexts.title, wordCount: sql<number>`count(${contextWords.wordId})` })
+      .from(contexts).leftJoin(contextWords, eq(contextWords.contextId, contexts.id)).groupBy(contexts.id)
+      .orderBy(asc(contexts.title), asc(contexts.id)).all();
+    const topicsList = this.db.select({ id: tags.id, title: tags.name, wordCount: sql<number>`count(${wordTags.wordId})` })
+      .from(tags).leftJoin(wordTags, eq(wordTags.tagId, tags.id)).groupBy(tags.id)
+      .orderBy(asc(tags.name), asc(tags.id)).all();
+    return { newWordCount: Number(newWordCount),
+      contexts: contextsList.map((candidate) => ({ ...candidate, wordCount: Number(candidate.wordCount) })),
+      topics: topicsList.map((candidate) => ({ ...candidate, wordCount: Number(candidate.wordCount) })) };
   }
 
   listTasks(from: string, to: string): StudyTask[] {
