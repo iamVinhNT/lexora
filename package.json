@@ -1,8 +1,13 @@
 {
   "name": "lexora",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "packageManager": "pnpm@9.15.4",
+  "pnpm": {
+    "overrides": {
+      "brace-expansion@>=5.0.0 <5.0.12": "5.0.12"
+    }
+  },
   "scripts": {
     "dev": "concurrently --kill-others-on-fail --names backend,frontend \"pnpm --filter @lexora/backend dev\" \"pnpm --filter @lexora/frontend dev\"",
     "build": "pnpm -r --if-present build",
