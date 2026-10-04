@@ -12,6 +12,8 @@ import enReview from './locales/en/review';
 import enAnalytics from './locales/en/analytics';
 import enSettings from './locales/en/settings';
 import enGrammar from './locales/en/grammar';
+import enCalendar from './locales/en/calendar';
+import viCalendar from './locales/vi/calendar';
 import viCommon from './locales/vi/common';
 import viNavigation from './locales/vi/navigation';
 import viDashboard from './locales/vi/dashboard';
@@ -35,6 +37,7 @@ export const resources = {
     analytics: enAnalytics,
     settings: enSettings,
     grammar: enGrammar,
+    calendar: enCalendar,
   },
   vi: {
     common: viCommon,
@@ -47,6 +50,7 @@ export const resources = {
     analytics: viAnalytics,
     settings: viSettings,
     grammar: viGrammar,
+    calendar: viCalendar,
   },
 } as const;
 

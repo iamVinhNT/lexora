@@ -91,7 +91,7 @@ describe('buildApp', () => {
     expect(untrustedPreflight.statusCode).toBe(404);
   });
 
-  it.each(['PATCH', 'DELETE'])('allows browser preflight for %s on resource routes', async (method) => {
+  it.each(['PUT', 'PATCH', 'DELETE'])('allows browser preflight for %s on resource routes', async (method) => {
     app = await buildApp({ dbPath: ':memory:', logger: false });
 
     const preflight = await app.inject({

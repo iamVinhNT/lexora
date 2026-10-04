@@ -23,6 +23,7 @@ export const submitGrammarAnswerSchema = z.object({
   requestId: z.string().min(1).max(100).refine((value) => value.trim().length > 0),
   exerciseId: grammarContentIdSchema,
   answer: grammarAnswerSchema,
+  studyTaskId: z.string().min(1).max(100).refine((value) => value.trim().length > 0).optional(),
 }).strict();
 
 export type GrammarLessonParams = z.infer<typeof grammarLessonParamsSchema>;

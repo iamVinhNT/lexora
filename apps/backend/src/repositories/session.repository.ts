@@ -9,6 +9,8 @@ import {
   collocations, contextWords, contexts, examples, learningAttempts, learningProgress,
   learningSessionItems, learningSessions, reviewLogs, reviewStates, tags, wordTags, words,
 } from '../db/schema.js';
+import { StudyRepository } from './study.repository.js';
+import { ConflictError as StudyConflictError } from '../services/vocabulary.service.js';
 import type { AssessmentRating, SessionStep, StartSessionInput, SubmitStepInput } from '../schemas/session.schema.js';
 import { checkAnswer } from '../domain/text/normalization.js';
 import { createCloze } from '../domain/text/cloze.js';
@@ -104,23 +106,45 @@ export class SessionRepository {
     let sessionId = '';
     this.db.transaction((tx) => {
       if (this.activeSessionExists(tx)) throw new ConflictError('An active learning session already exists', 'ACTIVE_SESSION_EXISTS');
-      let selectedWords: any[] = [];
+      let selectedWords: Array<typeof words.$inferSelect> = [];
+      let taskId: string | null = null;
+      if (data.studyTaskId) {
+        const task = new StudyRepository(this.db).assertUsableTask(tx, data.studyTaskId, 'LEARN_WORDS', now);
+        if (task.kind !== 'LEARN_WORDS' || task.mode !== data.mode
+          || (task.mode === 'context' && task.contextId !== data.contextId)
+          || (task.mode === 'topic' && task.topicId !== data.topicId)) {
+          throw new StudyConflictError('Learning session does not match study task', { reason: 'TASK_PARAMS_MISMATCH' });
+        }
+        const completed = tx.select({ count: sql<number>`count(distinct ${learningSessionItems.wordId})` })
+          .from(learningSessionItems).innerJoin(learningSessions, eq(learningSessions.id, learningSessionItems.sessionId))
+          .where(and(eq(learningSessions.studyTaskId, task.id), eq(learningSessions.status, 'COMPLETED'))).all()[0];
+        const remaining = Math.max(0, task.targetCount - Number(completed?.count ?? 0));
+        if (count > remaining) throw new StudyConflictError('Session exceeds remaining study task quota', { reason: 'TASK_QUOTA_EXCEEDED', availableCount: remaining });
+        taskId = task.id;
+      }
+      const uncredited = taskId
+        ? sql`NOT EXISTS (SELECT 1 FROM learning_session_items credited_item
+            INNER JOIN learning_sessions credited_session ON credited_session.id = credited_item.session_id
+            WHERE credited_item.word_id = words.id AND credited_session.study_task_id = ${taskId}
+              AND credited_session.status = 'COMPLETED')`
+        : undefined;
       if (data.mode === 'new_words') {
-        selectedWords = tx.select({ word: words }).from(words).leftJoin(learningProgress, eq(words.id, learningProgress.wordId)).where(or(eq(learningProgress.status, 'NEW'), isNull(learningProgress.id), isNull(learningProgress.lastStudiedAt))).limit(count).all().map((row) => row.word);
+        selectedWords = tx.select({ word: words }).from(words).leftJoin(learningProgress, eq(words.id, learningProgress.wordId)).where(and(or(eq(learningProgress.status, 'NEW'), isNull(learningProgress.id), isNull(learningProgress.lastStudiedAt)), ...(uncredited ? [uncredited] : []))).limit(count).all().map((row: { word: typeof words.$inferSelect }) => row.word);
       } else if (data.mode === 'context') {
-        selectedWords = tx.select({ word: words }).from(contextWords).innerJoin(words, eq(words.id, contextWords.wordId)).where(eq(contextWords.contextId, data.contextId!)).orderBy(sql`context_words.rowid`).limit(count).all().map((row) => row.word);
+        selectedWords = tx.selectDistinct({ word: words }).from(contextWords).innerJoin(words, eq(words.id, contextWords.wordId)).where(and(eq(contextWords.contextId, data.contextId!), ...(uncredited ? [uncredited] : []))).orderBy(sql`context_words.rowid`).limit(count).all().map((row: { word: typeof words.$inferSelect }) => row.word);
       } else if (data.mode === 'topic') {
-        selectedWords = tx.select({ word: words }).from(words).innerJoin(wordTags, eq(words.id, wordTags.wordId)).innerJoin(tags, eq(tags.id, wordTags.tagId)).where(eq(tags.id, data.topicId!)).limit(count).all().map((row) => row.word);
+        selectedWords = tx.selectDistinct({ word: words }).from(words).innerJoin(wordTags, eq(words.id, wordTags.wordId)).innerJoin(tags, eq(tags.id, wordTags.tagId)).where(and(eq(tags.id, data.topicId!), ...(uncredited ? [uncredited] : []))).limit(count).all().map((row: { word: typeof words.$inferSelect }) => row.word);
       } else if (data.mode === 'weak_words') {
-        selectedWords = tx.select({ word: words }).from(words).leftJoin(reviewStates, eq(words.id, reviewStates.wordId)).leftJoin(learningProgress, eq(words.id, learningProgress.wordId)).where(or(gte(reviewStates.lapses, 2), and(ne(learningProgress.status, 'NEW'), lt(learningProgress.recallScore, 50)), and(ne(learningProgress.status, 'NEW'), gte(learningProgress.recognitionScore, 70), lt(learningProgress.productionScore, 50)))).limit(count).all().map((row) => row.word);
+        selectedWords = tx.selectDistinct({ word: words }).from(words).leftJoin(reviewStates, eq(words.id, reviewStates.wordId)).leftJoin(learningProgress, eq(words.id, learningProgress.wordId)).where(and(or(gte(reviewStates.lapses, 2), and(ne(learningProgress.status, 'NEW'), lt(learningProgress.recallScore, 50)), and(ne(learningProgress.status, 'NEW'), gte(learningProgress.recognitionScore, 70), lt(learningProgress.productionScore, 50))), ...(uncredited ? [uncredited] : []))).limit(count).all().map((row: { word: typeof words.$inferSelect }) => row.word);
       } else {
-        const due = tx.select({ word: words }).from(words).innerJoin(reviewStates, eq(words.id, reviewStates.wordId)).where(lte(reviewStates.dueAt, now)).limit(count).all().map((row) => row.word);
-        const fresh = tx.select({ word: words }).from(words).leftJoin(learningProgress, eq(words.id, learningProgress.wordId)).where(or(eq(learningProgress.status, 'NEW'), isNull(learningProgress.id))).limit(Math.max(0, count - due.length)).all().map((row) => row.word);
+        const due = tx.selectDistinct({ word: words }).from(words).innerJoin(reviewStates, eq(words.id, reviewStates.wordId)).where(and(lte(reviewStates.dueAt, now), ...(uncredited ? [uncredited] : []))).limit(count).all().map((row: { word: typeof words.$inferSelect }) => row.word);
+        const fresh = tx.select({ word: words }).from(words).leftJoin(learningProgress, eq(words.id, learningProgress.wordId)).where(and(or(eq(learningProgress.status, 'NEW'), isNull(learningProgress.id)), ...(uncredited ? [uncredited] : []))).limit(Math.max(0, count - due.length)).all().map((row: { word: typeof words.$inferSelect }) => row.word);
         selectedWords = [...due, ...fresh].filter((word, index, all) => all.findIndex((candidate) => candidate.id === word.id) === index).slice(0, count);
       }
+      if (taskId && selectedWords.length < count) throw new StudyConflictError('Fewer words are available than requested', { reason: 'INSUFFICIENT_WORDS', availableCount: selectedWords.length });
       if (!selectedWords.length) throw new ValidationError('No words available for learning session', 'NO_WORDS_AVAILABLE');
       sessionId = randomUUID();
-      tx.insert(learningSessions).values({ id: sessionId, sessionType: data.mode, totalWords: selectedWords.length, status: 'IN_PROGRESS', startedAt: now, completedAt: null }).run();
+      tx.insert(learningSessions).values({ id: sessionId, sessionType: data.mode, totalWords: selectedWords.length, status: 'IN_PROGRESS', startedAt: now, completedAt: null, studyTaskId: taskId }).run();
       for (const group of groupSessionItems(selectedWords)) for (const assignment of group) {
         tx.insert(learningSessionItems).values({ id: randomUUID(), sessionId, wordId: assignment.id, position: assignment.position, groupIndex: assignment.groupIndex, completedStep: null, recallResult: null, outputSentence: null, reviewRating: null, createdAt: now }).run();
       }
@@ -134,7 +158,7 @@ export class SessionRepository {
     const rawItems = this.db.select().from(learningSessionItems).where(eq(learningSessionItems.sessionId, id)).all();
     const attempts = this.db.select().from(learningAttempts).where(sql`${learningAttempts.sessionItemId} IN (SELECT id FROM learning_session_items WHERE session_id = ${id})`).all();
     const items = this.populateItems(rawItems, this.db, attempts);
-    return { id: session.id, sessionType: session.sessionType, mode: session.sessionType, totalWords: session.totalWords, startedAt: session.startedAt, completedAt: session.completedAt, status: session.status, cursor: deriveLearningCursor(cursorItems(rawItems), attemptModels(attempts)), items, ...(session.status === 'COMPLETED' ? { summary: summarizeSession(rawItems, attempts, session.totalWords) } : {}) };
+    return { id: session.id, sessionType: session.sessionType, mode: session.sessionType, totalWords: session.totalWords, startedAt: session.startedAt, completedAt: session.completedAt, status: session.status, studyTaskId: session.studyTaskId ?? null, cursor: deriveLearningCursor(cursorItems(rawItems), attemptModels(attempts)), items, ...(session.status === 'COMPLETED' ? { summary: summarizeSession(rawItems, attempts, session.totalWords) } : {}) };
   }
 
   findActiveSession() { const session = this.db.select().from(learningSessions).where(eq(learningSessions.status, 'IN_PROGRESS')).orderBy(desc(learningSessions.startedAt)).limit(1).all()[0]; return session ? this.findById(session.id) : null; }

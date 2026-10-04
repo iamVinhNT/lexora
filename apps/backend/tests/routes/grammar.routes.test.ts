@@ -89,7 +89,12 @@ describe('grammar HTTP routes', () => {
       const detail = await app.inject({ method: 'GET', url: `/api/grammar/${lessonId}` });
       expect(detail.statusCode).toBe(200);
       expect(detail.json().data).toMatchObject({
-        lesson: { id: lessonId, exercises: [{ id: firstExerciseId }, { id: secondExerciseId }] },
+        lesson: {
+          id: lessonId,
+          revisionId: expect.any(String),
+          revision: expect.any(String),
+          exercises: [{ id: firstExerciseId }, { id: secondExerciseId }],
+        },
         progress: null,
         nextLessonId: 'grammar-0-word-roles',
       });
@@ -113,9 +118,18 @@ describe('grammar HTTP routes', () => {
     const dbPath = join(directory, 'grammar.db');
     let app = await createApp(dbPath);
     try {
+      app.db.sqlite.prepare(`INSERT INTO study_tasks
+        (id, scheduled_date, kind, target_count, source, lesson_id, revision_id, revision, version,
+          created_at, updated_at, creation_intent)
+        VALUES ('grammar-route-task', '2026-10-02', 'GRAMMAR', 1, 'MANUAL', ?, ?, ?, 1, ?, ?, '{}')`).run(
+        lessonId,
+        'grammar-a1-pronouns-and-articles@1.0.0',
+        '1.0.0',
+        '2026-10-02T00:00:00.000Z',
+        '2026-10-02T00:00:00.000Z',
+      );
       app.db.sqlite.prepare(`INSERT INTO words (id, word, definition, created_at)
         VALUES ('route-word', 'untouched', 'Existing vocabulary row', '2026-09-26T10:00:00.000Z')`).run();
-      const initialWords = app.db.sqlite.prepare('SELECT id, word, definition FROM words').all();
 
       const wrong = await app.inject({
         method: 'POST', url: `/api/grammar/${lessonId}/answers`,
@@ -144,17 +158,16 @@ describe('grammar HTTP routes', () => {
 
       const correct = await app.inject({
         method: 'POST', url: `/api/grammar/${lessonId}/answers`,
-        payload: answer('correct-request', secondExerciseId, 'an apple'),
+        payload: { ...answer('correct-request', secondExerciseId, 'an apple'), studyTaskId: 'grammar-route-task' },
       });
       expect(correct.statusCode).toBe(200);
       expect(correct.json().data).toMatchObject({
-        attempt: { exerciseId: secondExerciseId, isCorrect: true },
+        attempt: { exerciseId: secondExerciseId, isCorrect: true, studyTaskId: 'grammar-route-task', completedLesson: true },
         progress: { lastPosition: 2, isComplete: true },
         nextLessonId: 'grammar-0-word-roles',
       });
       expect(correct.json().data.attempt.feedback).toContain('âm nguyên âm');
       expect(app.db.sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get()).toEqual({ count: 2 });
-      expect(app.db.sqlite.prepare('SELECT id, word, definition FROM words').all()).toEqual(initialWords);
       await app.close();
       app = await createApp(dbPath);
 

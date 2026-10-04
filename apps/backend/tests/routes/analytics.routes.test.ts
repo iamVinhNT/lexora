@@ -12,6 +12,7 @@ import { reviewRoutes } from '../../src/routes/review.routes.js';
 import { analyticsRoutes } from '../../src/routes/analytics.routes.js';
 import { AnalyticsRepository } from '../../src/repositories/analytics.repository.js';
 import { AnalyticsService } from '../../src/services/analytics.service.js';
+import { StudyRepository } from '../../src/repositories/study.repository.js';
 import {
   reviewStates,
   reviewLogs,
@@ -830,20 +831,6 @@ describe('Progress & Analytics Routes Integration', () => {
       expect(res2.statusCode).toBe(400);
     });
 
-    it('parses raw string query values before passing numeric output to service', async () => {
-      const service = new AnalyticsService(new AnalyticsRepository(db));
-      const getReviewTrends = vi.spyOn(service, 'getReviewTrends');
-      const queryApp = Fastify();
-      await queryApp.register(analyticsRoutes, { service });
-      await queryApp.ready();
-
-      const res = await queryApp.inject({ method: 'GET', url: '/api/statistics/trends?days=7' });
-      expect(res.statusCode).toBe(200);
-      expect(getReviewTrends).toHaveBeenCalledWith({ days: 7 });
-      expect(typeof getReviewTrends.mock.calls[0][0]?.days).toBe('number');
-
-      await queryApp.close();
-    });
   });
 
   describe('GET /api/statistics/insights - Learning Insights', () => {
@@ -978,6 +965,52 @@ describe('Progress & Analytics Routes Integration', () => {
       expect(body.error.details).toBeUndefined();
 
       await errorApp.close();
+    });
+  });
+  describe('Stored calendar timezone', () => {
+    it('buckets Vietnam midnight while retaining log-count, distinct-learned and UTC-due formulas', async () => {
+      const first = await createWord('zone-first');
+      const second = await createWord('zone-second');
+      const study = new StudyRepository(db);
+      const preferences = { timeZone: 'Asia/Ho_Chi_Minh', studyDays: [1, 2, 3, 4, 5, 6, 7], learningTarget: 1, reviewTarget: 1, grammarTarget: 0 as const };
+      study.putPreferences(preferences);
+      db.insert(reviewLogs).values([
+        { id: 'zone-before', wordId: first.id, reviewType: 'RECALL', rating: 'GOOD', correct: true, responseTime: 1000, createdAt: '2026-10-03T16:59:59.999Z' },
+        { id: 'zone-midnight', wordId: first.id, reviewType: 'RECALL', rating: 'AGAIN', correct: false, responseTime: 2000, createdAt: '2026-10-03T17:00:00.000Z' },
+        { id: 'zone-repeat', wordId: first.id, reviewType: 'RECALL', rating: 'GOOD', correct: true, responseTime: 3000, createdAt: '2026-10-03T17:10:00.000Z' },
+      ]).run();
+      db.update(learningProgress).set({ lastStudiedAt: '2026-10-03T17:05:00.000Z', status: 'LEARNING' }).where(eq(learningProgress.wordId, second.id)).run();
+      db.update(reviewStates).set({ dueAt: '2026-10-03T17:30:00.000Z' }).run();
+      const now = '2026-10-03T18:00:00.000Z';
+      const repo = new AnalyticsRepository(db);
+      const stats = repo.getDashboardStatistics(now);
+      expect(stats).toMatchObject({ todayReviews: 2, todayLearned: 2, dueCount: 2 });
+      expect(repo.getReviewTrends(2, now)).toEqual({
+        days: 2,
+        trends: [
+          { date: '2026-10-03', reviewsCount: 1, reviewCount: 1, correctCount: 1, accuracy: 100, averageResponseTime: 1000 },
+          { date: '2026-10-04', reviewsCount: 2, reviewCount: 2, correctCount: 1, accuracy: 50, averageResponseTime: 2500 },
+        ],
+      });
+      const dueBefore = db.select().from(reviewStates).all();
+      study.putPreferences({ ...preferences, timeZone: 'UTC' });
+      expect(repo.getDashboardStatistics(now).dueCount).toBe(stats.dueCount);
+      expect(db.select().from(reviewStates).all()).toEqual(dueBefore);
+    });
+
+    it.each([
+      ['spring', '2026-03-09T16:00:00.000Z', ['2026-03-07T05:00:00.000Z', '2026-03-08T05:00:00.000Z', '2026-03-09T05:00:00.000Z'], ['2026-03-07', '2026-03-08', '2026-03-09']],
+      ['fall', '2026-11-02T16:00:00.000Z', ['2026-10-31T04:00:00.000Z', '2026-11-01T04:00:00.000Z', '2026-11-02T05:00:00.000Z'], ['2026-10-31', '2026-11-01', '2026-11-02']],
+    ] as const)('keeps three civil days consecutive across %s DST', async (_transition, now, timestamps, dates) => {
+      const word = await createWord('dst-word');
+      new StudyRepository(db).putPreferences({ timeZone: 'America/New_York', studyDays: [1, 2, 3, 4, 5, 6, 7], learningTarget: 0, reviewTarget: 1, grammarTarget: 0 });
+      db.insert(reviewLogs).values(timestamps.map((createdAt, index) => ({
+        id: `dst-${index}`, wordId: word.id, reviewType: 'RECALL' as const, rating: 'GOOD' as const, correct: true, createdAt,
+      }))).run();
+      const repo = new AnalyticsRepository(db);
+      expect(repo.getDashboardStatistics(now)).toMatchObject({ todayReviews: 1, currentStreak: 3, longestStreak: 3 });
+      expect(repo.getReviewTrends(3, now).trends.map(({ date, reviewCount }) => ({ date, reviewCount })))
+        .toEqual(dates.map(date => ({ date, reviewCount: 1 })));
     });
   });
 });

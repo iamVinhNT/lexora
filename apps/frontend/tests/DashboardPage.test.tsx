@@ -133,7 +133,7 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Something went wrong. Please try again.'));
     fireEvent.click(screen.getByRole('button', { name: 'Retry dashboard' }));
     await waitFor(() => expect(screen.getByText('No learning data yet')).toBeTruthy());
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes('/api/statistics/dashboard'))).toHaveLength(2);
   });
 
   it('shows the learning path without claiming progress', async () => {
@@ -157,5 +157,29 @@ describe('DashboardPage', () => {
 
     expect(screen.queryByText(/\d+%/)).toBeNull();
     expect(screen.queryByText(/words learned/i)).toBeNull();
+  });
+  it('shows grammar plan today even when vocabulary is empty', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/statistics/dashboard')) {
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: {
+          todayReviews: 0, todayLearned: 0, overallAccuracy: 0, currentStreak: 0, longestStreak: 0,
+          stateBreakdown: { NEW: 0, LEARNING: 0, FAMILIAR: 0, MASTERED: 0, MAINTENANCE: 0 }, dueCount: 0,
+        } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      if (url.includes('/api/study-preferences')) {
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { timeZone: 'UTC', studyDays: [1], learningTarget: 0, reviewTarget: 0, grammarTarget: 1, updatedAt: '2026-10-03T00:00:00.000Z' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ success: true, data: { timeZone: 'UTC', today: '2026-10-03', generatedAt: '2026-10-03T00:00:00.000Z', backlogCount: 0, days: [{ date: '2026-10-03', status: 'PLANNED', isStudyDay: true, scheduledDueCount: 0, dueNowCount: 0, dueLaterTodayCount: 0, activities: [], tasks: [{
+        id: 'grammar-task', kind: 'GRAMMAR', lessonId: 'lesson-1', revisionId: 'revision-1', revision: '1', scheduledDate: '2026-10-03', targetCount: 1, source: 'AUTO', version: 1, createdAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z', cancelledAt: null, transferredAt: null, transferredToTaskId: null, transferredCount: 0, completedCount: 0, onTimeCount: 0, isComplete: false, isLate: false, isUnavailable: false, unavailableReason: null, activeSessionId: null,
+      }] }] } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderDashboard();
+
+    const link = await screen.findByRole('link', { name: 'Start' });
+    expect(link.getAttribute('href')).toBe('/grammar/lesson-1?taskId=grammar-task');
+    expect(screen.getByText('No learning data yet')).toBeTruthy();
   });
 });

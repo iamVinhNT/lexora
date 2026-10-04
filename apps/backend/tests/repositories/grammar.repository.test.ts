@@ -33,6 +33,29 @@ function submission(overrides: Partial<RecordGrammarAttemptInput> = {}): RecordG
   };
 }
 
+function insertGrammarTask(sqlite: Database.Database, overrides: Record<string, string | number | null> = {}): void {
+  const values: Record<string, string | number | null> = {
+    id: 'task-1',
+    scheduled_date: '2026-10-02',
+    kind: 'GRAMMAR',
+    target_count: 1,
+    source: 'MANUAL',
+    lesson_id: 'grammar-0-be',
+    revision_id: 'grammar-0-be@1.0.0',
+    revision: '1.0.0',
+    version: 1,
+    created_at: '2026-10-02T00:00:00.000Z',
+    updated_at: '2026-10-02T00:00:00.000Z',
+    creation_intent: '{}',
+    ...overrides,
+  };
+  sqlite.prepare(`INSERT INTO study_tasks
+    (id, scheduled_date, kind, target_count, source, lesson_id, revision_id, revision, version,
+      created_at, updated_at, creation_intent)
+    VALUES (@id, @scheduled_date, @kind, @target_count, @source, @lesson_id, @revision_id, @revision,
+      @version, @created_at, @updated_at, @creation_intent)`).run(values);
+}
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
@@ -134,6 +157,84 @@ describe('standalone grammar repository', () => {
       expect(sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get()).toEqual({ count: 1 });
       expect(repository.findAttemptByRequestId('request-1')).toEqual(original.attempt);
       expect(repository.findProgressByLessonId('grammar-0-be')).toMatchObject({ revision: '1.0.0', lastPosition: 1 });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it('links only final transition to usable grammar task and preserves link on replay', () => {
+    const sqlite = new Database(':memory:');
+    try {
+      const repository = createRepository(sqlite);
+      insertGrammarTask(sqlite);
+      const first = repository.recordAttempt(submission({ studyTaskId: 'task-1' }));
+      const final = repository.recordAttempt(submission({
+        requestId: 'request-2',
+        exerciseId: 'grammar-0-be-exercise-2',
+        studyTaskId: 'task-1',
+      }));
+
+      expect(first.attempt).toMatchObject({ studyTaskId: 'task-1', completedLesson: false });
+      expect(final.attempt).toMatchObject({ studyTaskId: 'task-1', completedLesson: true });
+      expect(repository.recordAttempt(submission({
+        requestId: 'request-2',
+        exerciseId: 'grammar-0-be-exercise-2',
+        studyTaskId: 'task-1',
+        isCorrect: false,
+      }))).toEqual(final);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it('rejects linked task identity mismatch and never writes invalid evidence', () => {
+    const sqlite = new Database(':memory:');
+    try {
+      const repository = createRepository(sqlite);
+      insertGrammarTask(sqlite, { revision: '2.0.0' });
+
+      expect(() => repository.recordAttempt(submission({ studyTaskId: 'task-1' }))).toThrow(GrammarRepositoryConflictError);
+      expect(sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get()).toEqual({ count: 0 });
+      expect(sqlite.prepare('SELECT count(*) AS count FROM grammar_lesson_progress').get()).toEqual({ count: 0 });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it('does not credit linked task when lesson was completed through legacy unlinked attempts', () => {
+    const sqlite = new Database(':memory:');
+    try {
+      const repository = createRepository(sqlite);
+      repository.recordAttempt(submission());
+      repository.recordAttempt(submission({
+        requestId: 'request-2',
+        exerciseId: 'grammar-0-be-exercise-2',
+      }));
+      insertGrammarTask(sqlite);
+
+      const linked = repository.recordAttempt(submission({
+        requestId: 'request-3',
+        studyTaskId: 'task-1',
+      }));
+      expect(linked.attempt).toMatchObject({ studyTaskId: 'task-1', completedLesson: false });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it('rejects wrong-kind linked tasks before creating grammar progress', () => {
+    const sqlite = new Database(':memory:');
+    try {
+      const repository = createRepository(sqlite);
+      sqlite.prepare(`INSERT INTO study_tasks
+        (id, scheduled_date, kind, target_count, source, version, created_at, updated_at, creation_intent)
+        VALUES ('review-task', '2026-10-02', 'REVIEW_WORDS', 1, 'MANUAL', 1, ?, ?, '{}')`).run(
+        '2026-10-02T00:00:00.000Z',
+        '2026-10-02T00:00:00.000Z',
+      );
+
+      expect(() => repository.recordAttempt(submission({ studyTaskId: 'review-task' }))).toThrow(GrammarRepositoryConflictError);
+      expect(repository.findProgressByLessonId('grammar-0-be')).toBeNull();
     } finally {
       sqlite.close();
     }

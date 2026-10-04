@@ -3,6 +3,7 @@
  * @description Zod validation schemas for data management (import, export, backup, restore, reset).
  */
 
+import { studyPreferencesInputSchema, studyTaskInputSchema, taskPatchSchema } from './study.schema.js';
 import { z } from 'zod';
 import { normalizeWord } from '../domain/text/normalization.js';
 
@@ -310,15 +311,92 @@ type BackupDataShape = {
   contextWords: z.infer<typeof contextWordRowSchema>[];
   learningProgress: z.infer<typeof learningProgressRowSchema>[];
   reviewStates: z.infer<typeof reviewStateRowSchema>[];
-  reviewLogs: z.infer<typeof reviewLogRowSchema>[];
+  reviewLogs: Array<z.infer<typeof reviewLogRowSchema> & { studyTaskId?: string | null }>;
   tags: z.infer<typeof tagRowSchema>[];
   wordTags: z.infer<typeof wordTagRowSchema>[];
-  learningSessions: z.infer<typeof learningSessionRowSchema>[];
+  learningSessions: Array<z.infer<typeof learningSessionRowSchema> & { studyTaskId?: string | null }>;
   learningSessionItems: z.infer<typeof learningSessionItemRowSchema>[];
   learningAttempts: z.infer<typeof learningAttemptRowSchema>[];
   grammarLessonProgress?: z.infer<typeof grammarLessonProgressRowSchema>[];
-  grammarExerciseAttempts?: z.infer<typeof grammarExerciseAttemptRowSchema>[];
+  grammarExerciseAttempts?: Array<z.infer<typeof grammarExerciseAttemptRowSchema> & { studyTaskId?: string | null; completedLesson?: boolean }>;
+  studyPreferences?: z.infer<typeof studyPreferencesRowSchema>[];
+  studyTasks?: z.infer<typeof studyTaskRowSchema>[];
 };
+
+const finiteIntegerSchema = z.number().finite().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const studyPreferencesRowSchema = z.object({
+  id: z.literal('local'),
+  timeZone: nonBlankStringSchema,
+  studyDays: z.string().refine((value) => {
+    try {
+      const days: unknown = JSON.parse(value);
+      return studyPreferencesInputSchema.safeParse({
+        timeZone: 'UTC', studyDays: days, learningTarget: 0, reviewTarget: 0, grammarTarget: 0,
+      }).success;
+    } catch { return false; }
+  }, 'Invalid study weekdays'),
+  learningTarget: finiteIntegerSchema,
+  reviewTarget: finiteIntegerSchema,
+  grammarTarget: z.union([z.literal(0), z.literal(1)]),
+  updatedAt: timestampSchema,
+}).strict().superRefine((preferences, ctx) => {
+  let studyDays: unknown;
+  try { studyDays = JSON.parse(preferences.studyDays); } catch { studyDays = null; }
+  const parsed = studyPreferencesInputSchema.safeParse({
+    timeZone: preferences.timeZone, studyDays, learningTarget: preferences.learningTarget,
+    reviewTarget: preferences.reviewTarget, grammarTarget: preferences.grammarTarget,
+  });
+  if (!parsed.success) addIssue(ctx, 'Invalid study preferences');
+});
+const studyTaskRowSchema = z.object({
+  id: nonBlankStringSchema, scheduledDate: z.string().refine((value) => studyTaskInputSchema.safeParse({
+    id: 'date-check', scheduledDate: value, kind: 'REVIEW_WORDS', targetCount: 1, source: 'MANUAL',
+  }).success, 'Invalid civil date'),
+  kind: z.enum(['LEARN_WORDS', 'REVIEW_WORDS', 'GRAMMAR']), targetCount: finiteIntegerSchema.min(1),
+  source: z.enum(['AUTO', 'MANUAL']), mode: z.enum(['new_words', 'context', 'topic', 'weak_words']).nullable(),
+  contextId: z.string().nullable(), topicId: z.string().nullable(), lessonId: z.string().nullable(),
+  revisionId: z.string().nullable(), revision: z.string().nullable(),
+  version: finiteIntegerSchema.min(1), createdAt: timestampSchema, updatedAt: timestampSchema,
+  cancelledAt: timestampSchema.nullable(), transferredAt: timestampSchema.nullable(),
+  transferredToTaskId: z.string().nullable(), transferredCount: finiteIntegerSchema,
+  creationIntent: z.string().min(1), transferIntent: z.string().nullable(),
+}).strict().superRefine((task, ctx) => {
+  const has = (value: string | null) => value !== null;
+  if (!studyTaskInputSchema.safeParse({
+    id: task.id, scheduledDate: task.scheduledDate, kind: task.kind, targetCount: task.targetCount,
+    source: task.source, ...(task.kind === 'LEARN_WORDS' ? { mode: task.mode, ...(task.contextId ? { contextId: task.contextId } : {}), ...(task.topicId ? { topicId: task.topicId } : {}) } : {}),
+    ...(task.kind === 'GRAMMAR' ? { lessonId: task.lessonId, revisionId: task.revisionId, revision: task.revision } : {}),
+  }).success) addIssue(ctx, 'Invalid study task fields');
+  if (task.kind === 'LEARN_WORDS') {
+    if (!task.mode || (task.mode === 'context') !== has(task.contextId) || (task.mode === 'topic') !== has(task.topicId)
+      || has(task.lessonId) || has(task.revisionId) || has(task.revision)) addIssue(ctx, 'Invalid learning task fields');
+  } else if (task.kind === 'REVIEW_WORDS') {
+    if (task.mode !== null || has(task.contextId) || has(task.topicId) || has(task.lessonId) || has(task.revisionId) || has(task.revision)) addIssue(ctx, 'Invalid review task fields');
+  } else if (task.mode !== null || has(task.contextId) || has(task.topicId)
+    || (has(task.lessonId) !== has(task.revisionId)) || (has(task.lessonId) !== has(task.revision))) {
+    addIssue(ctx, 'Invalid grammar task fields');
+  }
+  let creationIntent: unknown;
+  try { creationIntent = JSON.parse(task.creationIntent); } catch { creationIntent = null; }
+  const creation = studyTaskInputSchema.safeParse(creationIntent);
+  if (!creation.success) addIssue(ctx, 'Invalid task creation intent', ['creationIntent']);
+  else if (creation.data.id !== task.id || creation.data.source !== task.source) {
+    addIssue(ctx, 'Task creation intent does not match immutable task identity', ['creationIntent']);
+  }
+  let transferIntent: unknown;
+  if (task.transferIntent !== null) {
+    try { transferIntent = JSON.parse(task.transferIntent); } catch { transferIntent = null; }
+    const transfer = taskPatchSchema.safeParse(transferIntent);
+    if (!transfer.success) addIssue(ctx, 'Invalid task transfer intent', ['transferIntent']);
+    else if (transfer.data.action !== 'MOVE') addIssue(ctx, 'Invalid task transfer intent', ['transferIntent']);
+    else if (task.transferredToTaskId !== null && transfer.data.destinationId !== task.transferredToTaskId) {
+      addIssue(ctx, 'Transfer intent destination does not match task link', ['transferIntent']);
+    }
+  }
+  if (task.transferredCount > task.targetCount) addIssue(ctx, 'Transferred count exceeds task target', ['transferredCount']);
+  if ((task.transferredAt === null) !== (task.transferredToTaskId === null)
+    || (task.transferredAt !== null && task.transferIntent === null)) addIssue(ctx, 'Invalid transfer fields');
+});
 
 function addIssue(ctx: z.RefinementCtx, message: string, path: (string | number)[] = []) {
   ctx.addIssue({ code: z.ZodIssueCode.custom, message, path });
@@ -434,16 +512,86 @@ function validateBackupRelations(data: BackupDataShape, ctx: z.RefinementCtx): v
     grammarLessons.set(row.lessonId, { revisionId: row.revisionId, revision: row.revision });
   }
   const grammarRequestIds = new Set<string>();
+  const grammarAttemptIds = new Set<string>();
   for (const [index, row] of (data.grammarExerciseAttempts ?? []).entries()) {
     const progress = grammarLessons.get(row.lessonId);
     if (!progress) addIssue(ctx, `Orphan grammar lesson reference: ${row.lessonId}`, ['grammarExerciseAttempts', index, 'lessonId']);
     else if (progress.revisionId !== row.revisionId || progress.revision !== row.revision) {
       addIssue(ctx, `Grammar attempt revision does not match lesson progress: ${row.lessonId}`, ['grammarExerciseAttempts', index, 'revisionId']);
     }
+    if (grammarAttemptIds.has(row.id)) addIssue(ctx, `Duplicate grammar attempt id: ${row.id}`, ['grammarExerciseAttempts', index, 'id']);
+    grammarAttemptIds.add(row.id);
     if (grammarRequestIds.has(row.requestId)) addIssue(ctx, `Duplicate grammar request id: ${row.requestId}`, ['grammarExerciseAttempts', index, 'requestId']);
     grammarRequestIds.add(row.requestId);
   }
+  if (data.studyTasks) {
+    const taskIds = new Set<string>();
+    const taskKinds = new Map<string, string>();
+    const transferTargets = new Map<string, string>();
+    for (const [index, task] of data.studyTasks.entries()) {
+      if (taskIds.has(task.id)) addIssue(ctx, `Duplicate id in studyTasks: ${task.id}`, ['studyTasks', index, 'id']);
+      taskIds.add(task.id);
+      taskKinds.set(task.id, task.kind);
+    }
+    for (const [index, task] of data.studyTasks.entries()) {
+      if (task.transferredToTaskId !== null) {
+        if (!taskIds.has(task.transferredToTaskId)) addIssue(ctx, `Orphan transferred task: ${task.transferredToTaskId}`, ['studyTasks', index, 'transferredToTaskId']);
+        else if (taskKinds.get(task.transferredToTaskId) !== task.kind) addIssue(ctx, 'Transferred task kind must match', ['studyTasks', index, 'transferredToTaskId']);
+        transferTargets.set(task.id, task.transferredToTaskId);
+      }
+    }
+    const activeTasks = new Set<string>();
+    for (const [index, task] of data.studyTasks.entries()) {
+      if (task.cancelledAt === null && task.transferredAt === null) {
+        const key = task.kind === 'GRAMMAR'
+          ? task.lessonId === null ? null : `${task.scheduledDate}\u0000${task.lessonId}\u0000${task.revisionId}`
+          : `${task.scheduledDate}\u0000${task.kind}`;
+        if (key !== null && activeTasks.has(key)) addIssue(ctx, 'Duplicate active task quota', ['studyTasks', index]);
+        if (key !== null) activeTasks.add(key);
+      }
+    }
+    for (const start of transferTargets.keys()) {
+      const path = new Set<string>();
+      let current: string | undefined = start;
+      while (current) {
+        if (path.has(current)) {
+          addIssue(ctx, 'Study task transfer cycle', ['studyTasks']);
+          break;
+        }
+        path.add(current);
+        current = transferTargets.get(current);
+      }
+    }
+    for (const [index, row] of (data.grammarExerciseAttempts ?? []).entries()) {
+      const taskId = row.studyTaskId;
+      if (taskId != null && taskKinds.get(taskId) !== 'GRAMMAR') {
+        addIssue(ctx, taskIds.has(taskId) ? 'Grammar evidence must link to grammar task' : `Orphan study task: ${taskId}`, ['grammarExerciseAttempts', index, 'studyTaskId']);
+      }
+    }
+    for (const [index, row] of data.learningSessions.entries()) {
+      if (row.studyTaskId != null && taskKinds.get(row.studyTaskId) !== 'LEARN_WORDS') {
+        addIssue(ctx, taskIds.has(row.studyTaskId) ? 'Learning evidence must link to learning task' : `Orphan study task: ${row.studyTaskId}`, ['learningSessions', index, 'studyTaskId']);
+      }
+    }
+    for (const [index, row] of data.reviewLogs.entries()) {
+      if (row.studyTaskId != null && taskKinds.get(row.studyTaskId) !== 'REVIEW_WORDS') {
+        addIssue(ctx, taskIds.has(row.studyTaskId) ? 'Review evidence must link to review task' : `Orphan study task: ${row.studyTaskId}`, ['reviewLogs', index, 'studyTaskId']);
+      }
+    }
+  }
 }
+
+const grammarExerciseAttemptV4Schema = grammarExerciseAttemptRowSchema.extend({
+  studyTaskId: z.string().nullable(),
+  completedLesson: z.boolean(),
+}).strict();
+const backupV4Tables = {
+  studyPreferences: z.array(studyPreferencesRowSchema).max(1),
+  studyTasks: z.array(studyTaskRowSchema),
+  reviewLogs: z.array(reviewLogRowSchema.extend({ studyTaskId: z.string().nullable() })),
+  learningSessions: z.array(learningSessionRowSchema.extend({ studyTaskId: z.string().nullable() })),
+  grammarExerciseAttempts: z.array(grammarExerciseAttemptV4Schema),
+};
 
 const backupTables = {
   users: z.array(userRowSchema),
@@ -473,6 +621,13 @@ export const backupV3DataSchema = z.object({
   grammarLessonProgress: z.array(grammarLessonProgressRowSchema),
   grammarExerciseAttempts: z.array(grammarExerciseAttemptRowSchema),
 }).strict().superRefine(validateBackupRelations);
+export const backupV4DataSchema = z.object({
+  ...backupTables,
+  ...backupV4Tables,
+  learningAttempts: z.array(learningAttemptRowSchema),
+  grammarLessonProgress: z.array(grammarLessonProgressRowSchema),
+}).strict().superRefine(validateBackupRelations);
+
 
 export const backupV1DataSchema = z.object(backupTables).strict().superRefine((data, ctx) => {
   validateBackupRelations({ ...data, learningAttempts: [] }, ctx);
@@ -486,10 +641,11 @@ const backupEnvelope = {
 export const backupV1Schema = z.object({ version: z.literal(1), ...backupEnvelope, data: backupV1DataSchema }).strict();
 export const backupV2Schema = z.object({ version: z.literal(2), ...backupEnvelope, data: backupDataSchema }).strict();
 export const backupV3Schema = z.object({ version: z.literal(3), ...backupEnvelope, data: backupV3DataSchema }).strict();
-export const backupSchema = z.union([backupV1Schema, backupV2Schema, backupV3Schema]);
+export const backupV4Schema = z.object({ version: z.literal(4), ...backupEnvelope, data: backupV4DataSchema }).strict();
+export const backupSchema = z.union([backupV1Schema, backupV2Schema, backupV3Schema, backupV4Schema]);
 
-export type BackupData = z.infer<typeof backupV3DataSchema>;
-export type BackupPayload = z.infer<typeof backupV3Schema>;
+export type BackupData = z.infer<typeof backupV4DataSchema>;
+export type BackupPayload = z.infer<typeof backupV4Schema>;
 
 const restoreEnvelope = z.object({ confirm: z.literal(true), previewToken: z.string().min(1) }).strict();
 
@@ -497,6 +653,7 @@ export const restoreSchema = z.union([
   z.object({ backup: backupV1Schema, ...restoreEnvelope.shape }).strict(),
   z.object({ backup: backupV2Schema, ...restoreEnvelope.shape }).strict(),
   z.object({ backup: backupV3Schema, ...restoreEnvelope.shape }).strict(),
+  z.object({ backup: backupV4Schema, ...restoreEnvelope.shape }).strict(),
   backupV1Schema.extend(restoreEnvelope.shape).strict().transform((val) => {
     const { confirm, previewToken, ...backup } = val;
     return { backup, confirm: true as const, previewToken };
@@ -506,6 +663,10 @@ export const restoreSchema = z.union([
     return { backup, confirm: true as const, previewToken };
   }),
   backupV3Schema.extend(restoreEnvelope.shape).strict().transform((val) => {
+    const { confirm, previewToken, ...backup } = val;
+    return { backup, confirm: true as const, previewToken };
+  }),
+  backupV4Schema.extend(restoreEnvelope.shape).strict().transform((val) => {
     const { confirm, previewToken, ...backup } = val;
     return { backup, confirm: true as const, previewToken };
   }),

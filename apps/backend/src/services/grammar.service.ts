@@ -8,6 +8,7 @@ import type { GrammarCurriculum } from '../grammar/content/types.js';
 import type { GrammarExerciseResponse } from '../grammar/grade-exercise.js';
 import { submitGrammarAnswerSchema } from '../schemas/grammar.schema.js';
 import type { GrammarRepository } from '../repositories/grammar.repository.js';
+import type { GrammarLessonProgress } from '../repositories/grammar.repository.js';
 
 export class GrammarServiceConflictError extends Error {
   constructor(message: string) {
@@ -40,8 +41,33 @@ export class GrammarService {
     return getGrammarCourse(this.curriculum);
   }
 
+  getCourseWithProgress() {
+    const course = this.getCourse();
+    const progress = new Map<string, GrammarLessonProgress | null>();
+    for (const stage of course.stages) {
+      for (const lesson of stage.lessons) progress.set(lesson.id, this.repository.findProgressByLessonId(lesson.id));
+    }
+    const nextLessonId = course.stages.flatMap(({ lessons }) => lessons)
+      .find((lesson) => !progress.get(lesson.id)?.isComplete)?.id ?? null;
+    return {
+      ...course,
+      stages: course.stages.map((stage) => ({
+        ...stage,
+        lessons: stage.lessons.map((lesson) => ({ ...lesson, progress: progress.get(lesson.id) ?? null })),
+      })),
+      nextLessonId,
+    };
+  }
+
   getLesson(lessonId: string) {
     return getGrammarLesson(this.curriculum, lessonId);
+  }
+
+  getLessonWithProgress(lessonId: string) {
+    const lesson = this.getLesson(lessonId);
+    const course = this.getCourseWithProgress();
+    const progress = this.repository.findProgressByLessonId(lessonId);
+    return { lesson, progress, nextLessonId: course.nextLessonId };
   }
 
   submitAnswer(lessonId: string, rawInput: unknown) {
@@ -59,7 +85,8 @@ export class GrammarService {
       if (existing.attempt.lessonId !== lessonId
         || existing.attempt.exerciseId !== input.exerciseId
         || existing.attempt.answer.type !== answer.type
-        || existing.attempt.answer.text !== answer.text) {
+        || existing.attempt.answer.text !== answer.text
+        || existing.attempt.studyTaskId !== (input.studyTaskId ?? null)) {
         throw new GrammarServiceConflictError('Request ID was already used for a different grammar submission.');
       }
       return existing;
@@ -83,6 +110,7 @@ export class GrammarService {
       isCorrect: grade.isCorrect,
       feedback: grade.feedback,
       exerciseIds: authoredLesson.exercises.map(({ id }) => id),
+      studyTaskId: input.studyTaskId,
     });
   }
 }

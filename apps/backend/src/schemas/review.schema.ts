@@ -27,6 +27,7 @@ export const submitReviewSchema = z.object({
   answer: z.string().optional().nullable(),
   correct: z.boolean().optional().nullable(),
   responseTime: z.number().min(0, 'responseTime must be non-negative').optional().nullable(),
+  studyTaskId: z.string().min(1).max(100).optional(),
 });
 
 export const queryDueReviewsSchema = z.object({

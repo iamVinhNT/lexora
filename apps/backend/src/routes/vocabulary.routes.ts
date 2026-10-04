@@ -19,6 +19,7 @@ export interface VocabularyRouteOptions {
 interface ErrorWithStatus extends Error {
   statusCode?: number;
   code?: string;
+  details?: Record<string, unknown>;
 }
 
 export interface ApiErrorHandlerOptions {
@@ -27,11 +28,9 @@ export interface ApiErrorHandlerOptions {
 
 function isAppError(error: unknown): error is ErrorWithStatus & { statusCode: number; code: string } {
   if (!(error instanceof Error)) return false;
-  const code = (error as ErrorWithStatus).code;
-  return (
-    Number.isInteger((error as ErrorWithStatus).statusCode) &&
-    (code === 'BAD_REQUEST' || code === 'CONFLICT' || code === 'NOT_FOUND' || code === 'SERVICE_UNAVAILABLE' || code === 'VALIDATION_ERROR')
-  );
+  const typed = error as ErrorWithStatus;
+  return Number.isInteger(typed.statusCode) && typed.statusCode! >= 400
+    && (typed.statusCode! < 500 || typed.statusCode === 503) && typeof typed.code === 'string';
 }
 
 function isClientDatabaseConstraintError(error: ErrorWithStatus): boolean {
@@ -63,7 +62,7 @@ export function registerApiErrorHandler(
     if (isAppError(error)) {
       return reply.status(error.statusCode).send({
         success: false,
-        error: { code: error.code, message: error.message },
+        error: { code: error.code, message: error.message, ...(error.details === undefined ? {} : { details: error.details }) },
       });
     }
 

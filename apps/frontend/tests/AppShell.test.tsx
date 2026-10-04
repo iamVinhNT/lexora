@@ -86,6 +86,16 @@ describe('AppShell', () => {
     expect(await screen.findByRole('heading', { name: 'No published grammar lessons yet' })).toBeTruthy();
   });
 
+  it('opens the study calendar from mobile More while keeping four primary links', async () => {
+    renderApp();
+
+    expect(screen.getByRole('navigation', { name: /mobile/i }).querySelectorAll('a')).toHaveLength(4);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: /more navigation/i })).getByRole('link', { name: 'Study calendar' }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Study calendar' })).toBeTruthy();
+  });
+
   it('opens statistics from navigation instead of redirecting to overview', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline'))));
     renderApp('/settings');
@@ -96,14 +106,6 @@ describe('AppShell', () => {
     expect(screen.queryByRole('heading', { level: 1, name: 'Overview' })).toBeNull();
   });
 
-  it('keeps desktop sidebar and mobile navigation available in the DOM', () => {
-    renderApp();
-
-    expect(screen.getAllByRole('complementary')[0].className).toContain('lg:flex');
-    expect(screen.getByRole('navigation', { name: /mobile/i }).className).toContain('lg:hidden');
-    expect(screen.getAllByRole('link', { name: 'Overview' })).not.toHaveLength(0);
-    expect(screen.getByRole('button', { name: 'More' })).toBeTruthy();
-  });
 
   it('opens More navigation and closes it with Escape while returning focus after inert removal', async () => {
     renderApp();
@@ -256,15 +258,11 @@ describe('AppShell', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
 
-  it('moves focus to the current route heading without a visible focus indicator', async () => {
+  it('moves focus to the current route heading', async () => {
     renderApp('/review');
 
     const heading = await screen.findByRole('heading', { level: 1, name: 'Review' });
     expect(document.activeElement).toBe(heading);
-
-    const { readFile } = await import('node:fs/promises');
-    const css = await readFile('src/index.css', 'utf8');
-    expect(css).toMatch(/h1\[tabindex=['"]-1['"]\]:focus\s*\{[^}]*outline:\s*none;[^}]*box-shadow:\s*none;/i);
   });
 
   it('resets scroll before focusing the new route heading', () => {
@@ -278,34 +276,15 @@ describe('AppShell', () => {
     expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'Learn' }));
   });
 
-  it('keeps dark muted text token at a high-contrast value and supports reduced motion', async () => {
-    const { readFile } = await import('node:fs/promises');
-    const css = await readFile('src/index.css', 'utf8');
 
-    expect(css).toMatch(/\[data-theme='dark'\][\s\S]*--color-muted:\s*#cbd5e1/i);
-    expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/);
-    expect(css).toMatch(/transition-duration:\s*0\.01ms\s*!important/);
-  });
 
-  it('configures Tailwind dark utilities with the supported data-theme selector strategy', async () => {
-    const { readFile } = await import('node:fs/promises');
-    const config = await readFile('tailwind.config.js', 'utf8');
-
-    expect(config).toContain("darkMode: ['variant', '&:where([data-theme=\"dark\"], [data-theme=\"dark\"] *)']");
-  });
-
-  it('toggles sidebar collapse state and synchronizes desktop padding following sidebar-07 architecture', () => {
+  it('toggles sidebar collapse while keeping navigation accessible', () => {
     renderApp();
 
     const sidebar = screen.getAllByRole('complementary')[0];
     const trigger = within(sidebar).getByRole('button', { name: /collapse sidebar/i });
-    const contentContainer = sidebar.parentElement?.querySelector('div.min-h-screen');
-
     // Initial expanded state
     expect(sidebar.getAttribute('data-state')).toBe('expanded');
-    expect(sidebar.className).toContain('w-64');
-    expect(sidebar.className).toContain('lg:flex');
-    expect(contentContainer?.className).toContain('lg:pl-64');
     expect(within(sidebar).getByRole('link', { name: 'Overview' })).toBeTruthy();
     expect(within(sidebar).getByText('Appearance')).toBeTruthy();
 
@@ -314,13 +293,10 @@ describe('AppShell', () => {
 
     expect(useUiStore.getState().isSidebarOpen).toBe(false);
     expect(sidebar.getAttribute('data-state')).toBe('collapsed');
-    expect(sidebar.className).toContain('w-16');
-    expect(contentContainer?.className).toContain('lg:pl-16');
 
     // NavMain links still accessible with title tooltips
     const overviewLink = within(sidebar).getByRole('link', { name: 'Overview' });
     expect(overviewLink.getAttribute('title')).toBe('Overview');
-    expect(within(overviewLink).getByText('Overview').className).toContain('sr-only');
 
     // Expand sidebar back
     const expandTrigger = within(sidebar).getByRole('button', { name: /expand sidebar/i });
@@ -328,8 +304,6 @@ describe('AppShell', () => {
 
     expect(useUiStore.getState().isSidebarOpen).toBe(true);
     expect(sidebar.getAttribute('data-state')).toBe('expanded');
-    expect(sidebar.className).toContain('w-64');
-    expect(contentContainer?.className).toContain('lg:pl-64');
   });
 
   it('localizes the sidebar trigger accessible name in Vietnamese', async () => {

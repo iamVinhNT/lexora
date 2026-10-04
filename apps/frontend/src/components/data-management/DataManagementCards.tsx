@@ -136,6 +136,7 @@ export type RestoreCardProps = { onFile: (file?: File) => void; desktopFiles: bo
 export function RestoreCard({ onFile, desktopFiles, onSelect, preview, loading, onOpen }: RestoreCardProps) {
   const { t } = useTranslation('settings');
   const { t: tCommon } = useTranslation('common');
+  const { t: tCalendar } = useTranslation('calendar');
   return <Card className="space-y-5 p-5">
     <CardHeading icon={<FileUp aria-hidden="true" size={20} />} title={t('restore')} description={t('restoreDescription')} />
     <label htmlFor="restore-file" className="text-sm font-semibold text-foreground">{t('restoreFile')}</label>
@@ -148,12 +149,20 @@ export function RestoreCard({ onFile, desktopFiles, onSelect, preview, loading, 
     {preview && <div className="space-y-3 rounded-xl border border-border bg-secondary p-4">
       <h4 className="font-semibold text-foreground">{t('restorePreview')}</h4>
       <p className="text-sm text-foreground">{t('records', { count: preview.totalRecords, application: preview.application, version: preview.version })}</p>
-      <p className="text-sm text-foreground">{preview.conflictSummary.willOverwrite ? t('overwrite', { count: preview.conflictSummary.existingRecordsCount }) : t('noOverwrite')}</p>
+      <p className="text-sm text-foreground">{preview.conflictSummary?.willOverwrite ? t('overwrite', { count: preview.conflictSummary.existingRecordsCount }) : t('noOverwrite')}</p>
       {preview.grammarSummary && <p className="text-sm text-foreground" role={preview.grammarSummary.willOverwrite ? 'alert' : undefined}>
         {preview.grammarSummary.willOverwrite
           ? t('grammarOverwrite', { count: preview.grammarSummary.existingTableCounts.grammarLessonProgress, attempts: preview.grammarSummary.existingTableCounts.grammarExerciseAttempts })
           : t('grammarBackup', { count: preview.grammarSummary.backupTableCounts.grammarLessonProgress, attempts: preview.grammarSummary.backupTableCounts.grammarExerciseAttempts })}
         {!preview.grammarSummary.includedInBackup && ` ${t('grammarAbsent')}`}
+      </p>}
+      {preview.calendarSummary && <p className="text-sm text-foreground" role={(!preview.calendarSummary.includedInBackup || preview.calendarSummary.willOverwrite) ? 'alert' : undefined}>
+        {preview.calendarSummary.willOverwrite
+          ? tCalendar('backup.calendarOverwrite', { tasks: formatNumber(preview.calendarSummary.existingTaskCount) })
+          : tCalendar('backup.calendarIncluded', { tasks: formatNumber(preview.calendarSummary.backupTaskCount) })}
+        {!preview.calendarSummary.includedInBackup
+          ? ` ${tCalendar('backup.calendarAbsent')}`
+          : (preview.calendarSummary.willOverwrite ? ` ${tCalendar('backup.calendarIncluded', { tasks: formatNumber(preview.calendarSummary.backupTaskCount) })}` : '')}
       </p>}
       <Button type="button" variant="danger" onClick={onOpen}>{t('openRestore')}</Button>
     </div>}
@@ -162,11 +171,12 @@ export function RestoreCard({ onFile, desktopFiles, onSelect, preview, loading, 
 
 export function DangerCard({ onProgress, onAll }: { onProgress: () => void; onAll: () => void }) {
   const { t } = useTranslation('settings');
+  const { t: tCalendar } = useTranslation('calendar');
   return <Card className="space-y-5 border-danger p-5">
     <CardHeading icon={<ShieldAlert aria-hidden="true" className="text-danger" size={20} />} title={t('dangerZone')} description={t('dangerDescription')} />
     <div className="grid gap-3 sm:grid-cols-2">
-      <div><p className="font-semibold text-foreground">{t('resetProgress')}</p><p className="mt-1 text-sm text-muted">{t('resetDescription')}</p><Button type="button" variant="danger" className="mt-4" onClick={onProgress}>{t('resetProgress')}</Button></div>
-      <div><p className="font-semibold text-foreground">{t('deleteAll')}</p><p className="mt-1 text-sm text-muted">{t('deleteAllDescription')}</p><Button type="button" variant="danger" className="mt-4" onClick={onAll}>{t('deleteAll')}</Button></div>
+      <div><p className="font-semibold text-foreground">{t('resetProgress')}</p><p className="mt-1 text-sm text-muted">{t('resetDescription')} {tCalendar('backup.resetProgressDescription')}</p><Button type="button" variant="danger" className="mt-4" onClick={onProgress}>{t('resetProgress')}</Button></div>
+      <div><p className="font-semibold text-foreground">{t('deleteAll')}</p><p className="mt-1 text-sm text-muted">{t('deleteAllDescription')} {tCalendar('backup.resetAllDescription')}</p><Button type="button" variant="danger" className="mt-4" onClick={onAll}>{t('deleteAll')}</Button></div>
     </div>
   </Card>;
 }

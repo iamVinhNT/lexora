@@ -3,6 +3,7 @@
  * @description Route map for the foundational Lexora frontend shell.
  */
 import { lazy, Suspense } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
 import { AppShell } from './components/layout/AppShell';
@@ -34,8 +35,13 @@ const GrammarPage = lazy(() =>
 const GrammarLessonPage = lazy(() =>
   import('./pages/GrammarLessonPage').then(({ GrammarLessonPage }) => ({ default: GrammarLessonPage })),
 );
+const CalendarPage = lazy(() =>
+  import('./pages/CalendarPage').then(({ CalendarPage }) => ({ default: CalendarPage })),
+);
 
 export default function App() {
+  const { t } = useTranslation('common');
+
   return <Routes>
     <Route element={<AppShell />}>
       <Route
@@ -45,8 +51,11 @@ export default function App() {
               <div
                 role="status"
                 aria-busy="true"
+                aria-label={t('status.loading')}
                 className="min-h-32 animate-pulse rounded-2xl bg-secondary"
-              />
+              >
+                {t('status.loading')}
+              </div>
             }
           >
             <Outlet />
@@ -64,9 +73,10 @@ export default function App() {
           path="contexts"
           element={<ContextPage />}
         />
+        <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="grammar" element={<GrammarPage />} />
         <Route path="grammar/:lessonId" element={<GrammarLessonPage />} />
-        <Route path="analytics" element={<AnalyticsPage />} />
+        <Route path="calendar" element={<CalendarPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

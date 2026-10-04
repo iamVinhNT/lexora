@@ -7,6 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { GrammarExerciseResponse } from '../grammar/grade-exercise.js';
+import { civilDateAt } from '../domain/study/calendar-date.js';
 
 /** Trusted service output only: this repository persists the supplied grade and does not inspect or grade curriculum content. */
 export interface RecordGrammarAttemptInput {
@@ -19,6 +20,7 @@ export interface RecordGrammarAttemptInput {
   isCorrect: boolean;
   feedback: string;
   exerciseIds: string[];
+  studyTaskId?: string;
 }
 
 export interface GrammarAttempt {
@@ -32,6 +34,8 @@ export interface GrammarAttempt {
   isCorrect: boolean;
   feedback: string;
   createdAt: string;
+  studyTaskId: string | null;
+  completedLesson: boolean;
 }
 
 export interface GrammarLessonProgress {
@@ -67,6 +71,8 @@ interface GrammarAttemptRow {
   is_correct: number;
   feedback: string;
   created_at: string;
+  study_task_id: string | null;
+  completed_lesson: number;
 }
 
 interface GrammarProgressRow {
@@ -109,6 +115,8 @@ function mapAttempt(row: GrammarAttemptRow): GrammarAttempt {
     isCorrect: row.is_correct === 1,
     feedback: row.feedback,
     createdAt: row.created_at,
+    studyTaskId: row.study_task_id,
+    completedLesson: row.completed_lesson === 1,
   };
 }
 
@@ -131,7 +139,8 @@ export class GrammarRepository {
 
   findAttemptByRequestId(requestId: string): GrammarAttempt | null {
     const row = this.sqlite.prepare(`SELECT id, lesson_id, revision_id, revision, exercise_id, request_id,
-      answer, is_correct, feedback, created_at FROM grammar_exercise_attempts WHERE request_id = ?`).get(requestId) as GrammarAttemptRow | undefined;
+      answer, is_correct, feedback, created_at, study_task_id, completed_lesson
+      FROM grammar_exercise_attempts WHERE request_id = ?`).get(requestId) as GrammarAttemptRow | undefined;
     return row ? mapAttempt(row) : null;
   }
   findSubmissionByRequestId(requestId: string): GrammarSubmissionResult | null {
@@ -168,12 +177,26 @@ export class GrammarRepository {
         return { attempt: existingAttempt, progress };
       }
 
+      const now = new Date().toISOString();
+      if (submission.studyTaskId) {
+        this.assertUsableGrammarTask(
+          submission.studyTaskId,
+          submission.lessonId,
+          submission.revisionId,
+          submission.revision,
+          now,
+        );
+        if (this.sqlite.prepare(`SELECT 1 FROM grammar_exercise_attempts
+          WHERE study_task_id = ? AND completed_lesson = 1 LIMIT 1`).get(submission.studyTaskId)) {
+          throw new GrammarRepositoryConflictError('Study task already has a completed grammar lesson.');
+        }
+      }
+
       const progress = this.findProgressByLessonId(submission.lessonId);
       if (progress && (progress.revisionId !== submission.revisionId || progress.revision !== submission.revision)) {
         throw new GrammarRepositoryConflictError('Grammar lesson revision changed; existing progress and attempts were preserved.');
       }
 
-      const now = new Date().toISOString();
       if (!progress) {
         this.sqlite.prepare(`INSERT INTO grammar_lesson_progress
           (lesson_id, revision_id, revision, last_position, is_complete, completed_at, created_at, updated_at)
@@ -182,6 +205,10 @@ export class GrammarRepository {
         );
       }
 
+      const submitted = new Set(this.findSubmittedExerciseIds(submission.lessonId, submission.revisionId));
+      submitted.add(submission.exerciseId);
+      const isComplete = submission.exerciseIds.every((id) => submitted.has(id));
+      const completedLesson = Boolean(submission.studyTaskId && !progress?.isComplete && isComplete);
       const attempt: GrammarAttempt = {
         id: randomUUID(),
         lessonId: submission.lessonId,
@@ -193,18 +220,19 @@ export class GrammarRepository {
         isCorrect: submission.isCorrect,
         feedback: submission.feedback,
         createdAt: now,
+        studyTaskId: submission.studyTaskId ?? null,
+        completedLesson,
       };
       this.sqlite.prepare(`INSERT INTO grammar_exercise_attempts
-        (id, lesson_id, revision_id, revision, exercise_id, request_id, answer, is_correct, feedback, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        (id, lesson_id, revision_id, revision, exercise_id, request_id, answer, is_correct, feedback, created_at, study_task_id, completed_lesson)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         attempt.id, attempt.lessonId, attempt.revisionId, attempt.revision, attempt.exerciseId, attempt.requestId,
         encodeAnswer(attempt.answer), attempt.isCorrect ? 1 : 0, attempt.feedback, attempt.createdAt,
+        attempt.studyTaskId, attempt.completedLesson ? 1 : 0,
       );
 
-      const submitted = new Set(this.findSubmittedExerciseIds(submission.lessonId, submission.revisionId));
       const next = submission.exerciseIds.findIndex((id) => !submitted.has(id));
       const position = next === -1 ? submission.exerciseIds.length : next;
-      const isComplete = next === -1;
       this.sqlite.prepare(`UPDATE grammar_lesson_progress SET last_position = MAX(last_position, ?),
         is_complete = MAX(is_complete, ?),
         completed_at = COALESCE(completed_at, ?),
@@ -224,13 +252,44 @@ export class GrammarRepository {
     return transaction.immediate(input);
   }
 
+  private assertUsableGrammarTask(
+    taskId: string,
+    lessonId: string,
+    revisionId: string,
+    revision: string,
+    now: string,
+  ): void {
+    const task = this.sqlite.prepare(`SELECT id, kind, scheduled_date, lesson_id, revision_id, revision,
+      cancelled_at, transferred_at
+      FROM study_tasks WHERE id = ?`).get(taskId) as {
+        id: string;
+        kind: string;
+        scheduled_date: string;
+        lesson_id: string | null;
+        revision_id: string | null;
+        revision: string | null;
+        cancelled_at: string | null;
+        transferred_at: string | null;
+      } | undefined;
+    if (!task) throw new GrammarRepositoryConflictError('Study task is unavailable for grammar completion.');
+    const preferences = this.sqlite.prepare('SELECT time_zone FROM study_preferences WHERE id = ?').get('local') as { time_zone: string } | undefined;
+    if (task.kind !== 'GRAMMAR' || task.cancelled_at || task.transferred_at
+      || task.scheduled_date > civilDateAt(now, preferences?.time_zone ?? 'UTC')) {
+      throw new GrammarRepositoryConflictError('Study task is unavailable for grammar completion.');
+    }
+    if (task.lesson_id !== lessonId || task.revision_id !== revisionId || task.revision !== revision) {
+      throw new GrammarRepositoryConflictError('Study task does not match this grammar lesson revision.');
+    }
+  }
+
   private matchesRetry(existing: GrammarAttempt, input: RecordGrammarAttemptInput): boolean {
     return existing.lessonId === input.lessonId
       && existing.revisionId === input.revisionId
       && existing.revision === input.revision
       && existing.exerciseId === input.exerciseId
       && existing.answer.type === input.answer.type
-      && existing.answer.text === input.answer.text;
+      && existing.answer.text === input.answer.text
+      && existing.studyTaskId === (input.studyTaskId ?? null);
   }
 
   private validateInput(input: RecordGrammarAttemptInput): void {

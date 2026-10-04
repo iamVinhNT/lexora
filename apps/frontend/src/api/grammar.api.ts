@@ -17,6 +17,8 @@ export type GrammarLessonProgress = {
 
 export type GrammarLessonSummary = {
   id: string;
+  revisionId: string;
+  revision: string;
   title: string;
   objective: string;
   progress: GrammarLessonProgress | null;
@@ -37,6 +39,8 @@ export type GrammarCourse = {
 
 export type GrammarLessonDetail = {
   id: string;
+  revisionId: string;
+  revision: string;
   title: string;
   objective: string;
   explanation: string;
@@ -61,7 +65,7 @@ export type GrammarLesson = {
 };
 
 export type GrammarAnswer = { type: 'choice' | 'text'; text: string };
-export type GrammarAnswerSubmission = { requestId: string; exerciseId: string; answer: GrammarAnswer };
+export type GrammarAnswerSubmission = { requestId: string; exerciseId: string; answer: GrammarAnswer; studyTaskId?: string };
 export type GrammarAnswerResult = {
   attempt: {
     id: string;
@@ -74,10 +78,13 @@ export type GrammarAnswerResult = {
     isCorrect: boolean;
     feedback: string;
     createdAt: string;
+    studyTaskId: string | null;
+    completedLesson: boolean;
   };
   progress: GrammarLessonProgress;
   nextLessonId: string | null;
 };
+
 
 export type GrammarTutorAnswer = { explanation: string; contrast: string };
 

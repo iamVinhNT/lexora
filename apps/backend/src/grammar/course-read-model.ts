@@ -8,7 +8,7 @@ import type { GrammarCurriculum, GrammarLesson, GrammarStage, GrammarTeachingGui
 
 const courseLevels = ['0', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const;
 
-type LessonSummary = Pick<GrammarLesson, 'id' | 'title' | 'objective'>;
+type LessonSummary = Pick<GrammarLesson, 'id' | 'title' | 'objective' | 'revisionId' | 'revision'>;
 type PublicGrammarSource = Pick<GrammarLesson['sources'][number], 'id' | 'title' | 'url'>;
 
 export interface GrammarCourseStage {
@@ -35,7 +35,7 @@ export interface GrammarCourse {
   stages: GrammarCourseStage[];
 }
 
-export interface GrammarLessonDetail extends Omit<GrammarLesson, 'revisionId' | 'revision' | 'prerequisiteIds' | 'coverage' | 'exercises' | 'sources' | 'review'> {
+export interface GrammarLessonDetail extends Omit<GrammarLesson, 'prerequisiteIds' | 'coverage' | 'exercises' | 'sources' | 'review'> {
   guide: GrammarTeachingGuide;
   sources: PublicGrammarSource[];
   exercises: Array<{
@@ -74,7 +74,7 @@ export function getGrammarCourse(curriculum: GrammarCurriculum): GrammarCourse {
       id: stage.id,
       level: stage.level,
       title: stage.title,
-      lessons: stage.lessons.map(({ id, title, objective }) => ({ id, title, objective })),
+      lessons: stage.lessons.map(({ id, title, objective, revisionId, revision }) => ({ id, title, objective, revisionId, revision })),
     });
   }
 
@@ -96,6 +96,8 @@ export function getGrammarLesson(curriculum: GrammarCurriculum, lessonId: string
   const lesson = stage.lessons.find(({ id }) => id === lessonId)!;
 
   return {
+    revisionId: lesson.revisionId,
+    revision: lesson.revision,
     id: lesson.id,
     title: lesson.title,
     objective: lesson.objective,

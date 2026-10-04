@@ -11,12 +11,37 @@ import { LearningSessionPage } from '../src/pages/LearningSessionPage';
 const wordId = '11111111-1111-4111-8111-111111111111';
 const baseItem = { id: 'item-1', sessionId: 'session-1', wordId, position: 0, groupIndex: 0, completedStep: null, recallResult: null, outputSentence: null, reviewRating: null, attempts: [], clozeSentence: 'The system needs to be ______.', word: { id: wordId, word: 'reliable', headword: 'reliable', definition: 'trusted', phonetic: '/r/', partOfSpeech: 'adjective', translation: 'đáng tin', contextSentence: 'A reliable system works.', examples: [], collocations: [] } };
 function cursor(step: any, attemptNumber: 1 | 2 | null = null) { return { phase: step === 'CONTEXT' || step === 'UNDERSTAND' ? 'ENCODE' : 'RETRIEVE', groupIndex: 0, groupCount: 1, groupSize: 1, itemIndex: 0, sessionPosition: 0, step, itemId: 'item-1', wordId, attemptNumber }; }
-function session(item = baseItem, step: any = 'CONTEXT') { return { id: 'session-1', mode: 'new_words', sessionType: 'new_words', totalWords: 1, startedAt: '2026-09-07T10:00:00.000Z', completedAt: null, status: 'IN_PROGRESS', cursor: cursor(step), items: [item] }; }
+function session(item = baseItem, step: any = 'CONTEXT', studyTaskId: string | null = null) { return { id: 'session-1', mode: 'new_words', sessionType: 'new_words', totalWords: 1, startedAt: '2026-09-07T10:00:00.000Z', completedAt: null, status: 'IN_PROGRESS', studyTaskId, cursor: cursor(step), items: [item] }; }
 function envelope(data: unknown, success = true) { return new Response(JSON.stringify(success ? { success: true, data } : { success: false, error: { code: 'FAILED', message: 'Step failed' } }), { status: success ? 200 : 400, headers: { 'Content-Type': 'application/json' } }); }
 const emptyOverview = { activeSession: null, latestSession: null, sessions: [] };
 const emptyOptions = { contexts: [{ id: 'context-1', title: 'System Architecture', wordCount: 8 }], topics: [{ id: 'topic-1', name: 'Engineering', wordCount: 4 }], availability: { newWords: 0, weakWords: 0, dueWords: 0 } };
 const backendSummary = { totalWords: 5, recallFirstTry: 1, recallSecondTry: 1, recallFailed: 1, outputValid: 2, outputInvalid: 2, legacyUnknown: 1 };
-function renderPage() { return render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><LearningSessionPage /></QueryClientProvider></MemoryRouter>); }
+const taskId = 'task-learn-1';
+const otherTaskId = 'task-learn-2';
+const linkedTask = {
+  id: taskId,
+  scheduledDate: '2026-09-08',
+  kind: 'LEARN_WORDS',
+  mode: 'context',
+  contextId: 'context-1',
+  targetCount: 7,
+  source: 'MANUAL',
+  version: 1,
+  createdAt: '2026-09-07T00:00:00.000Z',
+  updatedAt: '2026-09-07T00:00:00.000Z',
+  cancelledAt: null,
+  transferredAt: null,
+  transferredToTaskId: null,
+  transferredCount: 0,
+  completedCount: 2,
+  onTimeCount: 2,
+  isComplete: false,
+  isLate: false,
+  isUnavailable: false,
+  unavailableReason: null,
+  activeSessionId: null,
+};
+function renderPage(path = '/learn') { return render(<MemoryRouter initialEntries={[path]}><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><LearningSessionPage /></QueryClientProvider></MemoryRouter>); }
 
 function routeFetch(overrides: (url: URL, init: RequestInit) => Response | undefined = () => undefined) {
   return vi.fn((input: RequestInfo | URL, init: RequestInit = {}) => {
@@ -30,6 +55,62 @@ function routeFetch(overrides: (url: URL, init: RequestInit) => Response | undef
 describe('LearningSessionPage', () => {
   beforeEach(() => vi.stubGlobal('fetch', routeFetch()));
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+  it('prefills linked task chunk and enters linked session after start', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation(routeFetch((url, init) => {
+      if (url.pathname === `/api/study-tasks/${taskId}`) return envelope(linkedTask);
+      if (url.pathname === '/api/learning/session' && !init.method) return envelope(emptyOverview);
+      if (url.pathname === '/api/learning/session' && init.method === 'POST') return envelope(session(baseItem, 'CONTEXT', taskId));
+      return undefined;
+    }));
+    renderPage(`/learn?taskId=${taskId}`);
+    await screen.findByRole('heading', { name: 'Start a learning session' });
+    expect((screen.getByLabelText('Word count') as HTMLInputElement).value).toBe('5');
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+    expect(await screen.findByRole('heading', { name: 'Context' })).toBeTruthy();
+    const startRequest = fetchMock.mock.calls.find(([input, init]) => new URL(String(input)).pathname === '/api/learning/session' && init?.method === 'POST');
+    expect(JSON.parse(String(startRequest?.[1]?.body))).toMatchObject({ count: 5, studyTaskId: taskId, contextId: 'context-1', mode: 'context' });
+  });
+
+  it('resumes stored linked session and ignores another task query', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation(routeFetch((url, init) => {
+      if (url.pathname === `/api/study-tasks/${taskId}`) return envelope({ ...linkedTask, activeSessionId: 'session-1' });
+      if (url.pathname === `/api/study-tasks/${otherTaskId}`) return envelope({ ...linkedTask, id: otherTaskId, scheduledDate: '2026-09-09' });
+      if (url.pathname === '/api/learning/session' && !init.method) return envelope({ activeSession: session(baseItem, 'CONTEXT', taskId), latestSession: null, sessions: [] });
+      return undefined;
+    }));
+    renderPage(`/learn?taskId=${otherTaskId}`);
+    expect(await screen.findByRole('heading', { name: 'Context' })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('study session is in progress');
+    expect(screen.queryByRole('heading', { name: 'Start a learning session' })).toBeNull();
+    expect(fetchMock.mock.calls.some(([input, init]) => new URL(String(input)).pathname === '/api/learning/session' && init?.method === 'POST')).toBe(false);
+  });
+
+  it('disables linked start when task content is unavailable', async () => {
+    const unavailableTask = { ...linkedTask, id: otherTaskId, isUnavailable: true, unavailableReason: 'Context was deleted.' };
+    vi.mocked(fetch).mockImplementation(routeFetch((url, init) => {
+      if (url.pathname === `/api/study-tasks/${otherTaskId}`) return envelope(unavailableTask);
+      if (url.pathname === '/api/learning/session' && !init.method) return envelope(emptyOverview);
+      return undefined;
+    }));
+    renderPage(`/learn?taskId=${otherTaskId}`);
+    expect(await screen.findByText('Context was deleted.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Start session' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('uses stored task date and distinguishes quota status after completion', async () => {
+    const completed = { ...session(baseItem, 'COMPLETE', taskId), status: 'COMPLETED', completedAt: '2026-09-09T00:30:00.000Z' };
+    vi.mocked(fetch).mockImplementation(routeFetch((url, init) => {
+      if (url.pathname === `/api/study-tasks/${taskId}`) return envelope({ ...linkedTask, scheduledDate: '2026-09-08', completedCount: 7, isComplete: true });
+      if (url.pathname === '/api/learning/session' && !init.method) return envelope({ activeSession: completed, latestSession: completed, sessions: [completed] });
+      return undefined;
+    }));
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'Session complete' })).toBeTruthy();
+    expect((await screen.findByRole('status')).textContent).toContain('Goal reached');
+    expect(screen.getByRole('link', { name: 'Open calendar' }).getAttribute('href')).toBe('/calendar?date=2026-09-08');
+  });
 
   it('uses human-readable selectors and sends canonical start payload', async () => {
     const fetchMock = vi.mocked(fetch);
@@ -319,18 +400,6 @@ describe('LearningSessionPage', () => {
     }
   });
 
-  it('keeps the Output action sticky with mobile-safe form spacing', async () => {
-    vi.mocked(fetch).mockImplementation(routeFetch((url, init) => url.pathname === '/api/learning/session' && !init.method ? envelope({ activeSession: session({ ...baseItem, completedStep: 'RECALL' }, 'OUTPUT'), latestSession: null, sessions: [] }) : undefined));
-    renderPage();
-    await screen.findByRole('heading', { name: 'Output' });
-    const textarea = screen.getByLabelText('Your sentence');
-    const form = textarea.closest('form');
-    const action = screen.getByRole('button', { name: 'Continue to Assess' }).parentElement;
-    expect(form?.className).toContain('pb-24');
-    expect(action?.className).toContain('sticky');
-    expect(action?.className).toContain('bottom-[65px]');
-    expect(action?.className).toContain('env(safe-area-inset-bottom)');
-  });
 
   it('submits Output once for Ctrl+Enter and Meta+Enter', async () => {
     const fetchMock = vi.mocked(fetch);

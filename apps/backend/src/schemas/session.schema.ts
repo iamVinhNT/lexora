@@ -39,6 +39,7 @@ export const startSessionSchema = z.object({
   count: z.coerce.number().int().min(1).max(50).default(10),
   contextId: z.string().min(1).optional(),
   topicId: z.string().min(1).optional(),
+  studyTaskId: z.string().min(1).optional(),
 }).strict();
 
 export const submitStepSchema = z.object({

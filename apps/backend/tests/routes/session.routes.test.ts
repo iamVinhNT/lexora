@@ -2,13 +2,15 @@
  * @file session.routes.test.ts
  * @description Contract tests for redesigned learning session requests and responses.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { getDb, type AppDatabase } from '../../src/db/client.js';
 import { sessionRoutes } from '../../src/routes/session.routes.js';
 import { vocabularyRoutes } from '../../src/routes/vocabulary.routes.js';
 import { SessionRepository } from '../../src/repositories/session.repository.js';
-import { words, contexts, contextWords, learningSessions, learningSessionItems, learningAttempts } from '../../src/db/schema.js';
+import { StudyRepository } from '../../src/repositories/study.repository.js';
+import { words, contexts, contextWords, learningSessions, learningSessionItems, learningAttempts, reviewLogs, studyTasks } from '../../src/db/schema.js';
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
@@ -34,6 +36,71 @@ describe('redesigned learning session contract', () => {
     db.sqlite.close();
   });
 
+  it('persists linked task on session detail and rejects parameter mismatch without inserting', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    new StudyRepository(db).createTask({
+      id: 'learn-linked', scheduledDate: today, kind: 'LEARN_WORDS', mode: 'new_words',
+      targetCount: 2, source: 'MANUAL',
+    }, new Date().toISOString());
+    const started = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1, studyTaskId: 'learn-linked' } });
+    expect(started.statusCode).toBe(201);
+    const session = JSON.parse(started.payload).data;
+    expect(session.studyTaskId).toBe('learn-linked');
+    expect(JSON.parse((await app.inject({ method: 'GET', url: `/api/learning/session/${session.id}` })).payload).data.studyTaskId).toBe('learn-linked');
+    await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/abandon` });
+    const before = db.select().from(learningSessions).all().length;
+    const mismatch = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'weak_words', count: 1, studyTaskId: 'learn-linked' } });
+    expect(mismatch.statusCode).toBe(409);
+    expect(db.select().from(learningSessions).all()).toHaveLength(before);
+  });
+
+  it('returns exact availableCount and creates no session when linked selection is short', async () => {
+    db.insert(contexts).values({ id: 'short-context', title: 'Short', content: 'word1', createdAt: new Date().toISOString() }).run();
+    db.insert(contextWords).values({ contextId: 'short-context', wordId: uuid(1) }).run();
+    new StudyRepository(db).createTask({
+      id: 'learn-short', scheduledDate: new Date().toISOString().slice(0, 10), kind: 'LEARN_WORDS',
+      mode: 'context', contextId: 'short-context', targetCount: 3, source: 'MANUAL',
+    }, new Date().toISOString());
+    const response = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'context', contextId: 'short-context', count: 2, studyTaskId: 'learn-short' } });
+    expect(response.statusCode).toBe(409);
+    expect(JSON.parse(response.payload).error.details.availableCount).toBe(1);
+    expect(db.select().from(learningSessions).all()).toHaveLength(0);
+    expect(db.select().from(learningSessionItems).all()).toHaveLength(0);
+  });
+  it('rejects future, wrong-kind, cancelled, and transferred linked tasks without session writes', async () => {
+    const now = new Date().toISOString();
+    const today = now.slice(0, 10);
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const repository = new StudyRepository(db);
+    repository.createTask({ id: 'future-task', scheduledDate: tomorrow, kind: 'LEARN_WORDS', mode: 'new_words', targetCount: 1, source: 'MANUAL' }, now);
+    repository.createTask({ id: 'review-task', scheduledDate: today, kind: 'REVIEW_WORDS', targetCount: 1, source: 'MANUAL' }, now);
+    repository.createTask({ id: 'cancel-task', scheduledDate: today, kind: 'LEARN_WORDS', mode: 'new_words', targetCount: 1, source: 'MANUAL' }, now);
+    repository.patchTask('cancel-task', { action: 'CANCEL', version: 1 }, now);
+    repository.createTask({ id: 'transfer-task', scheduledDate: today, kind: 'LEARN_WORDS', mode: 'new_words', targetCount: 1, source: 'MANUAL' }, now);
+    db.update(studyTasks).set({ transferredAt: now }).where(eq(studyTasks.id, 'transfer-task')).run();
+    for (const studyTaskId of ['future-task', 'review-task', 'cancel-task', 'transfer-task']) {
+      const response = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1, studyTaskId } });
+      expect(response.statusCode).toBe(409);
+    }
+    expect(db.select().from(learningSessions).all()).toHaveLength(0);
+  });
+  it('excludes already credited linked IDs before LIMIT and reports exhausted quota', async () => {
+    const now = new Date().toISOString();
+    db.insert(contexts).values({ id: 'linked-context', title: 'Linked', content: 'word1 word2' , createdAt: now }).run();
+    db.insert(contextWords).values({ contextId: 'linked-context', wordId: uuid(1) }).run();
+    db.insert(contextWords).values({ contextId: 'linked-context', wordId: uuid(2) }).run();
+    new StudyRepository(db).createTask({ id: 'linked-selector', scheduledDate: now.slice(0, 10), kind: 'LEARN_WORDS', mode: 'context', contextId: 'linked-context', targetCount: 2, source: 'MANUAL' }, now);
+    db.insert(learningSessions).values({ id: 'credited-session', sessionType: 'context', totalWords: 1, status: 'COMPLETED', startedAt: now, completedAt: now, studyTaskId: 'linked-selector' }).run();
+    db.insert(learningSessionItems).values({ id: 'credited-item', sessionId: 'credited-session', wordId: uuid(1), position: 0, groupIndex: 0, completedStep: 'ASSESS', recallResult: 'CORRECT', outputSentence: 'ok', reviewRating: 'GOOD', createdAt: now }).run();
+    const next = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'context', contextId: 'linked-context', count: 1, studyTaskId: 'linked-selector' } });
+    expect(next.statusCode).toBe(201);
+    expect(JSON.parse(next.payload).data.items[0].wordId).toBe(uuid(2));
+    await app.inject({ method: 'POST', url: `/api/learning/session/${JSON.parse(next.payload).data.id}/abandon` });
+    db.update(learningSessions).set({ status: 'COMPLETED', completedAt: now }).where(eq(learningSessions.id, JSON.parse(next.payload).data.id)).run();
+    const exhausted = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'context', contextId: 'linked-context', count: 1, studyTaskId: 'linked-selector' } });
+    expect(exhausted.statusCode).toBe(409);
+    expect(JSON.parse(exhausted.payload).error.details.availableCount).toBe(0);
+  });
   it('preserves context selection order for deterministic first-word sessions', async () => {
     db.insert(contexts).values({ id: 'context-order', title: 'Ordered context', content: 'word3 word1', createdAt: new Date().toISOString() }).run();
     db.insert(contextWords).values({ contextId: 'context-order', wordId: uuid(3) }).run();
@@ -184,6 +251,7 @@ describe('redesigned learning session contract', () => {
     expect(data.summary).toEqual({ totalWords: 1, recallFirstTry: 0, recallSecondTry: 1, recallFailed: 0, outputValid: 1, outputInvalid: 0, legacyUnknown: 0 });
     expect(db.sqlite.prepare("SELECT performance_score AS performanceScore, answer FROM review_logs WHERE word_id = ? AND review_type = 'RECALL'").get(wordId)).toEqual({ performanceScore: 70, answer: session.items[0].word.word });
     expect(db.sqlite.prepare("SELECT performance_score AS performanceScore, answer FROM review_logs WHERE word_id = ? AND review_type = 'PRODUCTION'").get(wordId)).toEqual({ performanceScore: 70, answer: `This ${session.items[0].word.word} example works.` });
+    expect(db.select().from(reviewLogs).all().every((log) => log.studyTaskId === null)).toBe(true);
   });
 
   it('persists invalid Output attempt one and advances to Assess after valid attempt two', async () => {

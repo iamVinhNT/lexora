@@ -4,6 +4,7 @@
  */
 import { useTranslation } from 'react-i18next';
 
+import { StudyPreferencesForm } from '../components/calendar/StudyPreferencesForm';
 import { DataManagementPanel } from '../components/data-management/DataManagementPanel';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -32,6 +33,7 @@ export function SettingsPage() {
         </Card>
       </div>
     </section>
+    <StudyPreferencesForm loadOnMount={false} />
     <DataManagementPanel />
   </div>;
 }

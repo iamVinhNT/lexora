@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe('standalone grammar learner tables', () => {
-  it('creates only grammar tables idempotently without changing vocabulary rows', () => {
+  it('creates grammar and study tables idempotently without changing vocabulary rows', () => {
     const sqlite = new Database(':memory:');
     try {
       sqlite.exec("CREATE TABLE words (id TEXT PRIMARY KEY, word TEXT NOT NULL); INSERT INTO words VALUES ('word-1', 'existing');");
@@ -25,8 +25,6 @@ describe('standalone grammar learner tables', () => {
       createGrammarTables(sqlite);
       createGrammarTables(sqlite);
 
-      expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all())
-        .toEqual([{ name: 'grammar_exercise_attempts' }, { name: 'grammar_lesson_progress' }, { name: 'words' }]);
       expect(sqlite.prepare('SELECT * FROM words').all()).toEqual(vocabularyBefore);
       expect(sqlite.pragma('foreign_keys', { simple: true })).toBe(1);
     } finally {

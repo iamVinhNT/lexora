@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe('reviewed-fixture grammar flow', () => {
-  it('moves across the 0→A1 boundary, survives restart and v3 restore, without depending on AI', async () => {
+  it('moves across the 0→A1 boundary, survives restart and v4 restore, without depending on AI', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'grammar-flow-'));
     directories.push(directory);
     const dbPath = join(directory, 'grammar.db');
@@ -61,7 +61,7 @@ describe('reviewed-fixture grammar flow', () => {
       expect(completed.nextLessonId).toBeNull();
       expect(completed.isComplete).toBe(false); // C2 remains unpublished, not a certificate.
       const backup = (await app.inject({ method: 'GET', url: '/api/backup' })).json().data;
-      expect(backup.version).toBe(3);
+      expect(backup.version).toBe(4);
       expect(backup.data.grammarExerciseAttempts.length).toBeGreaterThan(0);
       await app.close();
       app = await buildApp({ dbPath, logger: false, grammarCurriculum: curriculum, grammarTutorProvider: provider });

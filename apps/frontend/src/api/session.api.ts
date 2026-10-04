@@ -17,14 +17,14 @@ export type LearningCursor = {
 };
 export type LearningAttempt = { id: string; sessionItemId: string; type: 'RECALL' | 'OUTPUT'; attemptNumber: 1 | 2; answer: string; result: string; performanceScore: number; feedbackCodes?: string[] | null; explanation?: string | null; suggestion?: string | null; source?: string };
 export type LearningFeedback = { outcome: string; attemptNumber: 1 | 2 | null; canRetry: boolean; score?: number; explanation?: string; suggestion?: string; hint?: { firstLetter: string; letterCount: number }; revealedAnswer?: string; codes?: string[] };
-export type SessionStartPayload = { mode: SessionMode; count: number; contextId?: string; topicId?: string };
+export type SessionStartPayload = { mode: SessionMode; count: number; contextId?: string; topicId?: string; studyTaskId?: string };
 export type LearningOptions = { contexts: Array<{ id: string; title: string; wordCount: number }>; topics: Array<{ id: string; name: string; wordCount: number }>; availability: { newWords: number; weakWords: number; dueWords: number } };
 export type SessionExample = { sentence?: string | null; translation?: string | null } & Record<string, unknown>;
 export type SessionCollocation = { phrase?: string | null; collocation?: string | null } & Record<string, unknown>;
 export type SessionWord = { id: string; word: string; headword?: string | null; definition?: string | null; phonetic?: string | null; pronunciation?: string | null; partOfSpeech?: string | null; translation?: string | null; contextSentence?: string | null; examples?: SessionExample[]; collocations?: SessionCollocation[] };
 export type LearningSessionItem = { id: string; sessionId: string; wordId: string; position?: number; groupIndex?: number; completedStep: SessionStep | null; recallResult?: string | null; outputSentence?: string | null; reviewRating?: AssessmentRating | null; clozeSentence?: string | null; attempts?: LearningAttempt[]; feedback?: LearningFeedback | null; word: SessionWord };
 export type LearningSummary = { totalWords: number; recallFirstTry: number; recallSecondTry: number; recallFailed: number; outputValid: number; outputInvalid: number; legacyUnknown: number };
-export type LearningSession = { id: string; sessionType?: SessionMode; mode?: SessionMode; totalWords: number; startedAt: string; completedAt?: string | null; status?: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED' | string; cursor?: LearningCursor; items: LearningSessionItem[]; summary?: LearningSummary };
+export type LearningSession = { id: string; sessionType?: SessionMode; mode?: SessionMode; totalWords: number; startedAt: string; completedAt?: string | null; status?: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED' | string; studyTaskId: string | null; cursor?: LearningCursor; items: LearningSessionItem[]; summary?: LearningSummary };
 export type LearningSessionOverview = { activeSession: LearningSession | null; latestSession: LearningSession | null; sessions: LearningSession[] };
 export type SubmitStepPayload = { requestId: string; wordId: string; step: SessionStep; answer?: string; assessmentRating?: AssessmentRating };
 export type LearningActionResult = { item: LearningSessionItem; cursor: LearningCursor; feedback: LearningFeedback | null };

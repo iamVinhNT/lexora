@@ -11,8 +11,10 @@ import { buildApp } from '../../src/app.js';
 import { dataRoutes } from '../../src/routes/data.routes.js';
 import { ImportExportService } from '../../src/services/import-export.service.js';
 import { ValidationError } from '../../src/services/vocabulary.service.js';
+import { StudyRepository } from '../../src/repositories/study.repository.js';
 import {
   words,
+  wordFamilies,
   contexts,
   contextWords,
   learningProgress,
@@ -25,8 +27,9 @@ import {
   learningAttempts,
   collocations,
   examples,
-  wordFamilies,
   users,
+  studyPreferences,
+  studyTasks,
 } from '../../src/db/schema.js';
 import { eq, sql } from 'drizzle-orm';
 
@@ -554,7 +557,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
   });
 
   describe('GET /api/backup', () => {
-    it('returns exact v3 backup structure with session attempts, grammar, and all tables', async () => {
+    it('returns exact v4 backup structure with session attempts, grammar, calendar, and all tables', async () => {
       insertSampleWord('tenacious');
 
       const res = await app.inject({
@@ -567,7 +570,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(body.success).toBe(true);
 
       const backup = body.data;
-      expect(backup.version).toBe(3);
+      expect(backup.version).toBe(4);
       expect(backup.application).toBe('Lexora');
       expect(typeof backup.exportedAt).toBe('string');
       expect(new Date(backup.exportedAt).toISOString()).toBe(backup.exportedAt);
@@ -591,7 +594,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
         'learningSessions',
         'learningSessionItems',
       ];
-      requiredTables.push('learningAttempts', 'grammarLessonProgress', 'grammarExerciseAttempts');
+      requiredTables.push('learningAttempts', 'grammarLessonProgress', 'grammarExerciseAttempts', 'studyPreferences', 'studyTasks');
 
       for (const table of requiredTables) {
         expect(Array.isArray(data[table])).toBe(true);
@@ -613,7 +616,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       `).run('grammar-attempt', 'grammar-lesson', 'grammar-revision', '1', 'exercise-1', 'request-1', JSON.stringify(answer), 1, 'Correct', now);
 
       const backup = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
-      expect(backup.version).toBe(3);
+      expect(backup.version).toBe(4);
       expect(backup.data.grammarExerciseAttempts[0].answer).toEqual(answer);
 
       const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
@@ -722,8 +725,12 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
 
       const legacyBackup = JSON.parse(JSON.stringify(new ImportExportService(db).getBackup()));
       legacyBackup.version = 2;
+      delete legacyBackup.data.studyPreferences;
+      delete legacyBackup.data.studyTasks;
       delete legacyBackup.data.grammarLessonProgress;
       delete legacyBackup.data.grammarExerciseAttempts;
+      for (const row of legacyBackup.data.learningSessions) delete row.studyTaskId;
+      for (const row of legacyBackup.data.reviewLogs) delete row.studyTaskId;
       const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup: legacyBackup } });
       expect(preview.statusCode).toBe(200);
       expect(JSON.parse(preview.payload).data.grammarSummary).toMatchObject({
@@ -1596,6 +1603,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(fullBody.success).toBe(true);
       expect(fullBody.data.format).toBe('JSON');
       expect(fullBody.data.scope).toBe('all');
+      expect(fullBody.data.version).toBe(4);
       expect(fullBody.data.data.words.length).toBe(1);
 
       const resCsv = await app.inject({
@@ -1619,17 +1627,17 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('POST /api/backup returns v3 backup and GET /api/backup retained as alias', async () => {
+    it('POST /api/backup returns v4 backup and GET /api/backup retained as alias', async () => {
       const postRes = await app.inject({ method: 'POST', url: '/api/backup' });
       expect(postRes.statusCode).toBe(200);
       const postBody = JSON.parse(postRes.payload);
       expect(postBody.success).toBe(true);
-      expect(postBody.data.version).toBe(3);
+      expect(postBody.data.version).toBe(4);
       expect(postBody.data.application).toBe('Lexora');
 
       const getRes = await app.inject({ method: 'GET', url: '/api/backup' });
       expect(getRes.statusCode).toBe(200);
-      expect(JSON.parse(getRes.payload).data.version).toBe(3);
+      expect(JSON.parse(getRes.payload).data.version).toBe(4);
     });
 
     it('POST /api/data/reset-progress and /api/reset-progress aliases require confirm: true', async () => {
@@ -2061,6 +2069,225 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
     });
   });
 
+  describe('Calendar backup compatibility', () => {
+    const insertCalendarTask = (
+      id: string,
+      kind: 'LEARN_WORDS' | 'REVIEW_WORDS' | 'GRAMMAR',
+      now: string,
+      options: { scheduledDate?: string; transferredAt?: string | null; transferredToTaskId?: string | null; transferredCount?: number; transferIntent?: string | null } = {},
+    ) => {
+      const scheduledDate = options.scheduledDate ?? '2026-10-03';
+      const taskFields = kind === 'LEARN_WORDS'
+        ? { mode: 'new_words' as const, contextId: null, topicId: null, lessonId: null, revisionId: null, revision: null }
+        : kind === 'REVIEW_WORDS'
+          ? { mode: null, contextId: null, topicId: null, lessonId: null, revisionId: null, revision: null }
+          : { mode: null, contextId: null, topicId: null, lessonId: 'calendar-lesson', revisionId: 'calendar-revision', revision: '1' };
+      const intent = {
+        id, scheduledDate, kind, targetCount: kind === 'GRAMMAR' ? 1 : 2, source: 'MANUAL',
+        ...(kind === 'LEARN_WORDS' ? { mode: 'new_words' } : {}),
+        ...(kind === 'GRAMMAR' ? { lessonId: 'calendar-lesson', revisionId: 'calendar-revision', revision: '1' } : {}),
+      };
+      db.sqlite.prepare(`
+        INSERT INTO study_tasks
+          (id, scheduled_date, kind, target_count, source, mode, context_id, topic_id, lesson_id, revision_id, revision,
+           version, created_at, updated_at, cancelled_at, transferred_at, transferred_to_task_id, transferred_count, creation_intent, transfer_intent)
+        VALUES
+          (@id, @scheduledDate, @kind, @targetCount, 'MANUAL', @mode, @contextId, @topicId, @lessonId, @revisionId, @revision,
+           @version, @createdAt, @updatedAt, NULL, @transferredAt, @transferredToTaskId, @transferredCount, @creationIntent, @transferIntent)
+      `).run({
+        id, scheduledDate, kind, targetCount: intent.targetCount, ...taskFields, version: options.transferredAt ? 2 : 1,
+        createdAt: now, updatedAt: now, transferredAt: options.transferredAt ?? null,
+        transferredToTaskId: options.transferredToTaskId ?? null, transferredCount: options.transferredCount ?? 0,
+        creationIntent: JSON.stringify(intent), transferIntent: options.transferIntent ?? null,
+      });
+    };
+
+    it('round-trips linked v4 calendar data, task transfers, and immutable grammar completion without FK violations', async () => {
+      const now = new Date().toISOString();
+      const wordId = insertSampleWord('calendar-roundtrip');
+      db.insert(studyPreferences).values({
+        id: 'local', timeZone: 'America/Los_Angeles', studyDays: '[1,2,3,4,5]', learningTarget: 8, reviewTarget: 10, grammarTarget: 1, updatedAt: now,
+      }).run();
+      const moveIntent = JSON.stringify({ action: 'MOVE', version: 1, scheduledDate: '2026-10-04', destinationId: 'learning-destination', destinationVersion: null });
+      insertCalendarTask('learning-destination', 'LEARN_WORDS', now, { scheduledDate: '2026-10-04' });
+      insertCalendarTask('learning-source', 'LEARN_WORDS', now, {
+        transferredAt: now, transferredToTaskId: 'learning-destination', transferredCount: 2, transferIntent: moveIntent,
+      });
+      insertCalendarTask('review-task', 'REVIEW_WORDS', now);
+      insertCalendarTask('grammar-task', 'GRAMMAR', now);
+      db.insert(learningSessions).values({
+        id: 'calendar-session', sessionType: 'new_words', totalWords: 1, status: 'COMPLETED', startedAt: now,
+        completedAt: now, studyTaskId: 'learning-destination',
+      }).run();
+      db.insert(learningSessionItems).values({
+        id: 'calendar-item', sessionId: 'calendar-session', wordId, position: 0, groupIndex: 0,
+        completedStep: 'ASSESS', recallResult: 'CORRECT', outputSentence: 'I use this word.', reviewRating: 'GOOD', createdAt: now,
+      }).run();
+      db.insert(reviewLogs).values({
+        id: 'calendar-review', wordId, reviewType: 'RECALL', rating: 'GOOD', correct: true, createdAt: now, studyTaskId: 'review-task',
+      }).run();
+      db.sqlite.prepare(`
+        INSERT INTO grammar_lesson_progress
+          (lesson_id, revision_id, revision, last_position, is_complete, completed_at, created_at, updated_at)
+        VALUES ('calendar-lesson', 'calendar-revision', '1', 1, 1, ?, ?, ?)
+      `).run(now, now, now);
+      db.sqlite.prepare(`
+        INSERT INTO grammar_exercise_attempts
+          (id, lesson_id, revision_id, revision, exercise_id, request_id, answer, is_correct, feedback, created_at, study_task_id, completed_lesson)
+        VALUES ('calendar-attempt', 'calendar-lesson', 'calendar-revision', '1', 'exercise', 'calendar-request', ?, 1, 'Correct', ?, 'grammar-task', 1)
+      `).run(JSON.stringify({ type: 'choice', text: 'answer' }), now);
+
+      const backup = new ImportExportService(db).getBackup();
+      expect(backup.version).toBe(4);
+      expect(backup.data.studyTasks.find((task) => task.id === 'learning-source')?.transferredToTaskId).toBe('learning-destination');
+      const restoredDb = getDb(':memory:');
+      const restoredApp = Fastify();
+      await restoredApp.register(dataRoutes, { db: restoredDb });
+      await restoredApp.ready();
+      try {
+        const preview = await restoredApp.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
+        expect(preview.statusCode).toBe(200);
+        const previewData = JSON.parse(preview.payload).data;
+        expect(previewData.calendarSummary).toEqual({
+          includedInBackup: true, willOverwrite: true, backupTaskCount: 4, existingTaskCount: 0, willReplacePreferences: true,
+        });
+        const restore = await restoredApp.inject({
+          method: 'POST', url: '/api/restore',
+          payload: { backup, confirm: true, previewToken: previewData.previewToken },
+        });
+        expect(restore.statusCode).toBe(200);
+        const restored = new ImportExportService(restoredDb).getBackup();
+        expect(restored.data.studyPreferences).toEqual(backup.data.studyPreferences);
+        expect(restored.data.studyTasks).toEqual(backup.data.studyTasks);
+        expect(restored.data.learningSessions.find((row) => row.id === 'calendar-session')?.studyTaskId).toBe('learning-destination');
+        expect(restored.data.reviewLogs.find((row) => row.id === 'calendar-review')?.studyTaskId).toBe('review-task');
+        expect(restored.data.grammarExerciseAttempts.find((row) => row.id === 'calendar-attempt')).toMatchObject({
+          studyTaskId: 'grammar-task', completedLesson: true,
+        });
+        expect(restoredDb.sqlite.prepare(`
+          SELECT count(DISTINCT i.word_id) AS count FROM learning_session_items i
+          JOIN learning_sessions s ON s.id = i.session_id
+          WHERE s.study_task_id = 'learning-destination' AND s.status = 'COMPLETED'
+        `).get()).toEqual({ count: 1 });
+        const destinationIntent = restored.data.studyTasks.find((task) => task.id === 'learning-destination')!.creationIntent;
+        expect(new StudyRepository(restoredDb).createTask(JSON.parse(destinationIntent), now)).toMatchObject({
+          id: 'learning-destination', targetCount: 2, version: 1,
+        });
+        expect(restoredDb.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+      } finally {
+        await restoredApp.close();
+        restoredDb.sqlite.close();
+      }
+    });
+
+    it('warns and removes preferences/tasks when restoring a valid v3 backup', async () => {
+      const now = new Date().toISOString();
+      db.insert(studyPreferences).values({
+        id: 'local', timeZone: 'UTC', studyDays: '[1,2,3,4,5]', learningTarget: 5, reviewTarget: 5, grammarTarget: 0, updatedAt: now,
+      }).run();
+      insertCalendarTask('existing-calendar-task', 'REVIEW_WORDS', now);
+      const exportedBackup = JSON.parse(JSON.stringify(new ImportExportService(db).getBackup()));
+      const invalidOlderBackup = { ...exportedBackup, version: 3 };
+      expect((await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup: invalidOlderBackup } })).statusCode).toBe(400);
+      const legacyBackup = JSON.parse(JSON.stringify(exportedBackup));
+      legacyBackup.version = 3;
+      delete legacyBackup.data.studyPreferences;
+      delete legacyBackup.data.studyTasks;
+      for (const row of legacyBackup.data.learningSessions) delete row.studyTaskId;
+      for (const row of legacyBackup.data.reviewLogs) delete row.studyTaskId;
+      for (const row of legacyBackup.data.grammarExerciseAttempts) {
+        delete row.studyTaskId;
+        delete row.completedLesson;
+      }
+      const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup: legacyBackup } });
+      expect(preview.statusCode).toBe(200);
+      const previewData = JSON.parse(preview.payload).data;
+      expect(previewData.calendarSummary).toEqual({
+        includedInBackup: false, willOverwrite: true, backupTaskCount: 0, existingTaskCount: 1, willReplacePreferences: true,
+      });
+      const restore = await app.inject({
+        method: 'POST', url: '/api/restore',
+        payload: { backup: legacyBackup, confirm: true, previewToken: previewData.previewToken },
+      });
+      expect(restore.statusCode).toBe(200);
+      expect(db.select().from(studyTasks).all()).toEqual([]);
+      expect(db.select().from(studyPreferences).all()).toEqual([]);
+    });
+
+    it('rejects bad calendar relations atomically and applies reset scopes to tasks and preferences', async () => {
+      const now = new Date().toISOString();
+      db.insert(studyPreferences).values({
+        id: 'local', timeZone: 'UTC', studyDays: '[1,2,3,4,5]', learningTarget: 5, reviewTarget: 5, grammarTarget: 0, updatedAt: now,
+      }).run();
+      insertCalendarTask('current-task', 'REVIEW_WORDS', now);
+      const wordId = insertSampleWord('reset-calendar');
+      insertCalendarTask('learning-reset-task', 'LEARN_WORDS', now);
+      insertCalendarTask('grammar-reset-task', 'GRAMMAR', now);
+      db.insert(learningSessions).values({
+        id: 'reset-calendar-session', sessionType: 'NEW_WORDS', totalWords: 1, startedAt: now, studyTaskId: 'learning-reset-task',
+      }).run();
+      db.insert(reviewLogs).values({
+        id: 'reset-calendar-review', wordId, reviewType: 'RECALL', rating: 'GOOD', createdAt: now, studyTaskId: 'current-task',
+      }).run();
+      db.sqlite.prepare(`
+        INSERT INTO grammar_lesson_progress (lesson_id, revision_id, revision, last_position, is_complete, created_at, updated_at)
+        VALUES ('calendar-lesson', 'calendar-revision', '1', 0, 0, ?, ?)
+      `).run(now, now);
+      db.sqlite.prepare(`
+        INSERT INTO grammar_exercise_attempts
+          (id, lesson_id, revision_id, revision, exercise_id, request_id, answer, is_correct, feedback, created_at, study_task_id)
+        VALUES ('reset-calendar-attempt', 'calendar-lesson', 'calendar-revision', '1', 'exercise', 'reset-calendar-request', ?, 0, 'Incorrect', ?, 'grammar-reset-task')
+      `).run(JSON.stringify({ type: 'text', text: 'answer' }), now);
+      const backup = new ImportExportService(db).getBackup();
+      const broken = {
+        ...backup,
+        data: {
+          ...backup.data,
+          studyTasks: backup.data.studyTasks.map((task) => task.id === 'current-task' ? { ...task, version: 0 } : task),
+          reviewLogs: [{ id: 'orphan-log', wordId: 'missing-word', reviewType: 'RECALL', rating: 'GOOD', responseTime: null, answer: null, correct: true, performanceScore: null, feedbackCodes: null, createdAt: now, studyTaskId: 'missing-task' }],
+        },
+      };
+      const invalidPreview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup: broken } });
+      expect(invalidPreview.statusCode).toBe(400);
+      expect(db.select().from(studyTasks).all().map((task) => task.id).sort()).toEqual(['current-task', 'grammar-reset-task', 'learning-reset-task']);
+      expect(db.select().from(studyPreferences).all()).toHaveLength(1);
+      const invalidRestore = await app.inject({
+        method: 'POST', url: '/api/restore', payload: { backup: broken, confirm: true },
+      });
+      expect(invalidRestore.statusCode).toBe(400);
+      expect(db.select().from(studyTasks).all().map((task) => task.id).sort()).toEqual(['current-task', 'grammar-reset-task', 'learning-reset-task']);
+      expect(db.select().from(studyPreferences).all()).toHaveLength(1);
+      const invalidCalendars = [
+        { ...backup, data: { ...backup.data, studyTasks: backup.data.studyTasks.map((task) => task.id === 'current-task' ? { ...task, targetCount: 0 } : task) } },
+        { ...backup, data: { ...backup.data, studyTasks: backup.data.studyTasks.map((task) => task.id === 'current-task' ? { ...task, creationIntent: '{}' } : task) } },
+        { ...backup, data: { ...backup.data, reviewLogs: backup.data.reviewLogs.map((row) => row.id === 'reset-calendar-review' ? { ...row, studyTaskId: 'grammar-reset-task' } : row) } },
+        { ...backup, data: { ...backup.data, reviewLogs: backup.data.reviewLogs.map((row) => row.id === 'reset-calendar-review' ? { ...row, studyTaskId: 'missing-task' } : row) } },
+        { ...backup, data: { ...backup.data, studyTasks: backup.data.studyTasks.map((task) => task.id === 'current-task' ? {
+          ...task, transferredAt: now, transferredToTaskId: task.id,
+          transferIntent: JSON.stringify({ action: 'MOVE', version: 1, scheduledDate: task.scheduledDate, destinationId: task.id, destinationVersion: null }),
+        } : task) } },
+      ];
+      for (const invalid of invalidCalendars) {
+        const rejected = await app.inject({ method: 'POST', url: '/api/restore', payload: { backup: invalid, confirm: true } });
+        expect(rejected.statusCode).toBe(400);
+        expect(db.select().from(studyTasks).all().map((task) => task.id).sort()).toEqual(['current-task', 'grammar-reset-task', 'learning-reset-task']);
+        expect(db.select().from(studyPreferences).all()).toHaveLength(1);
+      }
+
+      expect((await app.inject({ method: 'POST', url: '/api/data/reset-progress', payload: { confirm: true } })).statusCode).toBe(200);
+      expect(db.select().from(studyTasks).all()).toEqual([]);
+      expect(db.select().from(studyPreferences).all()).toHaveLength(1);
+      expect(db.select().from(learningSessions).all()).toEqual([]);
+      expect(db.select().from(reviewLogs).all()).toEqual([]);
+      expect(db.sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get()).toEqual({ count: 0 });
+      expect(db.sqlite.prepare('SELECT count(*) AS count FROM grammar_lesson_progress').get()).toEqual({ count: 0 });
+      insertCalendarTask('task-before-full-reset', 'REVIEW_WORDS', now);
+      expect((await app.inject({ method: 'POST', url: '/api/data/reset-all', payload: { confirm: true } })).statusCode).toBe(200);
+      expect(db.select().from(studyTasks).all()).toEqual([]);
+      expect(db.select().from(studyPreferences).all()).toEqual([]);
+    });
+  });
+
   describe('Learning backup compatibility', () => {
     it('restores version 1 sessions with migration defaults and no attempts', async () => {
       const now = new Date().toISOString();
@@ -2087,6 +2314,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       const restore = await app.inject({ method: 'POST', url: '/api/restore', payload: { backup, confirm: true, previewToken: JSON.parse(preview.payload).data.previewToken } });
       expect(restore.statusCode).toBe(200);
       expect(db.select().from(learningSessions).all()[0].status).toBe('IN_PROGRESS');
+      expect(db.select().from(learningSessions).all()[0].studyTaskId).toBeNull();
       expect(db.select().from(learningSessionItems).all()[0]).toMatchObject({ position: 0, groupIndex: 0 });
       expect(db.select().from(learningAttempts).all()).toEqual([]);
     });
@@ -2099,7 +2327,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       db.insert(learningAttempts).values({ id: 'v2-attempt', sessionItemId: 'v2-item', requestId: 'v2-request', type: 'RECALL', attemptNumber: 2, answer: 'roundtrip', result: 'CORRECT_AFTER_HINT', performanceScore: 70, feedbackCodes: null, source: 'LOCAL', createdAt: now }).run();
       db.insert(reviewLogs).values({ id: 'v2-log', wordId: 'word-roundtrip', reviewType: 'RECALL', rating: 'GOOD', correct: true, performanceScore: 70, createdAt: now }).run();
       const backup = new ImportExportService(db).getBackup();
-      expect(backup.version).toBe(3);
+      expect(backup.version).toBe(4);
       expect(backup.data.learningAttempts).toHaveLength(1);
       const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
       const restore = await app.inject({ method: 'POST', url: '/api/restore', payload: { backup, confirm: true, previewToken: JSON.parse(preview.payload).data.previewToken } });

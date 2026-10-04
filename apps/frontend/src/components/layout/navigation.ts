@@ -3,10 +3,10 @@
  * @description Shared navigation definitions for desktop, mobile, and More navigation.
  */
 import type { LucideIcon } from 'lucide-react';
-import { BarChart3, BookOpen, BookText, GraduationCap, LayoutDashboard, Network, RotateCcw, Settings } from 'lucide-react';
+import { BarChart3, BookOpen, BookText, CalendarDays, GraduationCap, LayoutDashboard, Network, RotateCcw, Settings } from 'lucide-react';
 
 export type NavigationItem = {
-  labelKey: 'overview' | 'learn' | 'review' | 'vocabulary' | 'grammar' | 'contexts' | 'statistics' | 'settings';
+  labelKey: 'overview' | 'learn' | 'review' | 'vocabulary' | 'calendar' | 'grammar' | 'contexts' | 'statistics' | 'settings';
   path: string;
   icon: LucideIcon;
 };
@@ -16,6 +16,7 @@ export const primaryNavigation: NavigationItem[] = [
   { labelKey: 'learn', path: '/learn', icon: BookOpen },
   { labelKey: 'review', path: '/review', icon: RotateCcw },
   { labelKey: 'vocabulary', path: '/words', icon: BookText },
+  { labelKey: 'calendar', path: '/calendar', icon: CalendarDays },
   { labelKey: 'grammar', path: '/grammar', icon: GraduationCap },
   { labelKey: 'contexts', path: '/contexts', icon: Network },
   { labelKey: 'statistics', path: '/analytics', icon: BarChart3 },

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { sqliteTable, text, integer, real, primaryKey, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, primaryKey, index, uniqueIndex, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 
 // 1. Users table
@@ -170,10 +170,12 @@ export const reviewLogs = sqliteTable(
     correct: integer('correct', { mode: 'boolean' }),
     performanceScore: integer('performance_score'),
     createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+    studyTaskId: text('study_task_id').references((): AnySQLiteColumn => studyTasks.id, { onDelete: 'cascade' }),
   },
   (table) => ({
     wordIdIdx: index('idx_review_logs_word_id').on(table.wordId),
     createdAtIdx: index('idx_review_logs_created_at').on(table.createdAt),
+    studyTaskIdIdx: index('idx_review_logs_study_task_id').on(table.studyTaskId),
   })
 );
 
@@ -210,9 +212,11 @@ export const learningSessions = sqliteTable('learning_sessions', {
   status: text('status').notNull().default('IN_PROGRESS'),
   startedAt: text('started_at').notNull().$defaultFn(() => new Date().toISOString()),
   completedAt: text('completed_at'),
+  studyTaskId: text('study_task_id').references((): AnySQLiteColumn => studyTasks.id, { onDelete: 'cascade' }),
 }, (table) => ({
   statusIdx: index('idx_learning_sessions_status').on(table.status),
   startedAtIdx: index('idx_learning_sessions_started_at').on(table.startedAt),
+  studyTaskIdIdx: index('idx_learning_sessions_study_task_id').on(table.studyTaskId),
   oneActiveUnique: uniqueIndex('uq_learning_sessions_one_active').on(table.status).where(sql`${table.status} = 'IN_PROGRESS'`),
 }));
 
@@ -264,6 +268,48 @@ export const learningAttempts = sqliteTable('learning_attempts', {
   itemTypeAttemptUnique: uniqueIndex('uq_learning_attempts_item_type_attempt').on(table.sessionItemId, table.type, table.attemptNumber),
 }));
 
+export const studyPreferences = sqliteTable('study_preferences', {
+  id: text('id').primaryKey().$type<'local'>(),
+  timeZone: text('time_zone').notNull(),
+  studyDays: text('study_days').notNull(),
+  learningTarget: integer('learning_target').notNull(),
+  reviewTarget: integer('review_target').notNull(),
+  grammarTarget: integer('grammar_target').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const studyTasks = sqliteTable('study_tasks', {
+  id: text('id').primaryKey(),
+  scheduledDate: text('scheduled_date').notNull(),
+  kind: text('kind').notNull(),
+  targetCount: integer('target_count').notNull(),
+  source: text('source').notNull(),
+  mode: text('mode'),
+  contextId: text('context_id'),
+  topicId: text('topic_id'),
+  lessonId: text('lesson_id'),
+  revisionId: text('revision_id'),
+  revision: text('revision'),
+  version: integer('version').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+  cancelledAt: text('cancelled_at'),
+  transferredAt: text('transferred_at'),
+  transferredToTaskId: text('transferred_to_task_id').references((): AnySQLiteColumn => studyTasks.id, { onDelete: 'cascade' }),
+  transferredCount: integer('transferred_count').notNull().default(0),
+  creationIntent: text('creation_intent').notNull(),
+  transferIntent: text('transfer_intent'),
+}, (table) => ({
+  scheduledDateIdx: index('idx_study_tasks_scheduled_date').on(table.scheduledDate),
+  transferredToTaskIdIdx: index('idx_study_tasks_transferred_to_task_id').on(table.transferredToTaskId),
+  activeKindDateUnique: uniqueIndex('uq_study_tasks_active_kind_date')
+    .on(table.scheduledDate, table.kind)
+    .where(sql`${table.kind} IN ('LEARN_WORDS', 'REVIEW_WORDS') AND ${table.cancelledAt} IS NULL AND ${table.transferredAt} IS NULL`),
+  activeGrammarUnique: uniqueIndex('uq_study_tasks_active_grammar')
+    .on(table.scheduledDate, table.lessonId, table.revisionId)
+    .where(sql`${table.kind} = 'GRAMMAR' AND ${table.lessonId} IS NOT NULL AND ${table.cancelledAt} IS NULL AND ${table.transferredAt} IS NULL`),
+}));
+
 // Grammar content remains bundled; only learner state is stored in SQLite.
 export const grammarLessonProgress = sqliteTable('grammar_lesson_progress', {
   lessonId: text('lesson_id').notNull().primaryKey(),
@@ -289,10 +335,13 @@ export const grammarExerciseAttempts = sqliteTable('grammar_exercise_attempts', 
   isCorrect: integer('is_correct', { mode: 'boolean' }).notNull(),
   feedback: text('feedback').notNull(),
   createdAt: text('created_at').notNull(),
+  studyTaskId: text('study_task_id').references((): AnySQLiteColumn => studyTasks.id, { onDelete: 'cascade' }),
+  completedLesson: integer('completed_lesson', { mode: 'boolean' }).notNull().default(false),
 }, (table) => ({
   lessonIdx: index('idx_grammar_exercise_attempts_lesson_id').on(table.lessonId),
   exerciseIdx: index('idx_grammar_exercise_attempts_exercise_id').on(table.exerciseId),
   createdAtIdx: index('idx_grammar_exercise_attempts_created_at').on(table.createdAt),
+  studyTaskIdIdx: index('idx_grammar_exercise_attempts_study_task_id').on(table.studyTaskId),
 }));
 
 // Relations definitions for Drizzle Relational Queries
@@ -439,3 +488,7 @@ export type LearningSessionItem = typeof learningSessionItems.$inferSelect;
 export type NewLearningSessionItem = typeof learningSessionItems.$inferInsert;
 export type GrammarLessonProgress = typeof grammarLessonProgress.$inferSelect;
 export type GrammarExerciseAttempt = typeof grammarExerciseAttempts.$inferSelect;
+export type StudyPreferences = typeof studyPreferences.$inferSelect;
+export type NewStudyPreferences = typeof studyPreferences.$inferInsert;
+export type StudyTask = typeof studyTasks.$inferSelect;
+export type NewStudyTask = typeof studyTasks.$inferInsert;

@@ -30,6 +30,8 @@ import {
   ValidationError,
 } from '../services/vocabulary.service.js';
 
+import { StudyRepository } from './study.repository.js';
+
 export class ReviewRepository {
   private sm2Scheduler = new SM2Scheduler();
   private assessmentService = new KnowledgeAssessmentService();
@@ -157,8 +159,22 @@ export class ReviewRepository {
     }
 
     const now = new Date().toISOString();
-
     return this.db.transaction((tx) => {
+      // Validate task evidence before changing scheduler or learning state.
+      if (input.studyTaskId !== undefined) {
+        try {
+          new StudyRepository(this.db).assertUsableTask(tx, input.studyTaskId, 'REVIEW_WORDS', now);
+        } catch (error) {
+          if (error instanceof NotFoundError) {
+            throw new ConflictError('Study task not found', {
+              reason: 'TASK_NOT_FOUND',
+              taskId: input.studyTaskId,
+            });
+          }
+          throw error;
+        }
+      }
+
       // 1. Load current review_states
       const existingReviewState = tx
         .select()
@@ -220,6 +236,7 @@ export class ReviewRepository {
           correct: isCorrect,
           responseTime: input.responseTime ?? null,
           createdAt: now,
+          studyTaskId: input.studyTaskId ?? null,
         })
         .run();
 

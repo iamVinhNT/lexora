@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import { getLocalizedErrorMessage } from '../i18n/presentation';
 import { formatNumber, formatPercent } from '../i18n/formatters';
 import { PageHeader } from '../components/layout/PageHeader';
+import { TodayStudyPlanCard } from '../components/calendar/TodayStudyPlanCard';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -26,6 +27,7 @@ export function DashboardPage() {
 
   return <div className="space-y-10">
     <PageHeader title={t('title')} subtitle={t('subtitle')} />
+    <TodayStudyPlanCard enabled={Boolean(data)} suppressErrors />
     {dashboard.isLoading && <DashboardSkeleton />}
     {dashboard.isError && <ErrorState error={dashboard.error} onRetry={() => void dashboard.refetch()} />}
     {data && !hasData && <Card><EmptyState title={t('noLearningData')} description={t('noLearningDataDescription')} action={<Link to="/words" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-surface">{t('addFirstWord')}<ArrowRight aria-hidden="true" size={17} /></Link>} /></Card>}

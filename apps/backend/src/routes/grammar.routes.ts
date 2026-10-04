@@ -6,8 +6,8 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb, type AppDatabase } from '../db/client.js';
 import { getGrammarCurriculum } from '../grammar/content/manifest.js';
 import type { GrammarCurriculum } from '../grammar/content/types.js';
-import { GrammarLessonUnavailableError, type GrammarCourse } from '../grammar/course-read-model.js';
-import { GrammarRepository, GrammarRepositoryConflictError, type GrammarLessonProgress } from '../repositories/grammar.repository.js';
+import { GrammarLessonUnavailableError } from '../grammar/course-read-model.js';
+import { GrammarRepository, GrammarRepositoryConflictError } from '../repositories/grammar.repository.js';
 import { grammarLessonParamsSchema, submitGrammarAnswerSchema } from '../schemas/grammar.schema.js';
 import {
   GrammarService,
@@ -91,53 +91,20 @@ export const grammarRoutes: FastifyPluginAsync<GrammarRouteOptions> = async (fas
   if (fastify.prefix === '/api/grammar' || fastify.prefix?.endsWith('/api/grammar')) base = '';
   registerApiErrorHandler(fastify);
 
-  function progressByLesson(course: GrammarCourse): Map<string, GrammarLessonProgress | null> {
-    const progress = new Map<string, GrammarLessonProgress | null>();
-    for (const stage of course.stages) {
-      for (const lesson of stage.lessons) progress.set(lesson.id, repository.findProgressByLessonId(lesson.id));
-    }
-    return progress;
-  }
-
-  function nextLessonId(course: GrammarCourse, progress: Map<string, GrammarLessonProgress | null>): string | null {
-    for (const stage of course.stages) {
-      for (const lesson of stage.lessons) {
-        if (!progress.get(lesson.id)?.isComplete) return lesson.id;
-      }
-    }
-    return null;
-  }
+  // Course progress and next-lesson selection live in GrammarService for reuse.
 
   fastify.get(base || '/', async (_request, reply) => {
-    const course = service.getCourse();
-    const progress = progressByLesson(course);
-    return reply.send({
-      success: true,
-      data: {
-        ...course,
-        stages: course.stages.map((stage) => ({
-          ...stage,
-          lessons: stage.lessons.map((lesson) => ({ ...lesson, progress: progress.get(lesson.id) ?? null })),
-        })),
-        nextLessonId: nextLessonId(course, progress),
-      },
-    });
+    try {
+      return reply.send({ success: true, data: service.getCourseWithProgress() });
+    } catch (error) {
+      return sendGrammarError(error, reply);
+    }
   });
 
   fastify.get(`${base}/:lessonId`, async (request, reply) => {
     const { lessonId } = grammarLessonParamsSchema.parse(request.params);
     try {
-      const course = service.getCourse();
-      const lesson = service.getLesson(lessonId);
-      const progress = progressByLesson(course);
-      return reply.send({
-        success: true,
-        data: {
-          lesson,
-          progress: repository.findProgressByLessonId(lessonId),
-          nextLessonId: nextLessonId(course, progress),
-        },
-      });
+      return reply.send({ success: true, data: service.getLessonWithProgress(lessonId) });
     } catch (error) {
       return sendGrammarError(error, reply);
     }
@@ -148,15 +115,13 @@ export const grammarRoutes: FastifyPluginAsync<GrammarRouteOptions> = async (fas
     const input = submitGrammarAnswerSchema.parse(request.body);
     try {
       const result = service.submitAnswer(lessonId, input);
-      const course = service.getCourse();
-      const progress = progressByLesson(course);
-      progress.set(lessonId, result.progress);
+      const course = service.getCourseWithProgress();
       return reply.send({
         success: true,
         data: {
           attempt: result.attempt,
           progress: result.progress,
-          nextLessonId: nextLessonId(course, progress),
+          nextLessonId: course.nextLessonId,
         },
       });
     } catch (error) {

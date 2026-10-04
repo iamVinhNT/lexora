@@ -5,12 +5,21 @@
 
 ## [Unreleased]
 
+### Added
+- Daily study calendar with week/month views, study preferences, seven-day previews, and tasks linked to learning, review, and grammar evidence.
+- Version-checked task edits, cancellations, and remainder transfers without changing SM-2 review due dates.
+
+### Fixed
+- Preserve study tasks, preferences, transfer history, and evidence links when upgrading legacy calendar/grammar schemas or merging shared web/desktop databases.
+
 ### Changed
 - Reorganized architecture documentation into numbered `docs/architecture/01-*` files.
 - Updated architecture docs to match current backend, frontend, database, desktop, grammar, backup, and brand implementations.
 - Updated module documentation and added Grammar Course module documentation.
 - Added detailed change records under [`changes-log/2026-10-03/`](./changes-log/2026-10-03/).
 - Enabled LAN access to the web development server with same-origin API proxying; backend and desktop remain loopback-only.
+- Backup JSON v4 includes study preferences, calendar tasks, and evidence links; older backups warn before replacing calendar data. Reset progress removes tasks but retains study preferences.
+- Calendar and daily statistics use the saved IANA time zone. Added Module 09 documentation and a detailed [daily study calendar change record](./changes-log/2026-10-04/feat-daily-study-calendar.md).
 
 ## [0.2.0] - 2026-09-30
 

@@ -18,6 +18,7 @@ export type TypedConfirmDialogProps = {
   value: string;
   onChange: (value: string) => void;
   description: string;
+  descriptionRole?: 'alert';
   actionLabel: string;
   pending: boolean;
   error: Error | null;
@@ -26,7 +27,7 @@ export type TypedConfirmDialogProps = {
   inputLabel: string;
 };
 
-export function TypedConfirmDialog({ title, phrase, value, onChange, description, actionLabel, pending, error, onClose, onConfirm, inputLabel }: TypedConfirmDialogProps) {
+export function TypedConfirmDialog({ title, phrase, value, onChange, description, descriptionRole, actionLabel, pending, error, onClose, onConfirm, inputLabel }: TypedConfirmDialogProps) {
   const { t, i18n } = useTranslation('common');
   const previousLanguage = useRef(i18n.language);
 
@@ -39,7 +40,7 @@ export function TypedConfirmDialog({ title, phrase, value, onChange, description
   const diagnosticError = error instanceof ApiError ? null : error?.message;
   return <Dialog title={title} onClose={onClose}>
     <div className="space-y-5">
-      <p className="text-sm text-foreground">{description}</p>
+      <p role={descriptionRole} className="text-sm text-foreground">{description}</p>
       <div>
         <label htmlFor="typed-confirmation" className="block text-sm font-semibold text-foreground">{inputLabel}</label>
         <input id="typed-confirmation" aria-label={inputLabel} value={value} onChange={(event) => onChange(event.target.value)} className={`${inputClass} mt-2`} autoComplete="off" />

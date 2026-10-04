@@ -10,8 +10,9 @@ import { createTables } from './client.js';
 
 const TABLES = [
   'users', 'words', 'word_families', 'collocations', 'examples', 'contexts',
-  'context_words', 'learning_progress', 'review_states', 'review_logs',
-  'tags', 'word_tags', 'learning_sessions', 'learning_session_items', 'learning_attempts',
+  'context_words', 'learning_progress', 'review_states', 'tags', 'word_tags',
+  'study_preferences', 'study_tasks',
+  'review_logs', 'learning_sessions', 'learning_session_items', 'learning_attempts',
   'grammar_lesson_progress', 'grammar_exercise_attempts',
 ] as const;
 
@@ -35,6 +36,7 @@ function mergeDatabase(target: Database.Database, sourcePath: string): void {
     }
     target.pragma('foreign_keys = ON');
     target.transaction(() => {
+      target.pragma('defer_foreign_keys = ON');
       for (const table of TABLES) {
         if (!source.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) continue;
         const sourceRows = source.prepare(`SELECT * FROM ${table}`).all() as Record<string, unknown>[];

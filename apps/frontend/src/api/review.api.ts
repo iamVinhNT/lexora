@@ -106,6 +106,7 @@ export type SubmitReviewPayload = {
   answer?: string | null;
   correct?: boolean | null;
   responseTime?: number | null;
+  studyTaskId?: string;
 };
 
 export type ReviewLog = {

@@ -7,7 +7,7 @@ export default {
   actions: {
     addWord: 'Thêm từ', addContext: 'Thêm ngữ cảnh', save: 'Lưu', saveWord: 'Lưu từ', saveContext: 'Lưu ngữ cảnh',
     cancel: 'Hủy', retry: 'Thử lại', previous: 'Trước', next: 'Sau', editWord: 'Sửa từ', editContext: 'Sửa ngữ cảnh',
-    deleteWord: 'Xóa từ', deleteContext: 'Xóa ngữ cảnh', confirmDelete: 'Xác nhận xóa', confirmDeletion: 'Xác nhận xóa',
+    deleteWord: 'Xóa từ', deleteContext: 'Xóa ngữ cảnh', confirmDelete: 'Xác nhận xóa', confirmDeletion: 'Xác nhận xóa', confirm: 'Xác nhận',
     completeSession: 'Hoàn tất phiên', startSession: 'Bắt đầu phiên', abandonSession: 'Bỏ phiên học', startNextSession: 'Bắt đầu phiên tiếp theo', returnOverview: 'Về tổng quan',
     learnNewWords: 'Học từ mới', linkWords: 'Liên kết từ', saveLinks: 'Lưu liên kết', unlink: 'Bỏ liên kết', openSource: 'Mở nguồn',
     show: 'Hiện', hide: 'Ẩn', viewDetails: 'Xem chi tiết', exportVocabulary: 'Xuất từ vựng', downloadFullBackup: 'Tải bản sao lưu đầy đủ',

@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { getDueReviews, submitReview, type ReviewCounts, type ReviewQuery, type ReviewQueue, type SubmitReviewPayload } from '../api/review.api';
 import { analyticsKeys } from './useAnalytics';
+import { invalidateStudyQueries } from './useStudyCalendar';
 
 export const reviewKeys = {
   all: ['reviews'] as const,
@@ -47,6 +48,7 @@ export function useSubmitReview() {
         };
       });
       await Promise.all([
+        invalidateStudyQueries(queryClient),
         queryClient.invalidateQueries({ queryKey: ['progress'] }),
         queryClient.invalidateQueries({ queryKey: analyticsKeys.all }),
       ]);

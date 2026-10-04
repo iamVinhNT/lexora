@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
+import { createStudyTables } from './study-tables.js';
 import { createGrammarTables } from './grammar-tables.js';
 import { groupSessionItems } from '../domain/learning/grouping.js';
 
@@ -257,6 +258,7 @@ export function createTables(sqlite: Database.Database): void {
      CREATE INDEX IF NOT EXISTS idx_learning_sessions_status ON learning_sessions(status);
      CREATE INDEX IF NOT EXISTS idx_learning_sessions_started_at ON learning_sessions(started_at);
    `);
+  createStudyTables(sqlite);
   createGrammarTables(sqlite);
 
   const attemptColumns = new Set((sqlite.prepare("PRAGMA table_info('learning_attempts')").all() as Array<{ name: string }>).map((column) => column.name));

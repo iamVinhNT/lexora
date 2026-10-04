@@ -14,6 +14,7 @@ import {
   reviewStates,
   reviewLogs,
   learningProgress,
+  studyTasks,
 } from '../../src/db/schema.js';
 import { eq } from 'drizzle-orm';
 
@@ -61,6 +62,34 @@ describe('Spaced Repetition Review Routes & Algorithm Integration', () => {
     });
     expect(res.statusCode).toBe(201);
     return JSON.parse(res.payload).data;
+  }
+
+  function createStudyTask(id: string, overrides: Partial<typeof studyTasks.$inferInsert> = {}) {
+    const now = new Date().toISOString();
+    db.insert(studyTasks).values({
+      id,
+      scheduledDate: new Date().toISOString().slice(0, 10),
+      kind: 'REVIEW_WORDS',
+      targetCount: 1,
+      source: 'MANUAL',
+      mode: null,
+      contextId: null,
+      topicId: null,
+      lessonId: null,
+      revisionId: null,
+      revision: null,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+      cancelledAt: null,
+      transferredAt: null,
+      transferredToTaskId: null,
+      transferredCount: 0,
+      creationIntent: '{}',
+      transferIntent: null,
+      ...overrides,
+    }).run();
+    return id;
   }
 
   // Helper to create test context
@@ -245,6 +274,82 @@ describe('Spaced Repetition Review Routes & Algorithm Integration', () => {
   });
 
   describe('POST /api/reviews - Submit Review', () => {
+    it('rejects unusable study tasks without changing scheduler state or review logs', async () => {
+      const word = await createWord('atomic-review');
+      await app.inject({
+        method: 'POST',
+        url: '/api/reviews',
+        payload: { wordId: word.id, reviewType: 'RECALL', rating: 'GOOD' },
+      });
+      const stateBefore = db.select().from(reviewStates).where(eq(reviewStates.wordId, word.id)).all();
+      const logsBefore = db.select().from(reviewLogs).where(eq(reviewLogs.wordId, word.id)).all();
+
+      const tomorrow = new Date();
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      const invalidTasks = [
+        { id: 'missing-task', reason: 'TASK_NOT_FOUND' },
+        { id: createStudyTask('wrong-kind', { kind: 'GRAMMAR' }), reason: 'WRONG_TASK_KIND' },
+        { id: createStudyTask('cancelled-task', { cancelledAt: new Date().toISOString() }), reason: 'TASK_UNAVAILABLE' },
+        { id: createStudyTask('transferred-task', { transferredAt: new Date().toISOString() }), reason: 'TASK_UNAVAILABLE' },
+        { id: createStudyTask('future-task', { scheduledDate: tomorrow.toISOString().slice(0, 10) }), reason: 'FUTURE_TASK' },
+      ];
+
+      for (const task of invalidTasks) {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/api/reviews',
+          payload: {
+            wordId: word.id,
+            reviewType: 'RECALL',
+            rating: 'AGAIN',
+            studyTaskId: task.id,
+          },
+        });
+        expect(response.statusCode).toBe(409);
+        const body = JSON.parse(response.payload);
+        expect(body.error.code).toBe('CONFLICT');
+        expect(body.error.details.reason).toBe(task.reason);
+        expect(db.select().from(reviewStates).where(eq(reviewStates.wordId, word.id)).all()).toEqual(stateBefore);
+        expect(db.select().from(reviewLogs).where(eq(reviewLogs.wordId, word.id)).all()).toEqual(logsBefore);
+      }
+    });
+
+    it('persists review task links, credits distinct words once, and keeps legacy reviews unlinked', async () => {
+      const firstWord = await createWord('linked-review-one');
+      const secondWord = await createWord('linked-review-two');
+      const legacyWord = await createWord('legacy-review');
+      const taskId = createStudyTask('review-task');
+
+      for (const rating of ['AGAIN', 'GOOD', 'GOOD'] as const) {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/api/reviews',
+          payload: { wordId: firstWord.id, reviewType: 'RECALL', rating, studyTaskId: taskId },
+        });
+        expect(response.statusCode).toBe(200);
+      }
+      const secondResponse = await app.inject({
+        method: 'POST',
+        url: '/api/reviews',
+        payload: { wordId: secondWord.id, reviewType: 'RECALL', rating: 'AGAIN', studyTaskId: taskId },
+      });
+      expect(secondResponse.statusCode).toBe(200);
+
+      const linkedLogs = db.select().from(reviewLogs).where(eq(reviewLogs.studyTaskId, taskId)).all();
+      expect(linkedLogs).toHaveLength(4);
+      expect(new Set(linkedLogs.map((log) => log.wordId))).toEqual(new Set([firstWord.id, secondWord.id]));
+      expect(linkedLogs.filter((log) => log.wordId === firstWord.id)).toHaveLength(3);
+      expect(linkedLogs.filter((log) => log.rating === 'AGAIN').every((log) => !log.correct)).toBe(true);
+
+      const legacyResponse = await app.inject({
+        method: 'POST',
+        url: '/api/reviews',
+        payload: { wordId: legacyWord.id, reviewType: 'RECALL', rating: 'GOOD' },
+      });
+      expect(legacyResponse.statusCode).toBe(200);
+      expect(db.select().from(reviewLogs).where(eq(reviewLogs.wordId, legacyWord.id)).all()[0].studyTaskId).toBeNull();
+    });
+
     it('submits a review with rating AGAIN, resetting repetitions and incrementing lapses', async () => {
       const word = await createWord('meticulous');
 

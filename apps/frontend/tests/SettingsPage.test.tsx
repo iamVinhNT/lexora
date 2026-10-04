@@ -732,4 +732,32 @@ describe('SettingsPage', () => {
     resolveSecondRestore(response({ restored: true }));
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Restore completed.'));
   });
+  it('requires explicit confirmation before saving a time zone change', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/study-preferences') && (init?.method ?? 'GET') === 'GET') {
+        return Promise.resolve(response({ id: 'local', timeZone: 'UTC', studyDays: [1, 2, 3, 4, 5], learningTarget: 10, reviewTarget: 20, grammarTarget: 1, updatedAt: now }));
+      }
+      if (url.includes('/api/study-preferences') && init?.method === 'PUT') {
+        return Promise.resolve(response({ id: 'local', timeZone: 'Asia/Tokyo', studyDays: [1, 2, 3, 4, 5], learningTarget: 10, reviewTarget: 20, grammarTarget: 1, updatedAt: now }));
+      }
+      return Promise.resolve(response({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderSettings();
+    const zone = await screen.findByLabelText('Time zone');
+    fireEvent.change(zone, { target: { value: 'Asia/Tokyo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await screen.findByRole('alert');
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect((screen.getByLabelText('Time zone') as HTMLSelectElement).value).toBe('UTC');
+
+    fireEvent.change(screen.getByLabelText('Time zone'), { target: { value: 'Asia/Tokyo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1));
+    expect(JSON.parse(String(fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')?.[1]?.body))).toMatchObject({ timeZone: 'Asia/Tokyo' });
+  });
 });

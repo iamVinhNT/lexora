@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { askGrammarTutor, getGrammarCourse, getGrammarLesson, submitGrammarAnswer, type GrammarAnswerSubmission, type GrammarLesson } from '../api/grammar.api';
+import { invalidateStudyQueries } from './useStudyCalendar';
 
 export const grammarKeys = {
   all: ['grammar'] as const,
@@ -27,6 +28,7 @@ export function useSubmitGrammarAnswer(lessonId: string) {
     onSuccess: (result) => {
       queryClient.setQueryData<GrammarLesson>(grammarKeys.lesson(lessonId), (current) => current ? { ...current, progress: result.progress, nextLessonId: result.nextLessonId } : current);
       void queryClient.invalidateQueries({ queryKey: grammarKeys.course() });
+      void invalidateStudyQueries(queryClient);
     },
   });
 }

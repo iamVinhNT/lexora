@@ -3,14 +3,16 @@
  * @description Repository for vocabulary progress calculations, streaks, weak word analysis, and trend metrics.
  */
 
-import { eq, and, sql, inArray, desc, lte, gte } from 'drizzle-orm';
+import { eq, and, sql, inArray, desc, lte, gte, lt } from 'drizzle-orm';
 import type { AppDatabase } from '../db/client.js';
 import {
   words,
   learningProgress,
   reviewStates,
   reviewLogs,
+  studyPreferences,
 } from '../db/schema.js';
+import { civilDateAt, dayRangeUtc, addCivilDays } from '../domain/study/calendar-date.js';
 import { identifyWeakReasons } from '../domain/knowledge/assessment.js';
 import type { VocabularyState, ReviewLogEntry } from '../domain/knowledge/types.js';
 
@@ -122,9 +124,9 @@ export interface DashboardStatisticsResult {
 }
 
 /**
- * Calculates current and longest review streaks based on distinct active UTC dates (YYYY-MM-DD).
+ * Calculates current and longest review streaks based on distinct active civil dates (YYYY-MM-DD).
  */
-export function calculateStreaks(distinctDatesAsc: string[], todayUtc: string): {
+export function calculateStreaks(distinctDatesAsc: string[], todayCivil: string): {
   currentStreak: number;
   longestStreak: number;
 } {
@@ -132,53 +134,36 @@ export function calculateStreaks(distinctDatesAsc: string[], todayUtc: string): 
     return { currentStreak: 0, longestStreak: 0 };
   }
 
-  // Calculate longest streak across all distinct sorted dates
   let longestStreak = 1;
   let currentRun = 1;
 
   for (let i = 1; i < distinctDatesAsc.length; i++) {
-    const prevDate = new Date(`${distinctDatesAsc[i - 1]}T00:00:00.000Z`);
-    const currDate = new Date(`${distinctDatesAsc[i]}T00:00:00.000Z`);
-    const diffDays = Math.round((currDate.getTime() - prevDate.getTime()) / (24 * 60 * 60 * 1000));
-
-    if (diffDays === 1) {
+    if (addCivilDays(distinctDatesAsc[i - 1], 1) === distinctDatesAsc[i]) {
       currentRun += 1;
-      if (currentRun > longestStreak) {
-        longestStreak = currentRun;
-      }
-    } else if (diffDays > 1) {
+      if (currentRun > longestStreak) longestStreak = currentRun;
+    } else {
       currentRun = 1;
     }
   }
 
-  // Calculate current streak relative to todayUtc
   const dateSet = new Set(distinctDatesAsc);
   let currentStreak = 0;
-  let checkDate = new Date(`${todayUtc}T00:00:00.000Z`);
-
-  // If not active today, check if active yesterday to keep streak alive
-  if (!dateSet.has(todayUtc)) {
-    checkDate.setUTCDate(checkDate.getUTCDate() - 1);
-    const yesterdayUtc = checkDate.toISOString().slice(0, 10);
-    if (!dateSet.has(yesterdayUtc)) {
-      return { currentStreak: 0, longestStreak };
-    }
-  }
-
-  // Count backwards day-by-day while date exists in set
-  while (dateSet.has(checkDate.toISOString().slice(0, 10))) {
+  let checkDate = dateSet.has(todayCivil) ? todayCivil : addCivilDays(todayCivil, -1);
+  if (!dateSet.has(checkDate)) return { currentStreak: 0, longestStreak };
+  while (dateSet.has(checkDate)) {
     currentStreak += 1;
-    checkDate.setUTCDate(checkDate.getUTCDate() - 1);
+    checkDate = addCivilDays(checkDate, -1);
   }
-
-  return {
-    currentStreak,
-    longestStreak: Math.max(longestStreak, currentStreak),
-  };
+  return { currentStreak, longestStreak: Math.max(longestStreak, currentStreak) };
 }
 
 export class AnalyticsRepository {
   constructor(private db: AppDatabase) {}
+
+  private getCalendarTimeZone(): string {
+    return this.db.select({ timeZone: studyPreferences.timeZone }).from(studyPreferences)
+      .where(eq(studyPreferences.id, 'local')).all()[0]?.timeZone ?? 'UTC';
+  }
 
   /**
    * Retrieves review logs grouped by word ID for candidate evaluation.
@@ -564,83 +549,45 @@ export class AnalyticsRepository {
    */
   getDashboardStatistics(nowInput?: string | Date): DashboardStatisticsResult {
     const now = nowInput instanceof Date ? nowInput : nowInput ? new Date(nowInput) : new Date();
-    const todayUtc = now.toISOString().slice(0, 10);
     const nowIso = now.toISOString();
+    const zone = this.getCalendarTimeZone();
+    const todayCivil = civilDateAt(now, zone);
+    const todayRange = dayRangeUtc(todayCivil, zone);
 
-    // 1. Today's review count
-    const todayReviewsRow = this.db
-      .select({ count: sql<number>`count(*)` })
-      .from(reviewLogs)
-      .where(sql`strftime('%Y-%m-%d', ${reviewLogs.createdAt}) = ${todayUtc}`)
-      .all()[0];
+    const todayReviewsRow = this.db.select({ count: sql<number>`count(*)` }).from(reviewLogs)
+      .where(and(gte(reviewLogs.createdAt, todayRange.start), lt(reviewLogs.createdAt, todayRange.end))).all()[0];
     const todayReviews = Number(todayReviewsRow?.count ?? 0);
-
-    // 2. Today's learned count: distinct words reviewed or updated in learningProgress today
-    const learnedFromLogs = this.db
-      .select({ wordId: reviewLogs.wordId })
-      .from(reviewLogs)
-      .where(sql`strftime('%Y-%m-%d', ${reviewLogs.createdAt}) = ${todayUtc}`)
-      .all();
-
-    const learnedFromProgress = this.db
-      .select({ wordId: learningProgress.wordId })
-      .from(learningProgress)
-      .where(sql`strftime('%Y-%m-%d', ${learningProgress.lastStudiedAt}) = ${todayUtc}`)
-      .all();
-
+    const learnedFromLogs = this.db.select({ wordId: reviewLogs.wordId }).from(reviewLogs)
+      .where(and(gte(reviewLogs.createdAt, todayRange.start), lt(reviewLogs.createdAt, todayRange.end))).all();
+    const learnedFromProgress = this.db.select({ wordId: learningProgress.wordId }).from(learningProgress)
+      .where(and(gte(learningProgress.lastStudiedAt, todayRange.start), lt(learningProgress.lastStudiedAt, todayRange.end))).all();
     const todayLearnedWordIds = new Set<string>();
-    for (const r of learnedFromLogs) todayLearnedWordIds.add(r.wordId);
-    for (const r of learnedFromProgress) todayLearnedWordIds.add(r.wordId);
-    const todayLearned = todayLearnedWordIds.size;
+    for (const row of learnedFromLogs) todayLearnedWordIds.add(row.wordId);
+    for (const row of learnedFromProgress) todayLearnedWordIds.add(row.wordId);
 
-    // 3. Overall accuracy from review_logs
-    const allLogsStats = this.db
-      .select({
-        total: sql<number>`sum(case when ${reviewLogs.correct} is not null then 1 else 0 end)`,
-        correct: sql<number>`sum(case when ${reviewLogs.correct} = 1 then 1 else 0 end)`,
-      })
-      .from(reviewLogs)
-      .all()[0];
-
+    const allLogsStats = this.db.select({
+      total: sql<number>`sum(case when ${reviewLogs.correct} is not null then 1 else 0 end)`,
+      correct: sql<number>`sum(case when ${reviewLogs.correct} = 1 then 1 else 0 end)`,
+    }).from(reviewLogs).all()[0];
     const totalLogs = Number(allLogsStats?.total ?? 0);
     const totalCorrect = Number(allLogsStats?.correct ?? 0);
     const overallAccuracy = totalLogs > 0 ? Math.round((totalCorrect / totalLogs) * 100) : null;
 
-    // 4. Streaks (analyzing consecutive distinct active dates in UTC)
-    const activeDateRows = this.db
-      .select({
-        date: sql<string>`DISTINCT strftime('%Y-%m-%d', ${reviewLogs.createdAt})`,
-      })
-      .from(reviewLogs)
-      .orderBy(sql`strftime('%Y-%m-%d', ${reviewLogs.createdAt}) ASC`)
-      .all();
-
-    const distinctDatesAsc = activeDateRows
-      .map((r) => r.date)
-      .filter((d): d is string => Boolean(d));
-
-    const { currentStreak, longestStreak } = calculateStreaks(distinctDatesAsc, todayUtc);
-
-    // 5. State breakdown
-    const overview = this.getProgressOverview();
-    const stateBreakdown = overview.countsPerState;
-
-    // 6. Due count (review_states.due_at <= now)
-    const dueRow = this.db
-      .select({ count: sql<number>`count(*)` })
-      .from(reviewStates)
-      .where(lte(reviewStates.dueAt, nowIso))
-      .all()[0];
-    const dueCount = Number(dueRow?.count ?? 0);
+    const activeDateRows = this.db.select({ createdAt: reviewLogs.createdAt }).from(reviewLogs).all();
+    const distinctDatesAsc = [...new Set(activeDateRows.map((row) => civilDateAt(row.createdAt, zone)))].sort();
+    const { currentStreak, longestStreak } = calculateStreaks(distinctDatesAsc, todayCivil);
+    const stateBreakdown = this.getProgressOverview().countsPerState;
+    const dueRow = this.db.select({ count: sql<number>`count(*)` }).from(reviewStates)
+      .where(lte(reviewStates.dueAt, nowIso)).all()[0];
 
     return {
       todayReviews,
-      todayLearned,
+      todayLearned: todayLearnedWordIds.size,
       overallAccuracy,
       currentStreak,
       longestStreak,
       stateBreakdown,
-      dueCount,
+      dueCount: Number(dueRow?.count ?? 0),
     };
   }
 
@@ -650,75 +597,49 @@ export class AnalyticsRepository {
    */
   getReviewTrends(days: number = 30, nowInput?: string | Date) {
     const now = nowInput instanceof Date ? nowInput : nowInput ? new Date(nowInput) : new Date();
-
-    // Build map of the past N calendar dates in UTC
-    const dateMap = new Map<
-      string,
-      { reviewsCount: number; knownCorrectnessCount: number; correctCount: number; sumResponseTime: number; countResponseTime: number }
-    >();
-
+    const zone = this.getCalendarTimeZone();
+    const todayCivil = civilDateAt(now, zone);
+    const dateMap = new Map<string, { reviewsCount: number; knownCorrectnessCount: number; correctCount: number; sumResponseTime: number; countResponseTime: number }>();
     for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now.getTime());
-      d.setUTCDate(d.getUTCDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
-      dateMap.set(dateStr, {
-        reviewsCount: 0,
-        knownCorrectnessCount: 0,
-        correctCount: 0,
-        sumResponseTime: 0,
-        countResponseTime: 0,
+      dateMap.set(addCivilDays(todayCivil, -i), {
+        reviewsCount: 0, knownCorrectnessCount: 0, correctCount: 0, sumResponseTime: 0, countResponseTime: 0,
       });
     }
 
-    const firstDateStr = Array.from(dateMap.keys())[0];
-
-    const logs = this.db
-      .select({
-        date: sql<string>`strftime('%Y-%m-%d', ${reviewLogs.createdAt})`,
-        correct: reviewLogs.correct,
-        responseTime: reviewLogs.responseTime,
-      })
-      .from(reviewLogs)
-      .where(gte(reviewLogs.createdAt, `${firstDateStr}T00:00:00.000Z`))
-      .all();
+    const firstDate = Array.from(dateMap.keys())[0];
+    const firstRange = dayRangeUtc(firstDate, zone);
+    const endRange = dayRangeUtc(addCivilDays(todayCivil, 1), zone);
+    const logs = this.db.select({
+      createdAt: reviewLogs.createdAt,
+      correct: reviewLogs.correct,
+      responseTime: reviewLogs.responseTime,
+    }).from(reviewLogs)
+      .where(and(gte(reviewLogs.createdAt, firstRange.start), lt(reviewLogs.createdAt, endRange.end))).all();
 
     for (const log of logs) {
-      if (log.date && dateMap.has(log.date)) {
-        const entry = dateMap.get(log.date)!;
-        entry.reviewsCount += 1;
-        if (log.correct !== null) {
-          entry.knownCorrectnessCount += 1;
-        }
-        if (log.correct === true) {
-          entry.correctCount += 1;
-        }
-        if (log.responseTime !== null && log.responseTime !== undefined) {
-          entry.sumResponseTime += log.responseTime;
-          entry.countResponseTime += 1;
-        }
+      const date = civilDateAt(log.createdAt, zone);
+      const entry = dateMap.get(date);
+      if (!entry) continue;
+      entry.reviewsCount += 1;
+      if (log.correct !== null) entry.knownCorrectnessCount += 1;
+      if (log.correct === true) entry.correctCount += 1;
+      if (log.responseTime !== null && log.responseTime !== undefined) {
+        entry.sumResponseTime += log.responseTime;
+        entry.countResponseTime += 1;
       }
     }
 
     const trends: DailyTrendItem[] = [];
     for (const [date, data] of dateMap.entries()) {
-      const accuracy =
-        data.knownCorrectnessCount > 0 ? Math.round((data.correctCount / data.knownCorrectnessCount) * 100) : null;
-      const averageResponseTime =
-        data.countResponseTime > 0 ? Math.round(data.sumResponseTime / data.countResponseTime) : null;
-
       trends.push({
         date,
         reviewsCount: data.reviewsCount,
         reviewCount: data.reviewsCount,
         correctCount: data.correctCount,
-        accuracy,
-        averageResponseTime,
+        accuracy: data.knownCorrectnessCount > 0 ? Math.round((data.correctCount / data.knownCorrectnessCount) * 100) : null,
+        averageResponseTime: data.countResponseTime > 0 ? Math.round(data.sumResponseTime / data.countResponseTime) : null,
       });
     }
-
-    return {
-      days,
-      trends,
-    };
+    return { days, trends };
   }
 }

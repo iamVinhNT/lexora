@@ -2,7 +2,7 @@
  * @file SessionStartForm.tsx
  * @description Selector-driven form for starting a learning session in a Centered Focus Card.
  */
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   SESSION_MODES,
@@ -11,6 +11,7 @@ import {
   type SessionMode,
   type SessionStartPayload,
 } from '../../api/session.api';
+import type { StudyTaskView } from '../../api/study.api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
 import { formatDate, formatNumber } from '../../i18n/formatters';
 import { getLocalizedEnumLabel } from '../../i18n/presentation';
@@ -23,6 +24,10 @@ type Props = {
   optionsLoading?: boolean;
   optionsError?: string;
   onRetryOptions?: () => void;
+  task?: StudyTaskView | null;
+  taskId?: string;
+  taskLoading?: boolean;
+  taskError?: string;
   onSubmit: (payload: SessionStartPayload) => void;
 };
 
@@ -38,6 +43,13 @@ function getAvailabilityCount(option: SessionMode, options?: LearningOptions): n
   return undefined;
 }
 
+function getTaskAvailability(task: StudyTaskView, options?: LearningOptions): number | undefined {
+  if (task.kind !== 'LEARN_WORDS' || !options) return undefined;
+  if (task.mode === 'context') return options.contexts.find((context) => context.id === task.contextId)?.wordCount;
+  if (task.mode === 'topic') return options.topics.find((topic) => topic.id === task.topicId)?.wordCount;
+  return getAvailabilityCount(task.mode, options);
+}
+
 export function SessionStartForm({
   isPending,
   errorMessage,
@@ -46,17 +58,39 @@ export function SessionStartForm({
   optionsLoading = false,
   optionsError,
   onRetryOptions,
+  task,
+  taskId,
+  taskLoading = false,
+  taskError,
   onSubmit,
 }: Props) {
   const { t } = useTranslation('learning');
+  const { t: tCalendar } = useTranslation('calendar');
   const [mode, setMode] = useState<SessionMode>('new_words');
   const [count, setCount] = useState('10');
   const [contextId, setContextId] = useState('');
   const [topicId, setTopicId] = useState('');
   const [validationError, setValidationError] = useState('');
+  const [confirmReducedCount, setConfirmReducedCount] = useState(false);
+
+  useEffect(() => {
+    if (!task || task.kind !== 'LEARN_WORDS') return;
+    setMode(task.mode);
+    setCount(String(Math.min(50, Math.max(0, task.targetCount - task.completedCount))));
+    setContextId(task.contextId ?? '');
+    setTopicId(task.topicId ?? '');
+    setConfirmReducedCount(false);
+    setValidationError('');
+  }, [task?.id, task?.completedCount, task?.targetCount]);
+  const isLinkedTask = Boolean(taskId);
+  const remaining = task ? Math.max(0, task.targetCount - task.completedCount) : undefined;
+  const taskAvailability = task ? getTaskAvailability(task, options) : undefined;
+  const requestedCount = Number(count);
+  const availabilityShort = typeof taskAvailability === 'number' && Number.isInteger(requestedCount) && requestedCount > taskAvailability;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (task && task.kind !== 'LEARN_WORDS') return;
     const parsedCount = Number(count);
     if (!Number.isInteger(parsedCount) || parsedCount < 1 || parsedCount > 50) {
       return setValidationError(t('countError'));
@@ -67,13 +101,35 @@ export function SessionStartForm({
     if (mode === 'topic' && !topicId) {
       return setValidationError(t('topicRequired'));
     }
+    if (availabilityShort && !confirmReducedCount) {
+      return setValidationError(tCalendar('warnings.noAvailableContent'));
+    }
+    const effectiveCount = Math.min(50, parsedCount, remaining ?? Number.POSITIVE_INFINITY, taskAvailability ?? Number.POSITIVE_INFINITY);
+    if (effectiveCount < 1) return setValidationError(tCalendar('forms.selectedContentUnavailable'));
     setValidationError('');
     onSubmit({
       mode,
-      count: parsedCount,
+      count: effectiveCount,
       ...(mode === 'context' ? { contextId } : {}),
       ...(mode === 'topic' ? { topicId } : {}),
+      ...(task ? { studyTaskId: task.id } : {}),
     });
+  }
+
+  if (taskLoading) {
+    return (
+      <div role="status" className="mx-auto max-w-2xl rounded-2xl border border-border bg-surface p-8 text-center text-sm text-muted shadow-sm">
+        {t('optionsLoading')}
+      </div>
+    );
+  }
+
+  if (taskError) {
+    return (
+      <div role="alert" className="mx-auto max-w-2xl rounded-2xl border border-red-300 bg-red-50 p-6 text-sm text-red-800 shadow-sm dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
+        {taskError}
+      </div>
+    );
   }
 
   if (optionsLoading) {
@@ -106,10 +162,11 @@ export function SessionStartForm({
   }
 
   if (
-    !options ||
-    (options.contexts.length === 0 &&
-      options.topics.length === 0 &&
-      options.availability.newWords + options.availability.weakWords + options.availability.dueWords === 0)
+    !isLinkedTask &&
+    (!options ||
+      (options.contexts.length === 0 &&
+        options.topics.length === 0 &&
+        options.availability.newWords + options.availability.weakWords + options.availability.dueWords === 0))
   ) {
     return (
       <div
@@ -122,8 +179,10 @@ export function SessionStartForm({
     );
   }
 
-  const contexts = options.contexts;
-  const topics = options.topics;
+  const contexts = options?.contexts ?? [];
+  const topics = options?.topics ?? [];
+  const taskStartDisabled = isPending || Boolean(task && (task.kind !== 'LEARN_WORDS' || task.isUnavailable || task.cancelledAt || remaining === 0));
+  const taskModeLabel = task?.kind === 'LEARN_WORDS' ? getLocalizedEnumLabel(t, 'mode', task.mode) : tCalendar('taskKinds.learn');
 
   return (
     <form
@@ -150,6 +209,20 @@ export function SessionStartForm({
             </span>
           </div>
         )}
+        {task && (
+          <div className="mt-4 space-y-1 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground" role="status">
+            <p className="font-semibold">{tCalendar('forms.taskTitle')}: {taskModeLabel}</p>
+            <p className="text-muted">
+              {tCalendar('progress', {
+                formattedCompleted: formatNumber(task.completedCount),
+                formattedTarget: formatNumber(task.targetCount),
+              })}{' '}
+              {tCalendar('progressUnit.word_other')}
+            </p>
+            {task.isUnavailable && <p className="font-medium text-danger">{task.unavailableReason ?? tCalendar('forms.selectedContentUnavailable')}</p>}
+            {remaining === 0 && <p className="font-medium text-emerald-600 dark:text-emerald-400">{tCalendar('statuses.COMPLETED')}</p>}
+          </div>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -167,7 +240,7 @@ export function SessionStartForm({
                 key={option}
                 type="button"
                 aria-pressed={isSelected}
-                disabled={isPending}
+                disabled={taskStartDisabled || isLinkedTask}
                 onClick={() => {
                   setMode(option);
                   setValidationError('');
@@ -201,7 +274,7 @@ export function SessionStartForm({
             setMode(value as SessionMode);
             setValidationError('');
           }}
-          disabled={isPending}
+          disabled={taskStartDisabled || isLinkedTask}
         >
           <SelectTrigger id="session-mode" aria-label={t('sessionMode')} className="min-h-11 w-full">
             <SelectValue />
@@ -221,8 +294,8 @@ export function SessionStartForm({
           <label htmlFor="context-id" className="text-sm font-semibold text-foreground">
             {t('context')}
           </label>
-          <Select value={contextId} onValueChange={setContextId} disabled={isPending}>
-            <SelectTrigger id="context-id" aria-label={t('context')} disabled={isPending} className="min-h-11 w-full">
+          <Select value={contextId} onValueChange={setContextId} disabled={taskStartDisabled || isLinkedTask}>
+            <SelectTrigger id="context-id" aria-label={t('context')} disabled={taskStartDisabled || isLinkedTask} className="min-h-11 w-full">
               <SelectValue placeholder={t('chooseContext')} />
             </SelectTrigger>
             <SelectContent>
@@ -241,8 +314,8 @@ export function SessionStartForm({
           <label htmlFor="session-topic" className="text-sm font-semibold text-foreground">
             {t('topic')}
           </label>
-          <Select value={topicId} onValueChange={setTopicId} disabled={isPending}>
-            <SelectTrigger id="session-topic" aria-label={t('topic')} disabled={isPending} className="min-h-11 w-full">
+          <Select value={topicId} onValueChange={setTopicId} disabled={taskStartDisabled || isLinkedTask}>
+            <SelectTrigger id="session-topic" aria-label={t('topic')} disabled={taskStartDisabled || isLinkedTask} className="min-h-11 w-full">
               <SelectValue placeholder={t('chooseTopic')} />
             </SelectTrigger>
             <SelectContent>
@@ -267,7 +340,7 @@ export function SessionStartForm({
                 key={preset}
                 type="button"
                 aria-pressed={count === String(preset)}
-                disabled={isPending}
+                disabled={taskStartDisabled}
                 onClick={() => setCount(String(preset))}
                 className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
                   count === String(preset)
@@ -284,14 +357,27 @@ export function SessionStartForm({
           id="word-count"
           type="number"
           min={1}
-          max={50}
+          max={task ? Math.min(50, remaining ?? 50) : 50}
           inputMode="numeric"
           value={count}
           onChange={(event) => setCount(event.target.value)}
-          disabled={isPending}
+          disabled={taskStartDisabled}
           className="min-h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
         />
-        <p className="text-xs text-muted">{t('wordCountHint')}</p>
+        {task && availabilityShort && (
+          <div className="space-y-2 text-sm">
+            <p role="status">{tCalendar('warnings.noAvailableContent')}</p>
+            <label className="flex min-h-11 items-center gap-2">
+              <input
+                type="checkbox"
+                checked={confirmReducedCount}
+                onChange={(event) => setConfirmReducedCount(event.target.checked)}
+                disabled={taskStartDisabled}
+              />
+              <span>{tCalendar('forms.availableCount', { count: taskAvailability })}</span>
+            </label>
+          </div>
+        )}
       </div>
 
       {(validationError || errorMessage) && (
@@ -305,7 +391,7 @@ export function SessionStartForm({
 
       <button
         type="submit"
-        disabled={isPending}
+        disabled={taskStartDisabled}
         className="min-h-11 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
       >
         {isPending ? t('starting') : t('start')}

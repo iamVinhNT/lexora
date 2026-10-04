@@ -3,6 +3,7 @@
  * @description Strict, distraction-light five-stage learning session experience with Focus Mode.
  */
 import { useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import type { LearningSession, SessionStep, SubmitStepPayload } from '../api/session.api';
@@ -12,10 +13,14 @@ import { LearningStepView } from '../components/learning/LearningStepView';
 import { SessionStartForm } from '../components/learning/SessionStartForm';
 import { SessionSummary } from '../components/learning/SessionSummary';
 import { getLocalizedErrorMessage } from '../i18n/presentation';
+import { useStudyTask } from '../hooks/useStudyCalendar';
 
 export function LearningSessionPage() {
   const { t } = useTranslation('learning');
   const { t: tCommon } = useTranslation('common');
+  const { t: tCalendar } = useTranslation('calendar');
+  const [searchParams] = useSearchParams();
+  const requestedTaskId = searchParams.get('taskId') ?? '';
   const overview = useLearningSessionOverview();
   const options = useLearningOptions();
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -26,12 +31,18 @@ export function LearningSessionPage() {
   const submitMutation = useSubmitLearningStep();
   const completeMutation = useCompleteLearningSession();
   const abandonMutation = useAbandonLearningSession();
-  const handleAbandon = () => { if (activeSession) { abandonMutation.mutate(activeSession.id); setSessionId(null); } };
   const detail = useLearningSession(sessionId);
-  const activeSession = sessionId ? detail.data ?? overview.data?.activeSession : overview.data?.activeSession;
+  const activeSession = sessionId
+    ? detail.data ?? overview.data?.activeSession
+    : overview.data?.activeSession;
+  const taskId = activeSession?.studyTaskId ?? requestedTaskId;
+  const studyTask = useStudyTask(taskId);
+  const calendarTask = studyTask.data;
   const safeActiveSession = activeSession ? { ...activeSession, items: activeSession.items ?? [] } : null;
   const initialCompletedSession = overview.data?.activeSession?.status === 'COMPLETED' ? overview.data.activeSession : null;
   const shownCompletedSession = completedSession ?? initialCompletedSession;
+  const taskMismatch = Boolean(activeSession && requestedTaskId && activeSession.studyTaskId !== requestedTaskId);
+  const handleAbandon = () => { if (activeSession) { abandonMutation.mutate(activeSession.id); setSessionId(null); } };
 
   function handleStart(payload: Parameters<typeof startMutation.mutate>[0]) {
     startMutation.mutate(payload, { onSuccess: (session) => setSessionId(session.id) });
@@ -101,7 +112,28 @@ export function LearningSessionPage() {
         {overview.isLoading ? t('loadingAnnouncement') : activeSession ? t('activeAnnouncement') : t('readyAnnouncement')}
       </div>
 
-      {shownCompletedSession && <SessionSummary session={shownCompletedSession} onStartNext={resetForNextSession} />}
+      {shownCompletedSession && (
+        <div className="space-y-3">
+          <SessionSummary session={shownCompletedSession} onStartNext={resetForNextSession} />
+          {calendarTask && (
+            <div className="mx-auto flex w-full max-w-2xl flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5 sm:p-4 text-sm">
+              <p role="status" className="text-foreground">
+                {tCalendar(`statuses.${calendarTask.isComplete ? 'COMPLETED' : 'PARTIAL'}`)} · {tCalendar('progress', {
+                  formattedCompleted: calendarTask.completedCount,
+                  formattedTarget: calendarTask.targetCount,
+                })}{' '}
+                {tCalendar('progressUnit.word_other')}
+              </p>
+              <Link
+                to={`/calendar?date=${encodeURIComponent(calendarTask.scheduledDate)}`}
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-4 py-2 font-semibold text-foreground hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary w-full sm:w-auto text-center"
+              >
+                {tCalendar('navigation.openCalendar')}
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
       {!shownCompletedSession && overview.isLoading && <LoadingState />}
       {!shownCompletedSession && overview.isError && <ErrorState message={getLocalizedErrorMessage(overview.error, tCommon)} onRetry={() => void overview.refetch()} />}
       {!shownCompletedSession && !overview.isLoading && !overview.isError && !activeSession && (
@@ -113,8 +145,17 @@ export function LearningSessionPage() {
           optionsLoading={options.isLoading}
           optionsError={options.isError ? t('optionsError') : undefined}
           onRetryOptions={() => void options.refetch()}
+          taskId={taskId || undefined}
+          task={calendarTask}
+          taskLoading={Boolean(taskId) && studyTask.isLoading}
+          taskError={studyTask.isError ? getLocalizedErrorMessage(studyTask.error, tCommon) : undefined}
           onSubmit={handleStart}
         />
+      )}
+      {!shownCompletedSession && taskMismatch && (
+        <p role="alert" className="mx-auto max-w-2xl rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          {tCalendar('forms.activeSession')}
+        </p>
       )}
       {!shownCompletedSession && !overview.isLoading && !overview.isError && safeActiveSession && (
         <ActiveSession

@@ -1,10 +1,11 @@
 /**
  * @file grammar-tables.ts
- * @description Standalone additive DDL for grammar lesson progress and immutable exercise attempts.
+ * @description Standalone additive DDL for grammar learner progress and immutable attempts.
  *
- * This is not wired into getDb() or createTables(); startup, routes, and learner writes do not use these tables yet.
+ * Creates its task parent when needed, without creating learning tables.
  */
 import type Database from 'better-sqlite3';
+import { createStudyTables } from './study-tables.js';
 
 const tables = {
   grammar_lesson_progress: `CREATE TABLE IF NOT EXISTS grammar_lesson_progress (
@@ -28,16 +29,33 @@ const tables = {
     answer TEXT NOT NULL CHECK (length(trim(answer)) > 0),
     is_correct INTEGER NOT NULL CHECK (is_correct IN (0, 1)),
     feedback TEXT NOT NULL CHECK (length(trim(feedback)) > 0),
-    created_at TEXT NOT NULL CHECK (length(trim(created_at)) > 0)
+    created_at TEXT NOT NULL CHECK (length(trim(created_at)) > 0),
+    study_task_id TEXT REFERENCES study_tasks(id) ON DELETE CASCADE,
+    completed_lesson INTEGER NOT NULL DEFAULT 0 CHECK (completed_lesson IN (0, 1))
   )`,
 } as const;
 
 const indexes = [
+  `CREATE INDEX IF NOT EXISTS idx_grammar_exercise_attempts_study_task_id ON grammar_exercise_attempts(study_task_id)`,
   `CREATE INDEX IF NOT EXISTS idx_grammar_lesson_progress_updated_at ON grammar_lesson_progress(updated_at)`,
   `CREATE INDEX IF NOT EXISTS idx_grammar_exercise_attempts_lesson_id ON grammar_exercise_attempts(lesson_id)`,
   `CREATE INDEX IF NOT EXISTS idx_grammar_exercise_attempts_exercise_id ON grammar_exercise_attempts(exercise_id)`,
   `CREATE INDEX IF NOT EXISTS idx_grammar_exercise_attempts_created_at ON grammar_exercise_attempts(created_at)`,
 ] as const;
+
+const legacyGrammarAttempts = `CREATE TABLE grammar_exercise_attempts (
+    id TEXT NOT NULL PRIMARY KEY CHECK (length(trim(id)) > 0),
+    lesson_id TEXT NOT NULL CHECK (length(trim(lesson_id)) > 0)
+      REFERENCES grammar_lesson_progress(lesson_id) ON DELETE CASCADE,
+    revision_id TEXT NOT NULL CHECK (length(trim(revision_id)) > 0),
+    revision TEXT NOT NULL CHECK (length(trim(revision)) > 0),
+    exercise_id TEXT NOT NULL CHECK (length(trim(exercise_id)) > 0),
+    request_id TEXT NOT NULL UNIQUE CHECK (length(trim(request_id)) > 0),
+    answer TEXT NOT NULL CHECK (length(trim(answer)) > 0),
+    is_correct INTEGER NOT NULL CHECK (is_correct IN (0, 1)),
+    feedback TEXT NOT NULL CHECK (length(trim(feedback)) > 0),
+    created_at TEXT NOT NULL CHECK (length(trim(created_at)) > 0)
+  )`;
 
 const immutableAttemptsTriggers = [
   `CREATE TRIGGER IF NOT EXISTS grammar_exercise_attempts_immutable_update
@@ -65,7 +83,7 @@ function verifyTable(sqlite: Database.Database, name: keyof typeof tables): void
   const actualColumnNames = new Set(columns.map(({ name: column }) => column));
   const expectedColumns = name === 'grammar_lesson_progress'
     ? ['lesson_id', 'revision_id', 'revision', 'last_position', 'is_complete', 'completed_at', 'created_at', 'updated_at']
-    : ['id', 'lesson_id', 'revision_id', 'revision', 'exercise_id', 'request_id', 'answer', 'is_correct', 'feedback', 'created_at'];
+    : ['id', 'lesson_id', 'revision_id', 'revision', 'exercise_id', 'request_id', 'answer', 'is_correct', 'feedback', 'created_at', 'study_task_id', 'completed_lesson'];
   const missingColumn = expectedColumns.find((column) => !actualColumnNames.has(column));
 
   if (missingColumn) throw new Error(`Incompatible grammar schema: ${name} is missing required column ${missingColumn}.`);
@@ -103,6 +121,25 @@ export function createGrammarTables(sqlite: Database.Database): void {
   }
 
   sqlite.transaction(() => {
+    createStudyTables(sqlite);
+    const attemptTable = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'grammar_exercise_attempts'").get() as { sql: string } | undefined;
+    if (attemptTable && normalizeSql(attemptTable.sql) !== normalizeSql(tables.grammar_exercise_attempts)) {
+      const columns = new Set((sqlite.prepare("PRAGMA table_info('grammar_exercise_attempts')").all() as Array<{ name: string }>).map(({ name }) => name));
+      const requiredColumns = ['id', 'lesson_id', 'revision_id', 'revision', 'exercise_id', 'request_id', 'answer', 'is_correct', 'feedback', 'created_at'];
+      const missingColumn = requiredColumns.find((column) => !columns.has(column));
+      if (missingColumn === 'lesson_id') throw new Error('Incompatible grammar schema: no such column: lesson_id.');
+      if (missingColumn) throw new Error(`Incompatible grammar schema: grammar_exercise_attempts is missing required column ${missingColumn}.`);
+      const definition = normalizeSql(attemptTable.sql);
+      const linkedLegacyDefinition = normalizeSql(tables.grammar_exercise_attempts)
+        .replace(',completed_lessonintegernotnulldefault0check(completed_lessonin(0,1))', '');
+      if (definition !== normalizeSql(legacyGrammarAttempts) && definition !== linkedLegacyDefinition) {
+        throw new Error('Incompatible grammar schema: grammar_exercise_attempts has a different column or constraint definition.');
+      }
+      if (!columns.has('study_task_id')) {
+        sqlite.exec('ALTER TABLE grammar_exercise_attempts ADD COLUMN study_task_id TEXT REFERENCES study_tasks(id) ON DELETE CASCADE');
+      }
+      sqlite.exec('ALTER TABLE grammar_exercise_attempts ADD COLUMN completed_lesson INTEGER NOT NULL DEFAULT 0 CHECK (completed_lesson IN (0, 1))');
+    }
     for (const statement of Object.values(tables)) sqlite.exec(statement);
     for (const statement of indexes) sqlite.exec(statement);
     for (const statement of immutableAttemptsTriggers) sqlite.exec(statement);

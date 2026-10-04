@@ -6,7 +6,8 @@ export class AppError extends Error {
   constructor(
     public readonly statusCode: number,
     public readonly code: string,
-    message: string
+    message: string,
+    public readonly details?: Record<string, unknown>
   ) {
     super(message);
     this.name = 'AppError';
@@ -14,8 +15,8 @@ export class AppError extends Error {
 }
 
 export class ConflictError extends AppError {
-  constructor(message: string) {
-    super(409, 'CONFLICT', message);
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(409, 'CONFLICT', message, details);
     this.name = 'ConflictError';
   }
 }
