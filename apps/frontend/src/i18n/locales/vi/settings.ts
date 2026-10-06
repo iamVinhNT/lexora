@@ -10,7 +10,10 @@ export default {
   grammarOverwrite: 'Khôi phục sẽ thay thế {{count}} tiến độ bài ngữ pháp và {{attempts}} lượt làm.',
   grammarBackup: 'Bản sao lưu có {{count}} tiến độ bài ngữ pháp và {{attempts}} lượt làm.',
   grammarAbsent: 'Bản sao lưu cũ không có dữ liệu ngữ pháp; khôi phục sẽ xóa tiến độ và lượt làm hiện có.',
-  dangerZone: 'Khu vực nguy hiểm', dangerDescription: 'Không thể hoàn tác các thao tác này.', resetProgress: 'Đặt lại tiến độ học tập', resetDescription: 'Giữ từ vựng và ngữ cảnh nhưng đặt lại tiến độ, lượt ôn và phiên học.', deleteAll: 'Xóa toàn bộ dữ liệu', deleteAllDescription: 'Xóa từ vựng, ngữ cảnh và toàn bộ dữ liệu học.', resetDialogTitle: 'Đặt lại tiến độ học tập', resetDialogDescription: 'Giữ từ vựng và ngữ cảnh nhưng xóa nhật ký ôn, phiên học và đặt lại tiến độ.', deleteDialogTitle: 'Xóa toàn bộ dữ liệu', deleteDialogDescription: 'Xóa từ vựng, ngữ cảnh và toàn bộ dữ liệu học. Không giữ lại gì.',
+  practiceOverwrite: 'Khôi phục luyện tập ngữ pháp sẽ thay thế {{attempts}} lượt làm và {{reviews}} trạng thái ôn tập.',
+  practiceBackup: 'Bản sao lưu này có {{attempts}} lượt làm luyện tập ngữ pháp và {{reviews}} trạng thái ôn tập.',
+  practiceAbsent: 'Bản sao lưu cũ này không có dữ liệu luyện tập hoặc lượt ôn ngữ pháp; khôi phục sẽ xóa bằng chứng luyện tập hiện tại.',
+  dangerZone: 'Khu vực nguy hiểm', dangerDescription: 'Không thể hoàn tác các thao tác này.', resetProgress: 'Đặt lại tiến độ học tập', resetDescription: 'Giữ từ vựng và ngữ cảnh nhưng đặt lại tiến độ, lượt ôn, luyện tập ngữ pháp và phiên học.', deleteAll: 'Xóa toàn bộ dữ liệu', deleteAllDescription: 'Xóa từ vựng, ngữ cảnh và toàn bộ dữ liệu học, bao gồm luyện tập ngữ pháp.', resetDialogTitle: 'Đặt lại tiến độ học tập', resetDialogDescription: 'Giữ từ vựng và ngữ cảnh nhưng xóa nhật ký ôn, lượt làm luyện tập ngữ pháp, phiên học và đặt lại tiến độ.', deleteDialogTitle: 'Xóa toàn bộ dữ liệu', deleteDialogDescription: 'Xóa từ vựng, ngữ cảnh và toàn bộ dữ liệu học, bao gồm luyện tập ngữ pháp. Không giữ lại gì.',
   confirmation: {
     restore: 'Nhập {{phrase}} để xác nhận', restorePhrase: 'KHÔI PHỤC',
     resetProgress: 'Nhập {{phrase}} để xác nhận', resetProgressPhrase: 'ĐẶT LẠI TIẾN ĐỘ',

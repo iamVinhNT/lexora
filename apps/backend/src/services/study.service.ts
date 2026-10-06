@@ -3,7 +3,7 @@
  * @description Study preferences, calendar projections, previews, and task mutations.
  */
 import { addCivilDays, civilDateAt } from '../domain/study/calendar-date.js';
-import { GrammarLessonUnavailableError } from '../grammar/course-read-model.js';
+import { GrammarLessonUnavailableError, GrammarCurriculumChangedConflictError } from '../grammar/course-read-model.js';
 import type { GrammarService } from './grammar.service.js';
 import { ConflictError, NotFoundError } from './vocabulary.service.js';
 import type { StudyCalendarRepository } from '../repositories/study-calendar.repository.js';
@@ -157,6 +157,9 @@ export class StudyService {
       try {
         this.grammar.getLesson(lessonId);
       } catch (error) {
+        if (error instanceof GrammarCurriculumChangedConflictError) {
+          return { isUnavailable: true, unavailableReason: 'NOT_FOUND' };
+        }
         if (error instanceof GrammarLessonUnavailableError) {
           return { isUnavailable: true, unavailableReason: error.reason === 'unpublished' ? 'UNPUBLISHED' : 'NOT_FOUND' };
         }

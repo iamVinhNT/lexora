@@ -15,7 +15,8 @@ const lesson = {
   id: lessonId,
   revisionId: 'rev-1',
   revision: '1',
-  title: 'Present simple',
+  coverage: ['present-simple'],
+  context: { english: 'A classroom routine.', vietnamese: 'Một thói quen lớp học.' },
   objective: 'Use the present simple for routines.',
   explanation: 'We use it for regular actions.',
   guide: {
@@ -29,7 +30,8 @@ const lesson = {
   commonMistakes: [],
   summary: 'Use the base form with I/you/we/they.',
   sources: [],
-  exercises: [{ id: exerciseId, prompt: 'Choose the correct form.', options: [{ text: 'walk' }, { text: 'walks' }] }],
+  exercises: [{ id: exerciseId, kind: 'choice' as const, prompt: 'Choose the correct form.', options: [{ text: 'walk' }, { text: 'walks' }] }],
+  outputPrompts: [],
 };
 const initialProgress = { lessonId, revisionId: 'rev-1', revision: '1', lastPosition: 0, isComplete: false, completedAt: null, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
 const linkedTask = {
@@ -62,6 +64,18 @@ function json(data: unknown, status = 200) {
 }
 function renderPage(path = `/grammar/${lessonId}`) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const request = globalThis.fetch;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const response = await request(input, init);
+    if (url.includes('/api/grammar-practice/due')) return json({ items: [] });
+    if (url.includes('/api/grammar-practice/progress')) return json({ lessons: [] });
+    if (url.includes('/api/grammar-practice/history')) {
+      const body = await response.clone().json() as { data?: { items?: unknown } };
+      return Array.isArray(body.data?.items) ? response : json({ items: [] });
+    }
+    return response;
+  }));
   return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[path]}><Routes><Route path="/grammar/:lessonId" element={<GrammarLessonPage />} /></Routes></MemoryRouter></QueryClientProvider>);
 }
 
@@ -150,7 +164,7 @@ describe('GrammarLessonPage', () => {
     fireEvent.change(question, { target: { value: 'Why does she take -s?' } });
     fireEvent.click(screen.getByRole('button', { name: 'Ask tutor' }));
 
-    expect((await screen.findByRole('alert')).textContent).toMatch(/temporarily unavailable/i);
+    expect((await screen.findByText(/Tutor is temporarily unavailable/)).textContent).toMatch(/temporarily unavailable/i);
     expect(question).toHaveProperty('value', 'Why does she take -s?');
     expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/answers'))).toHaveLength(0);
   });
@@ -258,5 +272,213 @@ describe('GrammarLessonPage', () => {
 
     expect(posts).toBe(2);
     expect(await screen.findByRole('heading', { name: 'Lesson complete' })).toBeTruthy();
+  });
+
+  it('renders contextual reading and coverage tags when available', async () => {
+    const enrichedLesson = {
+      ...lesson,
+      coverage: ['present-simple', 'routines'],
+      context: {
+        english: 'Maria wakes up early every weekday and prepares breakfast.',
+        vietnamese: 'Maria thức dậy sớm vào mỗi ngày trong tuần và chuẩn bị bữa sáng.',
+      },
+    };
+
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/grammar-practice/history')) return json({ items: [] });
+      return json({ lesson: enrichedLesson, progress: initialProgress, nextLessonId: null });
+    }));
+
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'Contextual reading' })).toBeTruthy();
+    expect(screen.getByText('Maria wakes up early every weekday and prepares breakfast.')).toBeTruthy();
+    expect(screen.getByText('Maria thức dậy sớm vào mỗi ngày trong tuần và chuẩn bị bữa sáng.')).toBeTruthy();
+    expect(screen.getByText('routines')).toBeTruthy();
+  });
+
+  it('supports typed exercises with text submission and feedback', async () => {
+    const typedLesson = {
+      ...lesson,
+      exercises: [
+        {
+          id: 'typed-q1',
+          kind: 'gap' as const,
+          prompt: 'Fill in the blank: She ___ (go) to work by bus.',
+          options: [],
+        },
+      ],
+    };
+
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/grammar-practice/history')) return json({ items: [] });
+      if (init?.method === 'POST') {
+        const payload = JSON.parse(String(init.body)) as { answer: { type: string; text: string } };
+        expect(payload.answer.type).toBe('text');
+        expect(payload.answer.text).toBe('goes');
+        return json({
+          attempt: {
+            id: 'typed-att-1',
+            lessonId,
+            revisionId: 'rev-1',
+            revision: '1',
+            exerciseId: 'typed-q1',
+            requestId: 'req-typed',
+            answer: { type: 'text', text: 'goes' },
+            isCorrect: true,
+            feedback: 'Correct: goes with third person singular.',
+            createdAt: '2026-01-02',
+            studyTaskId: null,
+            completedLesson: true,
+          },
+          progress: { ...initialProgress, isComplete: true, lastPosition: 1 },
+          nextLessonId: null,
+        });
+      }
+      return json({ lesson: typedLesson, progress: initialProgress, nextLessonId: null });
+    }));
+
+    renderPage();
+
+    const input = await screen.findByPlaceholderText('Type your answer');
+    fireEvent.change(input, { target: { value: 'goes' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
+
+    expect(await screen.findByText('Correct: goes with third person singular.')).toBeTruthy();
+  });
+
+  it('displays first-attempt accuracy distinct from completion', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/grammar-practice/history')) return json({ items: [] });
+      return json({
+        lesson,
+        progress: initialProgress,
+        nextLessonId: null,
+        firstAttemptAccuracy: { correct: 9, total: 10, percent: 90 },
+      });
+    }));
+
+    renderPage();
+
+    expect(await screen.findByText('First-attempt accuracy:')).toBeTruthy();
+    expect(screen.getByText('Accuracy: 90% (9/10)')).toBeTruthy();
+    expect(screen.getByText(/First-attempt accuracy is preserved and does not change on retries/i)).toBeTruthy();
+  });
+
+  it('submits output self-assessment and reveals reference model answer', async () => {
+    const outputLesson = {
+      ...lesson,
+      outputPrompts: [
+        {
+          id: 'out-1',
+          prompt: 'Write two sentences describing what you do every morning.',
+          checks: ['Use present simple verbs', 'Include at least one time expression'],
+        },
+      ],
+    };
+
+    let outputCalled = false;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/grammar-practice/history')) return json({ items: [] });
+      if (init?.method === 'POST' && url.includes('/api/grammar-practice/outputs')) {
+        outputCalled = true;
+        const payload = JSON.parse(String(init.body)) as {
+          text: string;
+          rubric: { form: number; meaning: number; use: number };
+        };
+        expect(payload.text).toBe('I drink coffee every morning. I leave home at eight.');
+        expect(payload.rubric).toEqual({ form: 2, meaning: 2, use: 2 });
+        return json({
+          attempt: {
+            id: 'out-att-1',
+            requestId: 'req-out-1',
+            lessonId,
+            revisionId: 'rev-1',
+            revision: '1',
+            promptId: 'out-1',
+            text: payload.text,
+            rubric: payload.rubric,
+            assessmentSource: 'self',
+            createdAt: '2026-01-02T10:00:00Z',
+          },
+          modelAnswer: 'I wake up at seven o’clock. Then I drink tea and read the news.',
+        });
+      }
+      return json({ lesson: outputLesson, progress: initialProgress, nextLessonId: null });
+    }));
+
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'Application & output' })).toBeTruthy();
+    expect(screen.getByText('Use present simple verbs')).toBeTruthy();
+    expect(screen.getByText('Include at least one time expression')).toBeTruthy();
+
+    // Model answer should NOT be visible yet
+    expect(screen.queryByText('Reference model answer')).toBeNull();
+
+    const textarea = screen.getByPlaceholderText(/Write your sentences here/i);
+    fireEvent.change(textarea, {
+      target: { value: 'I drink coffee every morning. I leave home at eight.' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save self-assessment' }));
+
+    expect(await screen.findByText('Reference model answer')).toBeTruthy();
+    expect(screen.getByText('I wake up at seven o’clock. Then I drink tea and read the news.')).toBeTruthy();
+    expect(screen.getByText('Saved · Self-assessed')).toBeTruthy();
+    expect(outputCalled).toBe(true);
+  });
+
+  it('renders practice history attempts', async () => {
+    const historyItems = [
+      {
+        id: 'hist-1',
+        requestId: 'r1',
+        lessonId,
+        revisionId: 'rev-1',
+        revision: '1',
+        kind: 'review' as const,
+        exerciseId: 'ex-1',
+        rating: 'GOOD' as const,
+        isCorrect: true,
+        feedback: 'Great job.',
+        createdAt: '2026-01-02T12:00:00Z',
+        assessmentSource: 'deterministic' as const,
+      },
+      {
+        id: 'hist-2',
+        requestId: 'r2',
+        lessonId,
+        revisionId: 'rev-1',
+        revision: '1',
+        kind: 'output' as const,
+        promptId: 'out-1',
+        text: 'I walk to work every morning.',
+        rubric: { form: 2, meaning: 2, use: 1 },
+        assessmentSource: 'self' as const,
+        createdAt: '2026-01-02T13:00:00Z',
+      },
+    ];
+
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/grammar-practice/history')) {
+        return json({ items: historyItems });
+      }
+      return json({ lesson, progress: initialProgress, nextLessonId: null });
+    }));
+
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'Practice & review history' })).toBeTruthy();
+    expect(screen.getByText('Review')).toBeTruthy();
+    expect(screen.getByText('GOOD')).toBeTruthy();
+    expect(screen.getByText('Output')).toBeTruthy();
+    expect(screen.getByText('Self-rated')).toBeTruthy();
+    expect(screen.getByText('I walk to work every morning.')).toBeTruthy();
   });
 });

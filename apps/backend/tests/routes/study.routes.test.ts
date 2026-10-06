@@ -5,25 +5,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/app.js';
-import { getGrammarCurriculum } from '../../src/grammar/content/manifest.js';
-import type { GrammarCurriculum } from '../../src/grammar/content/types.js';
+import { createTestCurriculum } from '../grammar/fixtures.js';
 import { readAiStudyPlannerConfig, type AiStudyPlannerDependencies } from '../../src/services/ai-study-planner.service.js';
 import { reviewLogs, reviewStates, words } from '../../src/db/schema.js';
 
 const apps: FastifyInstance[] = [];
 const today = new Date().toISOString().slice(0, 10);
 
-function publishedFixture(): GrammarCurriculum {
-  const curriculum = getGrammarCurriculum();
-  for (const [index, stage] of curriculum.stages.entries()) {
-    stage.publicationStatus = index === 0 ? 'published' : 'draft';
-    if (index === 0) {
-      stage.lessons = [stage.lessons[0]!];
-      stage.lessons[0]!.review = { status: 'approved', reviewer: 'Study route fixture', reviewedAt: '2026-09-26T10:00:00.000Z' };
-    }
-  }
-  return curriculum;
-}
+const publishedFixture = createTestCurriculum;
 
 async function createApp(curriculum = publishedFixture(), aiStudyPlanner?: AiStudyPlannerDependencies): Promise<FastifyInstance> {
   const app = await buildApp({ dbPath: ':memory:', logger: false, grammarCurriculum: curriculum,

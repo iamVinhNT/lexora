@@ -87,6 +87,8 @@ describe('AppShell', () => {
   });
 
   it('opens the study calendar from mobile More while keeping four primary links', async () => {
+    // Resolve real lazy-module transformation before timing the navigation assertion.
+    await import('../src/pages/CalendarPage');
     renderApp();
 
     expect(screen.getByRole('navigation', { name: /mobile/i }).querySelectorAll('a')).toHaveLength(4);

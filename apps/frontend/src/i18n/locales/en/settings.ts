@@ -10,7 +10,10 @@ export default {
   grammarOverwrite: 'Grammar restore replaces {{count}} lesson progress records and {{attempts}} attempts.',
   grammarBackup: 'This backup includes {{count}} grammar progress records and {{attempts}} attempts.',
   grammarAbsent: 'This older backup has no grammar data; restoring it clears current grammar progress and attempts.',
-  dangerZone: 'Danger zone', dangerDescription: 'These actions cannot be undone.', resetProgress: 'Reset learning progress', resetDescription: 'Keeps vocabulary and contexts, but resets progress, reviews, and sessions.', deleteAll: 'Delete all data', deleteAllDescription: 'Deletes vocabulary, contexts, and all learning data.', resetDialogTitle: 'Reset learning progress', resetDialogDescription: 'This keeps vocabulary and contexts, but removes review logs and sessions and resets learning progress.', deleteDialogTitle: 'Delete all data', deleteDialogDescription: 'This deletes vocabulary, contexts, and all learning data. Nothing is retained.',
+  practiceOverwrite: 'Grammar practice restore replaces {{attempts}} practice attempts and {{reviews}} review states.',
+  practiceBackup: 'This backup includes {{attempts}} grammar practice attempts and {{reviews}} review states.',
+  practiceAbsent: 'This older backup has no grammar practice reviews or outputs; restoring it clears current practice evidence.',
+  dangerZone: 'Danger zone', dangerDescription: 'These actions cannot be undone.', resetProgress: 'Reset learning progress', resetDescription: 'Keeps vocabulary and contexts, but resets progress, reviews, grammar practice, and sessions.', deleteAll: 'Delete all data', deleteAllDescription: 'Deletes vocabulary, contexts, and all learning data, including grammar practice.', resetDialogTitle: 'Reset learning progress', resetDialogDescription: 'This keeps vocabulary and contexts, but removes review logs, grammar practice attempts, and sessions and resets learning progress.', deleteDialogTitle: 'Delete all data', deleteDialogDescription: 'This deletes vocabulary, contexts, and all learning data, including grammar practice. Nothing is retained.',
   confirmation: {
     restore: 'Type {{phrase}} to confirm', restorePhrase: 'RESTORE',
     resetProgress: 'Type {{phrase}} to confirm', resetProgressPhrase: 'RESET PROGRESS',

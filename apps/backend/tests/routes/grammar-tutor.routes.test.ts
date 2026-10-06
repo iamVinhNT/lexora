@@ -4,24 +4,17 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
-import { getGrammarCurriculum } from '../../src/grammar/content/manifest.js';
+import { createTestCurriculum } from '../grammar/fixtures.js';
 
-const lessonId = 'grammar-0-word-roles';
+const lessonId = 'grammar-v2-0-word-roles-01';
 const url = `/api/grammar/${lessonId}/tutor`;
 const payload = { question: 'Vì sao từ này là động từ?' };
 
-function reviewedCurriculum() {
-  const curriculum = getGrammarCurriculum();
-  curriculum.stages[0]!.publicationStatus = 'published';
-  for (const lesson of curriculum.stages[0]!.lessons) {
-    lesson.review = { status: 'approved', reviewer: 'Test-only reviewer', reviewedAt: '2026-09-26T10:00:00.000Z' };
-  }
-  return curriculum;
-}
+const reviewedCurriculum = createTestCurriculum;
 
 describe('grammar tutor local boundary', () => {
   it('refuses withdrawn draft content without changing learner progress', async () => {
-    const withdrawn = getGrammarCurriculum();
+    const withdrawn = createTestCurriculum();
     withdrawn.stages[0]!.publicationStatus = 'draft';
     const app = await buildApp({ logger: false, grammarCurriculum: withdrawn });
     try {

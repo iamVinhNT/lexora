@@ -4,8 +4,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { getGrammarCurriculum } from '../../src/grammar/content/manifest.js';
-import type { GrammarCurriculum } from '../../src/grammar/content/types.js';
+import { createTestCurriculum } from '../grammar/fixtures.js';
 import { GrammarLessonUnavailableError } from '../../src/grammar/course-read-model.js';
 import { grammarTutorRequestSchema, grammarTutorResponseSchema } from '../../src/schemas/grammar-tutor.schema.js';
 import {
@@ -15,20 +14,13 @@ import {
   GrammarTutorUnavailableError,
 } from '../../src/services/grammar-tutor.service.js';
 
-const lessonId = 'grammar-0-word-roles';
+const lessonId = 'grammar-v2-0-word-roles-01';
 const response = {
   explanation: 'Trong câu này, “flies” diễn tả hành động của con chim.',
   contrast: '“Bird” là danh từ chỉ con vật; “flies” là động từ chỉ hành động.',
 };
 
-function reviewedCurriculum(): GrammarCurriculum {
-  const curriculum = getGrammarCurriculum();
-  curriculum.stages[0]!.publicationStatus = 'published';
-  for (const lesson of curriculum.stages[0]!.lessons) {
-    lesson.review = { status: 'approved', reviewer: 'Test reviewer', reviewedAt: '2026-09-26T10:00:00.000Z' };
-  }
-  return curriculum;
-}
+const reviewedCurriculum = createTestCurriculum;
 
 describe('GrammarTutorService', () => {
   it('rejects when OpenAI is disabled and no provider is injected', async () => {
@@ -80,7 +72,6 @@ describe('GrammarTutorService', () => {
     })).resolves.toEqual(response);
 
     const prompt = provider.mock.calls[0]![0];
-    expect(prompt.lesson).toMatchObject({ title: 'Nhận ra vai trò của từ' });
     expect(prompt.lesson).not.toHaveProperty('exercises');
     expect(JSON.stringify(prompt)).not.toMatch(/acceptedAnswers|correct|rationale|answerKey/);
     expect(prompt.history).toEqual([{ role: 'user', content: 'Em nghĩ “bird” mới là hành động.' }]);
@@ -97,7 +88,7 @@ describe('GrammarTutorService', () => {
   });
 
   it('keeps withdrawn lessons unavailable to the tutor', async () => {
-    const curriculum = getGrammarCurriculum();
+    const curriculum = createTestCurriculum();
     curriculum.stages[0]!.publicationStatus = 'draft';
     const provider = vi.fn().mockResolvedValue(response);
     const service = new GrammarTutorService(curriculum, provider, { OPENAI_API_KEY: 'test-key' });

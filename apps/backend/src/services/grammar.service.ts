@@ -9,6 +9,7 @@ import type { GrammarExerciseResponse } from '../grammar/grade-exercise.js';
 import { submitGrammarAnswerSchema } from '../schemas/grammar.schema.js';
 import type { GrammarRepository } from '../repositories/grammar.repository.js';
 import type { GrammarLessonProgress } from '../repositories/grammar.repository.js';
+import { LEGACY_GRAMMAR_LESSON_IDS } from '../grammar/content/legacy-lesson-ids.js';
 
 export class GrammarServiceConflictError extends Error {
   constructor(message: string) {
@@ -45,17 +46,40 @@ export class GrammarService {
     const course = this.getCourse();
     const progress = new Map<string, GrammarLessonProgress | null>();
     for (const stage of course.stages) {
-      for (const lesson of stage.lessons) progress.set(lesson.id, this.repository.findProgressByLessonId(lesson.id));
+      for (const lesson of stage.lessons) {
+        const stored = this.repository.findProgressByLessonId(lesson.id);
+        progress.set(lesson.id, stored?.revisionId === lesson.revisionId && stored.revision === lesson.revision ? stored : null);
+      }
     }
     const nextLessonId = course.stages.flatMap(({ lessons }) => lessons)
       .find((lesson) => !progress.get(lesson.id)?.isComplete)?.id ?? null;
+    const stages = course.stages.map((stage) => ({
+      ...stage,
+      lessons: stage.lessons.map((lesson) => ({
+        ...lesson,
+        progress: progress.get(lesson.id) ?? null,
+        firstAttemptAccuracy: this.getFirstAttemptAccuracy(lesson.id, lesson.revisionId),
+      })),
+    }));
+    const lessons = stages.flatMap(({ lessons: stageLessons }) => stageLessons);
+    const accuracy = lessons.reduce((result, lesson) => ({
+      correct: result.correct + lesson.firstAttemptAccuracy.correct,
+      total: result.total + lesson.firstAttemptAccuracy.total,
+    }), { correct: 0, total: 0 });
     return {
       ...course,
-      stages: course.stages.map((stage) => ({
-        ...stage,
-        lessons: stage.lessons.map((lesson) => ({ ...lesson, progress: progress.get(lesson.id) ?? null })),
-      })),
+      stages,
       nextLessonId,
+      coverage: [...new Set(lessons.flatMap(({ coverage }) => coverage))],
+      firstAttemptAccuracy: {
+        ...accuracy,
+        percent: accuracy.total < 5 ? null : Math.round(accuracy.correct / accuracy.total * 100),
+      },
+      legacyProgress: {
+        completedLessons: this.repository.countCompletedLessons(LEGACY_GRAMMAR_LESSON_IDS),
+        totalLessons: 34 as const,
+        attemptsPreserved: true as const,
+      },
     };
   }
 
@@ -67,7 +91,17 @@ export class GrammarService {
     const lesson = this.getLesson(lessonId);
     const course = this.getCourseWithProgress();
     const progress = this.repository.findProgressByLessonId(lessonId);
-    return { lesson, progress, nextLessonId: course.nextLessonId };
+    return {
+      lesson,
+      progress: progress?.revisionId === lesson.revisionId && progress.revision === lesson.revision ? progress : null,
+      nextLessonId: course.nextLessonId,
+      firstAttemptAccuracy: this.getFirstAttemptAccuracy(lesson.id, lesson.revisionId),
+    };
+  }
+
+  private getFirstAttemptAccuracy(lessonId: string, revisionId: string) {
+    const lesson = this.curriculum.stages.flatMap(({ lessons }) => lessons).find(({ id }) => id === lessonId)!;
+    return this.repository.getFirstAttemptAccuracy(lessonId, revisionId, lesson.exercises.map(({ id }) => id));
   }
 
   submitAnswer(lessonId: string, rawInput: unknown) {
@@ -89,7 +123,7 @@ export class GrammarService {
         || existing.attempt.studyTaskId !== (input.studyTaskId ?? null)) {
         throw new GrammarServiceConflictError('Request ID was already used for a different grammar submission.');
       }
-      return existing;
+      return { ...existing, firstAttemptAccuracy: this.getFirstAttemptAccuracy(lessonId, existing.attempt.revisionId) };
     }
 
     if (!visibleLesson.exercises.some(({ id }) => id === input.exerciseId)) {
@@ -100,7 +134,7 @@ export class GrammarService {
     if (grade.status === 'invalid-exercise') throw new GrammarServiceInvalidContentError(grade.feedback);
     if (grade.status === 'invalid-answer') throw new GrammarServiceInvalidAnswerError(grade.feedback);
 
-    return this.repository.recordAttempt({
+    const result = this.repository.recordAttempt({
       lessonId,
       revisionId: authoredLesson.revisionId,
       revision: authoredLesson.revision,
@@ -112,5 +146,6 @@ export class GrammarService {
       exerciseIds: authoredLesson.exercises.map(({ id }) => id),
       studyTaskId: input.studyTaskId,
     });
+    return { ...result, firstAttemptAccuracy: this.getFirstAttemptAccuracy(lessonId, authoredLesson.revisionId) };
   }
 }

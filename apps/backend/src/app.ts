@@ -14,6 +14,7 @@ import { reviewRoutes } from './routes/review.routes.js';
 import { analyticsRoutes } from './routes/analytics.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
 import { grammarRoutes } from './routes/grammar.routes.js';
+import { grammarPracticeRoutes } from './routes/grammar-practice.routes.js';
 import { studyRoutes } from './routes/study.routes.js';
 import { GrammarRepository } from './repositories/grammar.repository.js';
 import { StudyRepository } from './repositories/study.repository.js';
@@ -98,6 +99,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await app.register(contextRoutes, { db });
     await app.register(sessionRoutes, { db, outputGrader: options.outputGrader });
     await app.register(grammarRoutes, { db, curriculum: grammarCurriculum, service: grammarService, tutorProvider: options.grammarTutorProvider });
+    await app.register(grammarPracticeRoutes, { db, curriculum: grammarCurriculum });
     await app.register(studyRoutes, { service: studyService, aiPlanner });
     await app.register(reviewRoutes, { db });
     await app.register(analyticsRoutes, { db });

@@ -11,7 +11,7 @@ import { sessionKeys } from './useLearningSession';
 import { wordKeys } from './useVocabulary';
 import { grammarKeys } from './useGrammar';
 import { studyKeys } from './useStudyCalendar';
-
+import { grammarPracticeKeys } from './useGrammarPractice';
 export const dataKeys = { all: ['data-management'] as const };
 
 function invalidateDataCaches(queryClient: ReturnType<typeof useQueryClient>) {
@@ -22,6 +22,7 @@ function invalidateDataCaches(queryClient: ReturnType<typeof useQueryClient>) {
     queryClient.invalidateQueries({ queryKey: sessionKeys.all }),
     queryClient.invalidateQueries({ queryKey: analyticsKeys.all }),
     queryClient.invalidateQueries({ queryKey: grammarKeys.all }),
+    queryClient.invalidateQueries({ queryKey: grammarPracticeKeys.all }),
     queryClient.invalidateQueries({ queryKey: studyKeys.all }),
   ]);
 }

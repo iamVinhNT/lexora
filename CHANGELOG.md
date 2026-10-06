@@ -5,8 +5,23 @@
 
 ## [Unreleased]
 
+### Added
+- Grammar v2: 160 internally AI-reviewed lessons, 960 bilingual examples, 1,920 controlled exercises, 640 transfer review items, and 320 original-writing prompts.
+- Separate grammar spaced-review queue, immutable review/output history, self-assessment rubric, and first-attempt recognition/recall accuracy.
+- Grammar catalog level/topic filters and responsive, keyboard-accessible practice for English/Vietnamese and light/dark interfaces.
+
 ### Fixed
 - Desktop release smoke checks use separate AppImage/Debian profiles and in-memory databases, and report startup logs on failure. Manual package verification builds the requested immutable version tag.
+- Isolate the real Electron IPC test profile and avoid a top-level readiness await that prevented Electron startup.
+- Keep grammar context translations readable on the primary-subtle surface and stabilize cold lazy calendar navigation verification without replacing the real page.
+
+### Changed
+- Backup v5 preserves grammar output and review snapshots; restoring v1–v4 warns before replacing current practice data.
+- Preserve 34 retired lesson IDs, historical attempts, completion dates, and calendar links. New lessons use revision-pinned v2 IDs; old lesson requests return `CURRICULUM_CHANGED` instead of silently regrading or migrating evidence.
+
+### Upgrade notes
+- Upgrade backend, frontend, and desktop together after creating a backup. A previous binary cannot restore v5; rollback requires a compatible pre-upgrade backup on a separate database.
+- Lesson completion means all controlled items were submitted, not mastery. Writing scores are self-assessed; course level labels and internal AI review are not CEFR certification.
 
 ## [0.3.0] - 2026-10-04
 

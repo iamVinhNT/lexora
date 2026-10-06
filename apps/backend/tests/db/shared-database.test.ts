@@ -16,6 +16,24 @@ afterEach(() => {
 });
 
 describe('shared local database', () => {
+  it('preserves output-only grammar practice from a secondary database without inventing review state', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'lexora-shared-practice-')); roots.push(root);
+    const home = join(root, 'home'), backendRoot = join(root, 'backend');
+    const desktopPath = join(home, '.config', '@lexora', 'desktop', 'data', 'lexora.db');
+    const webPath = join(backendRoot, 'data', 'lexora.db');
+    for (const path of [desktopPath, webPath]) mkdirSync(dirname(path), { recursive: true });
+    getDb(desktopPath).sqlite.close();
+    const web = getDb(webPath);
+    web.sqlite.prepare("INSERT INTO grammar_practice_attempts (id,request_id,lesson_id,revision_id,revision,kind,prompt_id,text,rubric,assessment_source,created_at) VALUES ('output','request','lesson','revision','1.0.0','output','prompt','My original sentence.','{\"form\":2,\"meaning\":1,\"use\":1}','self','2026-10-05T12:00:00.000Z')").run();
+    web.sqlite.close();
+    const target = sharedDatabasePath(home); await prepareSharedDatabase(target, home, backendRoot);
+    const merged = getDb(target);
+    try {
+      expect(merged.sqlite.prepare('SELECT request_id, text, assessment_source FROM grammar_practice_attempts').all()).toEqual([{request_id:'request',text:'My original sentence.',assessment_source:'self'}]);
+      expect(merged.sqlite.prepare('SELECT * FROM grammar_review_states').all()).toEqual([]);
+      expect(() => merged.sqlite.prepare("UPDATE grammar_practice_attempts SET text='Changed'").run()).toThrow(/immutable/);
+    } finally { merged.sqlite.close(); }
+  });
   it('merges distinct words and their learning history without duplicating shared tags', async () => {
     const root = mkdtempSync(join(tmpdir(), 'lexora-shared-'));
     roots.push(root);

@@ -1,0 +1,40 @@
+/**
+ * @file legacy-lesson-ids.ts
+ * @description Identifies retired curriculum rows for history without rebinding learner evidence.
+ */
+export const LEGACY_GRAMMAR_LESSON_IDS: readonly string[] = [
+  "grammar-0-word-roles",
+  "grammar-0-subjects-and-verbs",
+  "grammar-0-be",
+  "grammar-a1-pronouns-and-articles",
+  "grammar-a1-present-simple",
+  "grammar-a1-present-continuous",
+  "grammar-a1-past-simple",
+  "grammar-a2-past-continuous",
+  "grammar-a2-intro-present-perfect",
+  "grammar-a2-future-forms",
+  "grammar-a2-comparatives",
+  "grammar-a2-quantifiers",
+  "grammar-a2-basic-modals",
+  "grammar-b1-tense-aspect-context",
+  "grammar-b1-conditionals-zero-first-second",
+  "grammar-b1-passive-voice",
+  "grammar-b1-reported-speech",
+  "grammar-b1-relative-clauses",
+  "grammar-b2-third-and-mixed-conditionals",
+  "grammar-b2-speculative-modals",
+  "grammar-b2-perfect-aspect",
+  "grammar-b2-advanced-clauses",
+  "grammar-b2-cohesion",
+  "grammar-c1-inversion",
+  "grammar-c1-emphasis",
+  "grammar-c1-cleft-sentences",
+  "grammar-c1-ellipsis",
+  "grammar-c1-hedging",
+  "grammar-c1-register",
+  "grammar-c2-modality-nuance",
+  "grammar-c2-tense-aspect-discourse",
+  "grammar-c2-information-structure",
+  "grammar-c2-ellipsis-substitution",
+  "grammar-c2-register-variation"
+];

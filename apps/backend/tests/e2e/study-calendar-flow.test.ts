@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { buildApp } from '../../src/app.js';
 import { seedDatabase } from '../../src/db/seed.js';
-import { getGrammarCurriculum } from '../../src/grammar/content/manifest.js';
+import { createTestCurriculum } from '../grammar/fixtures.js';
 
 const today = '2026-10-03';
 const tomorrow = '2026-10-04';
@@ -27,7 +27,7 @@ function data<T>(response: LightMyRequestResponse): T {
 }
 
 async function createApp(dbPath = ':memory:'): Promise<FastifyInstance> {
-  const app = await buildApp({ dbPath, logger: false, outputGrader });
+  const app = await buildApp({ dbPath, logger: false, outputGrader, grammarCurriculum: createTestCurriculum() });
   await seedDatabase(app.db);
   apps.push(app);
   return app;
@@ -54,7 +54,7 @@ afterEach(async () => {
 });
 
 describe('study calendar flow end to end', () => {
-  it('persists preferences, links all evidence, moves remaining work, and restores v4 data', async () => {
+  it('persists preferences, links all evidence, moves remaining work, and restores the current backup', async () => {
     const app = await createApp();
     const preferences = await app.inject({ method: 'PUT', url: '/api/study-preferences', payload: {
       timeZone: 'UTC', studyDays: [1, 2, 3, 4, 5, 6, 7], learningTarget: 2, reviewTarget: 2, grammarTarget: 1,
@@ -67,7 +67,7 @@ describe('study calendar flow end to end', () => {
     const reviewTask = await createTask(app, {
       id: 'calendar-review', kind: 'REVIEW_WORDS', scheduledDate: today, targetCount: 1, source: 'MANUAL',
     });
-    const lesson = getGrammarCurriculum().stages[0]!.lessons[0]!;
+    const lesson = createTestCurriculum().stages[0]!.lessons[0]!;
     const grammarTask = await createTask(app, {
       id: 'calendar-grammar', kind: 'GRAMMAR', lessonId: lesson.id, revisionId: lesson.revisionId, revision: lesson.revision,
       scheduledDate: today, targetCount: 1, source: 'MANUAL',
@@ -97,10 +97,10 @@ describe('study calendar flow end to end', () => {
     expect(review.statusCode).toBe(200);
 
     for (const [index, exercise] of lesson.exercises.entries()) {
-      const answer = exercise.options.find((option) => option.correct)?.text;
+      const answer = exercise.acceptedAnswers[0]!.text;
       expect(answer).toBeDefined();
       const attempt = await app.inject({ method: 'POST', url: `/api/grammar/${lesson.id}/answers`, payload: {
-        requestId: `calendar-grammar-${index}`, exerciseId: exercise.id, answer: { type: 'choice', text: answer }, studyTaskId: grammarTask.task.id,
+        requestId: `calendar-grammar-${index}`, exerciseId: exercise.id, answer: { type: exercise.kind === 'choice' ? 'choice' : 'text', text: answer }, studyTaskId: grammarTask.task.id,
       } });
       expect(attempt.statusCode).toBe(200);
     }

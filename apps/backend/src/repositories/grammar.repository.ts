@@ -1,8 +1,6 @@
 /**
  * @file grammar.repository.ts
- * @description Internal persistence boundary for standalone grammar learner tables.
- *
- * It is not connected to application startup or routes. Do not enable production writes until backup/restore supports these tables.
+ * @description Persists immutable grammar attempts, submitted completion, and revision-scoped first attempts.
  */
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -162,6 +160,29 @@ export class GrammarRepository {
     const rows = this.sqlite.prepare(`SELECT DISTINCT exercise_id FROM grammar_exercise_attempts
       WHERE lesson_id = ? AND revision_id = ? ORDER BY exercise_id`).all(lessonId, revisionId) as Array<{ exercise_id: string }>;
     return rows.map(({ exercise_id }) => exercise_id);
+  }
+
+  findFirstAttempts(lessonId: string, revisionId: string): GrammarAttempt[] {
+    const rows = this.sqlite.prepare(`SELECT id, lesson_id, revision_id, revision, exercise_id, request_id,
+      answer, is_correct, feedback, created_at, study_task_id, completed_lesson
+      FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY exercise_id ORDER BY created_at, id) AS ordinal
+        FROM grammar_exercise_attempts WHERE lesson_id = ? AND revision_id = ?)
+      WHERE ordinal = 1 ORDER BY created_at, id`).all(lessonId, revisionId) as GrammarAttemptRow[];
+    return rows.map(mapAttempt);
+  }
+
+  getFirstAttemptAccuracy(lessonId: string, revisionId: string, exerciseIds: readonly string[]) {
+    const allowed = new Set(exerciseIds);
+    const attempts = this.findFirstAttempts(lessonId, revisionId).filter(({ exerciseId }) => allowed.has(exerciseId));
+    const correct = attempts.filter(({ isCorrect }) => isCorrect).length;
+    return { correct, total: attempts.length, percent: attempts.length < 5 ? null : Math.round(correct / attempts.length * 100) };
+  }
+
+  countCompletedLessons(lessonIds: readonly string[]): number {
+    if (lessonIds.length === 0) return 0;
+    const row = this.sqlite.prepare(`SELECT count(*) AS count FROM grammar_lesson_progress
+      WHERE is_complete = 1 AND lesson_id IN (${lessonIds.map(() => '?').join(',')})`).get(...lessonIds) as { count: number };
+    return row.count;
   }
 
   recordAttempt(input: RecordGrammarAttemptInput): GrammarSubmissionResult {

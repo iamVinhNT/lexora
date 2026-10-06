@@ -13,7 +13,7 @@ import { formatNumber } from '../../i18n/formatters';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
-
+import { PracticeRestoreWarning } from './PracticeRestoreWarning';
 const inputClass = 'min-h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary';
 
 export type DataManagementCardsProps = {
@@ -156,6 +156,7 @@ export function RestoreCard({ onFile, desktopFiles, onSelect, preview, loading, 
           : t('grammarBackup', { count: preview.grammarSummary.backupTableCounts.grammarLessonProgress, attempts: preview.grammarSummary.backupTableCounts.grammarExerciseAttempts })}
         {!preview.grammarSummary.includedInBackup && ` ${t('grammarAbsent')}`}
       </p>}
+      {preview.practiceSummary && <PracticeRestoreWarning practiceSummary={preview.practiceSummary} />}
       {preview.calendarSummary && <p className="text-sm text-foreground" role={(!preview.calendarSummary.includedInBackup || preview.calendarSummary.willOverwrite) ? 'alert' : undefined}>
         {preview.calendarSummary.willOverwrite
           ? tCalendar('backup.calendarOverwrite', { tasks: formatNumber(preview.calendarSummary.existingTaskCount) })

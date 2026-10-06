@@ -1,6 +1,6 @@
 /**
  * @file grammar-flow.test.ts
- * @description Exercises reviewed-fixture grammar practice, restart, backup, reset, restore, and optional tutor failure.
+ * @description Exercises real bundled grammar v2, first-attempt accuracy, output, delayed review and backup persistence.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -8,94 +8,91 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { getGrammarCurriculum } from '../../src/grammar/content/manifest.js';
+import type { GrammarExercise } from '../../src/grammar/content/types.js';
+import type { FastifyInstance } from 'fastify';
+import { StudyRepository } from '../../src/repositories/study.repository.js';
 
-const directories: string[] = [];
-const lessonId = 'grammar-a1-pronouns-and-articles';
-
-function reviewedFixture() {
-  const curriculum = getGrammarCurriculum();
-  for (const stage of curriculum.stages.slice(2)) stage.publicationStatus = 'unpublished';
-  for (const stage of curriculum.stages.slice(0, 2)) {
-    stage.publicationStatus = 'published';
-    for (const lesson of stage.lessons) {
-      lesson.review = { status: 'approved', reviewer: 'Integration fixture only', reviewedAt: '2026-09-26T10:00:00.000Z' };
-    }
-  }
-  return curriculum;
+const roots:string[]=[];
+afterEach(()=>{vi.useRealTimers();for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});});
+function answer(exercise:GrammarExercise){return {type:exercise.kind==='choice'?'choice':'text',text:exercise.acceptedAnswers[0]!.text};}
+async function request(app:FastifyInstance,method:'GET'|'POST',url:string,payload?:unknown){
+ const response=await app.inject({method,url,payload:payload as object});
+ expect(response.statusCode,response.payload).toBe(200);
+ return response.json().data;
 }
-
-afterEach(() => {
-  for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
-});
-
-describe('reviewed-fixture grammar flow', () => {
-  it('moves across the 0→A1 boundary, survives restart and v4 restore, without depending on AI', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'grammar-flow-'));
-    directories.push(directory);
-    const dbPath = join(directory, 'grammar.db');
-    const curriculum = reviewedFixture();
-    const provider = vi.fn().mockRejectedValue(new Error('Offline provider'));
-    let app = await buildApp({ dbPath, logger: false, grammarCurriculum: curriculum, grammarTutorProvider: provider });
-    try {
-      const initial = (await app.inject({ method: 'GET', url: '/api/grammar' })).json().data;
-      expect(initial.stages.map((stage: { level: string }) => stage.level)).toEqual(['0', 'A1']);
-      expect(initial.nextLessonId).toBe('grammar-0-word-roles');
-      expect(initial.isComplete).toBe(false);
-
-      for (const stage of curriculum.stages.slice(0, 2)) {
-        for (const lesson of stage.lessons) {
-          for (const exercise of lesson.exercises) {
-            const answer = exercise.options.find((option) => option.correct)!.text;
-            const payload = { requestId: `${exercise.id}-once`, exerciseId: exercise.id, answer: { type: 'choice', text: answer } };
-            const result = await app.inject({ method: 'POST', url: `/api/grammar/${lesson.id}/answers`, payload });
-            expect(result.statusCode).toBe(200);
-            expect(result.json().data.attempt.isCorrect).toBe(true);
-            expect((await app.inject({ method: 'POST', url: `/api/grammar/${lesson.id}/answers`, payload })).json().data.attempt.id).toBe(result.json().data.attempt.id);
-          }
-          const detail = (await app.inject({ method: 'GET', url: `/api/grammar/${lesson.id}` })).json().data;
-          expect(detail.progress.isComplete).toBe(true);
-          expect(JSON.stringify(detail.lesson)).not.toMatch(/"(?:correct|rationale|acceptedAnswers)"\s*:/);
-        }
-      }
-      const completed = (await app.inject({ method: 'GET', url: '/api/grammar' })).json().data;
-      expect(completed.nextLessonId).toBeNull();
-      expect(completed.isComplete).toBe(false); // C2 remains unpublished, not a certificate.
-      const backup = (await app.inject({ method: 'GET', url: '/api/backup' })).json().data;
-      expect(backup.version).toBe(4);
-      expect(backup.data.grammarExerciseAttempts.length).toBeGreaterThan(0);
-      await app.close();
-      app = await buildApp({ dbPath, logger: false, grammarCurriculum: curriculum, grammarTutorProvider: provider });
-      expect((await app.inject({ method: 'GET', url: `/api/grammar/${lessonId}` })).json().data.progress.isComplete).toBe(true);
-      const unavailable = await app.inject({ method: 'POST', url: `/api/grammar/${lessonId}/tutor`, payload: { question: 'Vì sao dùng him?' } });
-      expect(unavailable.statusCode).toBe(503);
-      expect(provider).toHaveBeenCalledTimes(1);
-      expect((await app.inject({ method: 'GET', url: `/api/grammar/${lessonId}` })).json().data.progress.isComplete).toBe(true);
-
-      const reset = await app.inject({ method: 'POST', url: '/api/data/reset-progress', payload: { confirm: true } });
-      expect(reset.statusCode).toBe(200);
-      expect((await app.inject({ method: 'GET', url: '/api/grammar' })).json().data.nextLessonId).toBe('grammar-0-word-roles');
-      const preview = (await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } })).json().data;
-      expect(preview.grammarSummary.includedInBackup).toBe(true);
-      const restored = await app.inject({ method: 'POST', url: '/api/restore', payload: { backup, confirm: true, previewToken: preview.previewToken } });
-      expect(restored.statusCode).toBe(200);
-      expect((await app.inject({ method: 'GET', url: `/api/grammar/${lessonId}` })).json().data.progress.isComplete).toBe(true);
-      expect((await app.inject({ method: 'GET', url: '/api/backup' })).json().data.data.grammarExerciseAttempts).toEqual(backup.data.grammarExerciseAttempts);
-    } finally {
-      await app.close();
-    }
-  });
-  it('exposes every owner-approved level in ordered published course without claiming certification', async () => {
-    const app = await buildApp({ logger: false });
-    try {
-      const response = await app.inject({ method: 'GET', url: '/api/grammar' });
-      expect(response.statusCode).toBe(200);
-      const data = response.json().data;
-      expect(data.stages.map((stage: { level: string }) => stage.level)).toEqual(['0', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
-      expect(data.isComplete).toBe(true);
-      expect(data.nextLessonId).toBe(data.stages[0].lessons[0].id);
-      expect(response.payload).not.toMatch(/certificate|IELTS|C2 proficiency/i);
-    } finally {
-      await app.close();
-    }
-  });
+describe('bundled grammar expansion',()=>{
+ it('keeps wrong-first accuracy, self output, delayed reviews and exact replay across restart and v5 restore',async()=>{
+  vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
+  const root=mkdtempSync(join(tmpdir(),'lexora-grammar-v2-'));roots.push(root);
+  const dbPath=join(root,'grammar.db');
+  const lesson=getGrammarCurriculum().stages[0]!.lessons[0]!;
+  let app=await buildApp({dbPath,logger:false});
+  try{
+   const course=await request(app,'GET','/api/grammar');
+   expect(course.stages.map((s:{lessons:unknown[]})=>s.lessons.length)).toEqual([8,24,28,30,30,24,16]);
+   const detail=await request(app,'GET','/api/grammar/'+lesson.id);
+   expect(JSON.stringify(detail.lesson)).not.toMatch(/"(?:correct|acceptedAnswers|rationale|modelAnswer)"\s*:/);
+   expect(detail.lesson.exercises.map((e:{kind:string})=>e.kind)).toEqual(['choice','choice','choice','choice','gap','gap','gap','gap','transform','transform','correction','correction']);
+   const outputPayload={requestId:'output-first',lessonId:lesson.id,revisionId:lesson.revisionId,promptId:lesson.outputPrompts[0]!.id,text:'A small dog sleeps.',rubric:{form:2,meaning:2,use:1}};
+   const output=await request(app,'POST','/api/grammar-practice/outputs',outputPayload);
+   expect(output.attempt.assessmentSource).toBe('self');expect(output.attempt.isCorrect).toBeNull();
+   expect(output.modelAnswer).toBe(lesson.outputPrompts[0]!.modelAnswer);
+   expect((await request(app,'GET','/api/grammar-practice/due')).items).toEqual([]);
+   const first=lesson.exercises[0]!;
+   const wrong=first.options.find(o=>!o.correct)!;
+   await request(app,'POST','/api/grammar/'+lesson.id+'/answers',{requestId:'first-wrong',exerciseId:first.id,answer:{type:'choice',text:wrong.text}});
+   vi.setSystemTime(new Date('2026-10-05T12:00:01Z'));
+   for(const exercise of lesson.exercises)await request(app,'POST','/api/grammar/'+lesson.id+'/answers',{requestId:exercise.id,exerciseId:exercise.id,answer:answer(exercise)});
+   const complete=await request(app,'GET','/api/grammar/'+lesson.id);
+   expect(complete.progress.isComplete).toBe(true);
+   expect(complete.firstAttemptAccuracy).toMatchObject({correct:11,total:12});
+   expect((await request(app,'GET','/api/grammar-practice/due')).items).toEqual([]);
+   vi.setSystemTime(new Date('2026-10-06T12:00:00Z'));
+   const due=(await request(app,'GET','/api/grammar-practice/due')).items;
+   expect(due.map((x:{lessonId:string})=>x.lessonId)).toEqual([lesson.id]);
+   const transfer=lesson.reviewExercises.find(e=>e.id===due[0].exercise.id)!;
+   const reviewPayload={requestId:'review-first',lessonId:lesson.id,revisionId:lesson.revisionId,exerciseId:transfer.id,answer:answer(transfer)};
+   const reviewed=await request(app,'POST','/api/grammar-practice/reviews',reviewPayload);
+   expect(reviewed.attempt.rating).toBe('GOOD');expect(reviewed.state.repetitions).toBe(1);expect(reviewed.state.interval).toBe(1);
+   expect(await request(app,'POST','/api/grammar-practice/reviews',reviewPayload)).toEqual(reviewed);
+   expect((await request(app,'GET','/api/grammar-practice/due')).items).toEqual([]);
+   const changed=await app.inject({method:'POST',url:'/api/grammar-practice/reviews',payload:{...reviewPayload,answer:{type:'choice',text:'not the original payload'}}});expect(changed.statusCode).toBe(409);
+   const before=await request(app,'GET','/api/backup');expect(before.version).toBe(5);
+   expect(before.data.grammarPracticeAttempts.map((a:{kind:string})=>a.kind)).toEqual(['output','review']);
+   await app.close();app=await buildApp({dbPath,logger:false});
+   expect(await request(app,'POST','/api/grammar-practice/reviews',reviewPayload)).toEqual(reviewed);
+   const restartBackup=await request(app,'GET','/api/backup');expect(restartBackup.data).toEqual(before.data);
+   await request(app,'POST','/api/data/reset-progress',{confirm:true});
+   expect((await request(app,'GET','/api/grammar-practice/history')).items).toEqual([]);
+   const preview=await request(app,'POST','/api/restore/preview',{backup:before});
+   expect(preview.practiceSummary.includedInBackup).toBe(true);
+   await request(app,'POST','/api/restore',{backup:before,previewToken:preview.previewToken,confirm:true});
+   expect((await request(app,'GET','/api/backup')).data).toEqual(before.data);
+   expect(await request(app,'POST','/api/grammar-practice/reviews',reviewPayload)).toEqual(reviewed);
+   expect(await request(app,'POST','/api/grammar-practice/outputs',outputPayload)).toEqual(output);
+   vi.setSystemTime(new Date('2026-10-07T12:00:00Z'));
+   const next=(await request(app,'GET','/api/grammar-practice/due')).items[0];
+   expect(next.exercise.id).toBe(lesson.reviewExercises[1]!.id);
+   const failed=await request(app,'POST','/api/grammar-practice/reviews',{requestId:'review-wrong',lessonId:lesson.id,revisionId:lesson.revisionId,exerciseId:next.exercise.id,answer:{type:'text',text:'a wrong answer'}});
+   expect(failed.attempt.rating).toBe('AGAIN');expect(failed.state.lapses).toBe(1);expect(failed.state.repetitions).toBe(0);
+   expect((await request(app,'GET','/api/grammar/'+lesson.id)).firstAttemptAccuracy).toEqual(complete.firstAttemptAccuracy);
+  }finally{await app.close();}
+ });
+ it('preserves retired revision history and calendar evidence instead of rebinding it to the new course',async()=>{
+  const app=await buildApp({logger:false});
+  try{
+   const id='grammar-0-word-roles',revisionId=id+'@1.0.0',time='2026-09-29T12:00:00.000Z';
+   app.db.sqlite.prepare('INSERT INTO grammar_lesson_progress (lesson_id,revision_id,revision,last_position,is_complete,completed_at,created_at,updated_at) VALUES (?,?,?,1,1,?,?,?)').run(id,revisionId,'1.0.0',time,time,time);
+   new StudyRepository(app.db).createTask({id:'legacy-task',kind:'GRAMMAR',lessonId:id,revisionId,revision:'1.0.0',scheduledDate:'2026-09-29',targetCount:1,source:'MANUAL'},time);
+   app.db.sqlite.prepare('INSERT INTO grammar_exercise_attempts (id,lesson_id,revision_id,revision,exercise_id,request_id,answer,is_correct,feedback,created_at,study_task_id,completed_lesson) VALUES (?,?,?,?,?,?,?,0,?,?,?,1)').run('legacy-attempt',id,revisionId,'1.0.0',id+'-q1','legacy-request',JSON.stringify({type:'choice',text:'young'}),'Original feedback',time,'legacy-task');
+   const before=(await request(app,'GET','/api/backup')).data;
+   const response=await app.inject({method:'GET',url:'/api/grammar/'+id});
+   expect(response.statusCode).toBe(409);expect(response.json().error.details.reason).toBe('CURRICULUM_CHANGED');
+   const course=await request(app,'GET','/api/grammar');expect(course.legacyProgress.completedLessons).toBe(1);
+   expect(app.db.sqlite.prepare('SELECT lesson_id FROM grammar_lesson_progress WHERE lesson_id != ?').all(id)).toEqual([]);
+   const task=await request(app,'GET','/api/study-tasks/legacy-task');
+   expect(task).toMatchObject({isUnavailable:true,completedCount:1});
+   expect((await request(app,'GET','/api/backup')).data).toEqual(before);
+  }finally{await app.close();}
+ });
 });

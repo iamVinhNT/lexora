@@ -15,13 +15,29 @@ export type GrammarLessonProgress = {
   updatedAt: string;
 };
 
+export type GrammarExerciseKind = 'choice' | 'gap' | 'transform' | 'correction';
+
+export type GrammarFirstAttemptAccuracy = {
+  correct: number;
+  total: number;
+  percent: number | null;
+};
+
+export type GrammarLegacyProgress = {
+  completedLessons: number;
+  totalLessons: number;
+  attemptsPreserved: boolean;
+};
+
 export type GrammarLessonSummary = {
   id: string;
   revisionId: string;
   revision: string;
   title: string;
   objective: string;
+  coverage: string[];
   progress: GrammarLessonProgress | null;
+  firstAttemptAccuracy: GrammarFirstAttemptAccuracy;
 };
 
 export type GrammarStage = {
@@ -35,6 +51,8 @@ export type GrammarCourse = {
   isComplete: boolean;
   stages: GrammarStage[];
   nextLessonId: string | null;
+  coverage: string[];
+  legacyProgress?: GrammarLegacyProgress | null;
 };
 
 export type GrammarLessonDetail = {
@@ -43,6 +61,11 @@ export type GrammarLessonDetail = {
   revision: string;
   title: string;
   objective: string;
+  coverage: string[];
+  context: {
+    english: string;
+    vietnamese: string;
+  };
   explanation: string;
   guide: {
     pattern: string;
@@ -55,17 +78,35 @@ export type GrammarLessonDetail = {
   commonMistakes: string[];
   summary: string;
   sources: Array<{ id: string; title: string; url: string }>;
-  exercises: Array<{ id: string; prompt: string; options: Array<{ text: string }> }>;
+  exercises: Array<{
+    id: string;
+    kind: GrammarExerciseKind;
+    prompt: string;
+    options: Array<{ text: string }>;
+  }>;
+  outputPrompts: Array<{
+    id: string;
+    prompt: string;
+    checks: string[];
+  }>;
 };
 
 export type GrammarLesson = {
   lesson: GrammarLessonDetail;
   progress: GrammarLessonProgress | null;
   nextLessonId: string | null;
+  firstAttemptAccuracy: GrammarFirstAttemptAccuracy;
 };
 
 export type GrammarAnswer = { type: 'choice' | 'text'; text: string };
-export type GrammarAnswerSubmission = { requestId: string; exerciseId: string; answer: GrammarAnswer; studyTaskId?: string };
+
+export type GrammarAnswerSubmission = {
+  requestId: string;
+  exerciseId: string;
+  answer: GrammarAnswer;
+  studyTaskId?: string;
+};
+
 export type GrammarAnswerResult = {
   attempt: {
     id: string;
@@ -83,8 +124,8 @@ export type GrammarAnswerResult = {
   };
   progress: GrammarLessonProgress;
   nextLessonId: string | null;
+  firstAttemptAccuracy?: GrammarFirstAttemptAccuracy | null;
 };
-
 
 export type GrammarTutorAnswer = { explanation: string; contrast: string };
 

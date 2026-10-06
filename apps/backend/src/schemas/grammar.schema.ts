@@ -7,7 +7,7 @@ import { z } from 'zod';
 const grammarContentIdSchema = z.string()
   .min(1)
   .max(120)
-  .regex(/^grammar-(?:0|a1|a2|b1|b2|c1|c2)-[a-z0-9]+(?:-[a-z0-9]+)*$/)
+  .regex(/^grammar-(?:v2-)?(?:0|a1|a2|b1|b2|c1|c2)-[a-z0-9]+(?:-[a-z0-9]+)*$/)
   .refine((value) => value.trim().length > 0);
 
 export const grammarLessonParamsSchema = z.object({

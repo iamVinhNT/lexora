@@ -1,186 +1,50 @@
 /**
  * @file grammar.routes.test.ts
- * @description Exercises published grammar routes through the composed Fastify app.
+ * @description Verifies safe v2 core reads, fixed answer protocols, first-attempt quality and legacy conflicts.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import type { FastifyInstance } from 'fastify';
-import { buildApp } from '../../src/app.js';
-import { getGrammarCurriculum } from '../../src/grammar/content/manifest.js';
-import type { GrammarCurriculum } from '../../src/grammar/content/types.js';
-
-const temporaryDirectories: string[] = [];
-const lessonId = 'grammar-a1-pronouns-and-articles';
-const firstExerciseId = 'grammar-a1-pronouns-and-articles-q1';
-const secondExerciseId = 'grammar-a1-pronouns-and-articles-q2';
-
-function reviewedCurriculum(): GrammarCurriculum {
-  const curriculum = getGrammarCurriculum();
-  const foundation = curriculum.stages[0]!;
-  foundation.publicationStatus = 'published';
-  for (const lesson of foundation.lessons) {
-    lesson.review = { status: 'approved', reviewer: 'Route integration fixture', reviewedAt: '2026-09-26T10:00:00.000Z' };
+import {afterEach,describe,expect,it,vi} from 'vitest';
+import {buildApp} from '../../src/app.js';
+import {createTestCurriculum} from '../grammar/fixtures.js';
+import type {FastifyInstance} from 'fastify';
+const apps:FastifyInstance[]=[];
+afterEach(async()=>{for(const app of apps.splice(0))await app.close();vi.useRealTimers();});
+async function open(){const c=createTestCurriculum();const app=await buildApp({logger:false,dbPath:':memory:',grammarCurriculum:c});apps.push(app);return {app,c,lesson:c.stages[0]!.lessons[0]!};}
+describe('grammar core HTTP contract',()=>{
+ it('keeps unpublished content hidden without revealing keys or storing progress',async()=>{
+  const {app,c,lesson}=await open();c.stages[0]!.publicationStatus='draft';
+  const course=await app.inject({method:'GET',url:'/api/grammar'});expect(course.statusCode).toBe(200);expect(course.json().data.stages).toEqual([]);
+  expect((await app.inject({method:'GET',url:'/api/grammar/'+lesson.id})).statusCode).toBe(404);
+  const write=await app.inject({method:'POST',url:'/api/grammar/'+lesson.id+'/answers',payload:{requestId:'withdrawn',exerciseId:lesson.exercises[0]!.id,answer:{type:'choice',text:'runs'}}});expect(write.statusCode).toBe(404);
+  expect(app.db.sqlite.prepare('SELECT * FROM grammar_lesson_progress').all()).toEqual([]);
+ });
+ it('requires answer kind, rejects malformed requests, and never exposes canonical exercise/output keys on reads',async()=>{
+  const {app,lesson}=await open();const detail=await app.inject({method:'GET',url:'/api/grammar/'+lesson.id});
+  expect(detail.statusCode).toBe(200);expect(JSON.stringify(detail.json().data.lesson)).not.toMatch(/"(?:correct|acceptedAnswers|rationale|modelAnswer|reviewExercises)"\s*:/);
+  const base={requestId:'invalid',exerciseId:lesson.exercises[0]!.id,answer:{type:'choice',text:'runs'}};
+  expect((await app.inject({method:'POST',url:'/api/grammar/'+lesson.id+'/answers',payload:{...base,answer:{type:'text',text:'runs'}}})).statusCode).toBe(400);
+  expect((await app.inject({method:'POST',url:'/api/grammar/'+lesson.id+'/answers',payload:{...base,isCorrect:true}})).statusCode).toBe(400);
+  expect(app.db.sqlite.prepare('SELECT * FROM grammar_exercise_attempts').all()).toEqual([]);
+ });
+ it('retains first wrong quality while correction completes the lesson, preserving exact replay and completion time',async()=>{
+  vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
+  const {app,c,lesson}=await open();const endpoint='/api/grammar/'+lesson.id+'/answers';
+  const first=lesson.exercises[0]!;const bad={requestId:'first',exerciseId:first.id,answer:{type:'choice',text:first.options.find(o=>!o.correct)!.text}};
+  const wrong=await app.inject({method:'POST',url:endpoint,payload:bad});expect(wrong.statusCode).toBe(200);expect(wrong.json().data.attempt.isCorrect).toBe(false);
+  vi.setSystemTime(new Date('2026-10-05T12:00:01Z'));
+  for(const e of lesson.exercises){const response=await app.inject({method:'POST',url:endpoint,payload:{requestId:e.id,exerciseId:e.id,answer:{type:e.kind==='choice'?'choice':'text',text:e.acceptedAnswers[0]!.text}}});expect(response.statusCode).toBe(200);}
+  const detail=(await app.inject({method:'GET',url:'/api/grammar/'+lesson.id})).json().data;
+  expect(detail.progress.isComplete).toBe(true);expect(detail.firstAttemptAccuracy).toEqual({correct:11,total:12,percent:92});expect(detail.nextLessonId).toBe(c.stages[1]!.lessons[0]!.id);
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
+  const repeated=await app.inject({method:'POST',url:endpoint,payload:{requestId:'repractice',exerciseId:first.id,answer:{type:'choice',text:first.acceptedAnswers[0]!.text}}});
+  expect(repeated.statusCode).toBe(200);expect(repeated.json().data.progress.completedAt).toBe(detail.progress.completedAt);
+  const replay=await app.inject({method:'POST',url:endpoint,payload:bad});expect(replay.json().data.attempt).toEqual(wrong.json().data.attempt);
+  expect((await app.inject({method:'POST',url:endpoint,payload:{...bad,answer:{type:'choice',text:first.acceptedAnswers[0]!.text}}})).statusCode).toBe(409);
+ });
+ it('returns curriculum-change conflict for old lesson and tutor requests without provider or persistence mutations',async()=>{
+  const provider=vi.fn();const app=await buildApp({logger:false,grammarCurriculum:createTestCurriculum(),grammarTutorProvider:provider});apps.push(app);
+  for(const request of [{method:'GET' as const,url:'/api/grammar/grammar-0-word-roles'},{method:'POST' as const,url:'/api/grammar/grammar-0-word-roles/tutor',payload:{question:'Explain this lesson'}}]){
+   const response=await app.inject(request);expect(response.statusCode).toBe(409);expect(response.json().error).toMatchObject({code:'CONFLICT',details:{reason:'CURRICULUM_CHANGED'}});
   }
-  const stage = curriculum.stages.find(({ level }) => level === 'A1')!;
-  stage.publicationStatus = 'published';
-  stage.lessons = [stage.lessons[0]!];
-  stage.lessons[0]!.review = {
-    status: 'approved',
-    reviewer: 'Route integration fixture',
-    reviewedAt: '2026-09-26T10:00:00.000Z',
-  };
-  return curriculum;
-}
-
-function answer(requestId: string, exerciseId: string, text: string) {
-  return {
-    requestId,
-    exerciseId,
-    answer: { type: 'choice', text },
-  };
-}
-
-async function createApp(dbPath: string, curriculum = reviewedCurriculum()): Promise<FastifyInstance> {
-  return buildApp({ dbPath, logger: false, grammarCurriculum: curriculum });
-}
-
-afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
-});
-
-describe('grammar HTTP routes', () => {
-  it('keeps withdrawn draft content unavailable without revealing lesson existence or writing progress', async () => {
-    const withdrawn = getGrammarCurriculum();
-    withdrawn.stages[0]!.publicationStatus = 'draft';
-    const app = await createApp(':memory:', withdrawn);
-    try {
-      const course = await app.inject({ method: 'GET', url: '/api/grammar' });
-      expect(course.statusCode).toBe(200);
-      expect(course.json()).toEqual({ success: true, data: { isComplete: false, stages: [], nextLessonId: null } });
-
-      const draft = await app.inject({ method: 'GET', url: '/api/grammar/grammar-a1-pronouns-and-articles' });
-      const missing = await app.inject({ method: 'GET', url: '/api/grammar/grammar-a1-not-authored' });
-      expect(draft.statusCode).toBe(404);
-      expect(missing.statusCode).toBe(404);
-      expect(draft.json()).toEqual(missing.json());
-
-      const submit = await app.inject({
-        method: 'POST',
-        url: `/api/grammar/${lessonId}/answers`,
-        payload: answer('draft-request', firstExerciseId, 'him'),
-      });
-      expect(submit.statusCode).toBe(404);
-      expect(app.db.sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get()).toEqual({ count: 0 });
-      expect(app.db.sqlite.prepare('SELECT count(*) AS count FROM grammar_lesson_progress').get()).toEqual({ count: 0 });
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('validates route input and returns reviewed content without canonical answer keys', async () => {
-    const app = await createApp(':memory:');
-    try {
-      const invalidPath = await app.inject({ method: 'GET', url: '/api/grammar/not-a-grammar-id' });
-      expect(invalidPath.statusCode).toBe(400);
-      expect(invalidPath.json().error.code).toBe('VALIDATION_ERROR');
-
-      const detail = await app.inject({ method: 'GET', url: `/api/grammar/${lessonId}` });
-      expect(detail.statusCode).toBe(200);
-      expect(detail.json().data).toMatchObject({
-        lesson: {
-          id: lessonId,
-          revisionId: expect.any(String),
-          revision: expect.any(String),
-          exercises: [{ id: firstExerciseId }, { id: secondExerciseId }],
-        },
-        progress: null,
-        nextLessonId: 'grammar-0-word-roles',
-      });
-      expect(detail.payload).not.toMatch(/"(?:correct|rationale|acceptedAnswers|review)"\s*:/);
-
-      const invalidBody = await app.inject({
-        method: 'POST',
-        url: `/api/grammar/${lessonId}/answers`,
-        payload: { ...answer('bad', firstExerciseId, 'he'), extra: true },
-      });
-      expect(invalidBody.statusCode).toBe(400);
-      expect(invalidBody.json().error.code).toBe('VALIDATION_ERROR');
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('grades, retries idempotently, detects request conflicts, completes A1 lesson and reopens persisted progress', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'grammar-routes-'));
-    temporaryDirectories.push(directory);
-    const dbPath = join(directory, 'grammar.db');
-    let app = await createApp(dbPath);
-    try {
-      app.db.sqlite.prepare(`INSERT INTO study_tasks
-        (id, scheduled_date, kind, target_count, source, lesson_id, revision_id, revision, version,
-          created_at, updated_at, creation_intent)
-        VALUES ('grammar-route-task', '2026-10-02', 'GRAMMAR', 1, 'MANUAL', ?, ?, ?, 1, ?, ?, '{}')`).run(
-        lessonId,
-        'grammar-a1-pronouns-and-articles@1.0.0',
-        '1.0.0',
-        '2026-10-02T00:00:00.000Z',
-        '2026-10-02T00:00:00.000Z',
-      );
-      app.db.sqlite.prepare(`INSERT INTO words (id, word, definition, created_at)
-        VALUES ('route-word', 'untouched', 'Existing vocabulary row', '2026-09-26T10:00:00.000Z')`).run();
-
-      const wrong = await app.inject({
-        method: 'POST', url: `/api/grammar/${lessonId}/answers`,
-        payload: answer('wrong-request', firstExerciseId, 'he'),
-      });
-      expect(wrong.statusCode).toBe(200);
-      expect(wrong.json().data).toMatchObject({
-        attempt: { exerciseId: firstExerciseId, answer: { text: 'he' }, isCorrect: false },
-        progress: { lastPosition: 1, isComplete: false },
-        nextLessonId: 'grammar-0-word-roles',
-      });
-      expect(wrong.json().data.attempt.feedback).toContain('he');
-
-      const retry = await app.inject({
-        method: 'POST', url: `/api/grammar/${lessonId}/answers`,
-        payload: answer('wrong-request', firstExerciseId, 'he'),
-      });
-      expect(retry.json().data).toEqual(wrong.json().data);
-      const conflict = await app.inject({
-        method: 'POST', url: `/api/grammar/${lessonId}/answers`,
-        payload: answer('wrong-request', firstExerciseId, 'him'),
-      });
-      expect(conflict.statusCode).toBe(409);
-      expect(conflict.json().error.code).toBe('CONFLICT');
-      expect(app.db.sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get()).toEqual({ count: 1 });
-
-      const correct = await app.inject({
-        method: 'POST', url: `/api/grammar/${lessonId}/answers`,
-        payload: { ...answer('correct-request', secondExerciseId, 'an apple'), studyTaskId: 'grammar-route-task' },
-      });
-      expect(correct.statusCode).toBe(200);
-      expect(correct.json().data).toMatchObject({
-        attempt: { exerciseId: secondExerciseId, isCorrect: true, studyTaskId: 'grammar-route-task', completedLesson: true },
-        progress: { lastPosition: 2, isComplete: true },
-        nextLessonId: 'grammar-0-word-roles',
-      });
-      expect(correct.json().data.attempt.feedback).toContain('âm nguyên âm');
-      expect(app.db.sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get()).toEqual({ count: 2 });
-      await app.close();
-      app = await createApp(dbPath);
-
-      const reopened = await app.inject({ method: 'GET', url: `/api/grammar/${lessonId}` });
-      expect(reopened.statusCode).toBe(200);
-      expect(reopened.json().data).toMatchObject({
-        progress: { lastPosition: 2, isComplete: true },
-        nextLessonId: 'grammar-0-word-roles',
-      });
-      const course = await app.inject({ method: 'GET', url: '/api/grammar' });
-      expect(course.json().data.stages[1].lessons[0].progress).toMatchObject({ lastPosition: 2, isComplete: true });
-    } finally {
-      await app.close();
-    }
-  });
+  expect(provider).not.toHaveBeenCalled();expect(app.db.sqlite.prepare('SELECT * FROM grammar_exercise_attempts').all()).toEqual([]);
+ });
 });

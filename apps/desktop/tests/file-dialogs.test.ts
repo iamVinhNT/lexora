@@ -81,6 +81,7 @@ const server = createServer((_request, response) => {
   response.end('<!doctype html><html><body>Lexora</body></html>');
 });
 
+async function run() {
 try {
   await app.whenReady();
   await new Promise((resolve, reject) => server.listen(0, '127.0.0.1', (error) => error ? reject(error) : resolve()));
@@ -111,6 +112,8 @@ try {
   process.stderr.write(String(error && error.stack ? error.stack : error) + '\\n');
   app.exit(1);
 }
+}
+void run();
 `;
   await writeFile(harnessPath, source, 'utf8');
 }
@@ -318,7 +321,7 @@ describe('registerFileDialogHandlers', () => {
       const harnessPath = join(harnessRoot, 'harness.mjs');
       await writeElectronIpcHarness(harnessPath, handlersPath);
       const { ELECTRON_RUN_AS_NODE: _electronRunAsNode, ...electronEnvironment } = process.env;
-      const result = await execFileAsync(ELECTRON_PATH, [harnessPath], {
+      const result = await execFileAsync(ELECTRON_PATH, [harnessPath, `--user-data-dir=${join(harnessRoot, 'profile')}`], {
         cwd: DESKTOP_ROOT,
         env: electronEnvironment,
         timeout: 20_000,

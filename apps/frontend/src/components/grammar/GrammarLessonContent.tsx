@@ -9,6 +9,7 @@ import { Card } from '../ui/Card';
 export function GrammarLessonContent({ lesson }: { lesson: GrammarLessonDetail }) {
   const { t } = useTranslation('grammar');
   const sections = [
+    ...(lesson.context ? [{ id: 'grammar-context', label: t('contextTitle') }] : []),
     { id: 'grammar-explanation', label: t('explanation') },
     { id: 'grammar-pattern', label: t('pattern') },
     { id: 'grammar-usage', label: t('whenToUse') },
@@ -19,16 +20,39 @@ export function GrammarLessonContent({ lesson }: { lesson: GrammarLessonDetail }
     { id: 'grammar-check', label: t('learnerCheck') },
     { id: 'grammar-summary', label: t('summary') },
     ...(lesson.exercises.length ? [{ id: 'grammar-practice-heading', label: t('exercises') }] : []),
+    ...(lesson.outputPrompts?.length ? [{ id: 'grammar-output-heading', label: t('outputSectionTitle') }] : []),
     { id: 'grammar-tutor-heading', label: t('tutorTitle') },
   ];
-
   return <>
     <nav aria-label={t('contents')} className="rounded-2xl border border-border bg-surface p-3.5 sm:p-5">
       <p className="mb-2.5 text-xs sm:text-sm font-semibold uppercase tracking-wider text-muted">{t('contents')}</p>
       <ol className="flex flex-wrap gap-1.5 sm:gap-2">
-        {sections.map(({ id, label }) => <li key={id}><a href={`#${id}`} className="inline-flex min-h-10 items-center rounded-lg border border-border/70 bg-background/60 px-3 py-1.5 text-xs sm:text-sm font-medium text-foreground transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{label}</a></li>)}
+        {sections.map(({ id, label }) => <li key={id}><a href={`#${id}`} className="inline-flex min-h-11 items-center rounded-lg border border-border/70 bg-background/60 px-3 py-1.5 text-xs sm:text-sm font-medium text-foreground transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{label}</a></li>)}
       </ol>
     </nav>
+    {lesson.coverage && lesson.coverage.length > 0 && (
+      <div className="flex flex-wrap items-center gap-1.5" aria-label={t('filterTopic')}>
+        {lesson.coverage.map((tag) => (
+          <span key={tag} className="inline-flex items-center rounded-md border border-border/80 bg-secondary/50 px-2.5 py-1 text-xs font-medium text-muted">
+            {tag}
+          </span>
+        ))}
+      </div>
+    )}
+
+    {lesson.context && (
+      <section aria-labelledby="grammar-context">
+        <Card className="space-y-3 p-4 sm:p-6 md:p-7">
+          <h2 id="grammar-context" tabIndex={-1} className="scroll-mt-20 sm:scroll-mt-24 text-lg sm:text-xl font-semibold text-foreground">
+            {t('contextTitle')}
+          </h2>
+          <div className="space-y-2 rounded-xl border border-primary/20 bg-primary-subtle p-3.5 sm:p-5">
+            <p lang="en" className="font-medium leading-7 text-foreground">{lesson.context.english}</p>
+            <p lang="vi" className="text-sm leading-6 text-foreground">{lesson.context.vietnamese}</p>
+          </div>
+        </Card>
+      </section>
+    )}
 
     <section aria-labelledby="grammar-explanation">
       <Card className="p-4 sm:p-6 md:p-7">

@@ -557,7 +557,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
   });
 
   describe('GET /api/backup', () => {
-    it('returns exact v4 backup structure with session attempts, grammar, calendar, and all tables', async () => {
+    it('returns v5 relational backup with grammar practice alongside existing learner tables', async () => {
       insertSampleWord('tenacious');
 
       const res = await app.inject({
@@ -570,7 +570,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(body.success).toBe(true);
 
       const backup = body.data;
-      expect(backup.version).toBe(4);
+      expect(backup.version).toBe(5);
       expect(backup.application).toBe('Lexora');
       expect(typeof backup.exportedAt).toBe('string');
       expect(new Date(backup.exportedAt).toISOString()).toBe(backup.exportedAt);
@@ -616,7 +616,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       `).run('grammar-attempt', 'grammar-lesson', 'grammar-revision', '1', 'exercise-1', 'request-1', JSON.stringify(answer), 1, 'Correct', now);
 
       const backup = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
-      expect(backup.version).toBe(4);
+      expect(backup.version).toBe(5);
       expect(backup.data.grammarExerciseAttempts[0].answer).toEqual(answer);
 
       const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
@@ -727,6 +727,8 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       legacyBackup.version = 2;
       delete legacyBackup.data.studyPreferences;
       delete legacyBackup.data.studyTasks;
+      delete legacyBackup.data.grammarPracticeAttempts;
+      delete legacyBackup.data.grammarReviewStates;
       delete legacyBackup.data.grammarLessonProgress;
       delete legacyBackup.data.grammarExerciseAttempts;
       for (const row of legacyBackup.data.learningSessions) delete row.studyTaskId;
@@ -1603,7 +1605,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(fullBody.success).toBe(true);
       expect(fullBody.data.format).toBe('JSON');
       expect(fullBody.data.scope).toBe('all');
-      expect(fullBody.data.version).toBe(4);
+      expect(fullBody.data.version).toBe(5);
       expect(fullBody.data.data.words.length).toBe(1);
 
       const resCsv = await app.inject({
@@ -1627,17 +1629,17 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('POST /api/backup returns v4 backup and GET /api/backup retained as alias', async () => {
+    it('exports the current backup format through both POST and GET', async () => {
       const postRes = await app.inject({ method: 'POST', url: '/api/backup' });
       expect(postRes.statusCode).toBe(200);
       const postBody = JSON.parse(postRes.payload);
       expect(postBody.success).toBe(true);
-      expect(postBody.data.version).toBe(4);
+      expect(postBody.data.version).toBe(5);
       expect(postBody.data.application).toBe('Lexora');
 
       const getRes = await app.inject({ method: 'GET', url: '/api/backup' });
       expect(getRes.statusCode).toBe(200);
-      expect(JSON.parse(getRes.payload).data.version).toBe(4);
+      expect(JSON.parse(getRes.payload).data.version).toBe(5);
     });
 
     it('POST /api/data/reset-progress and /api/reset-progress aliases require confirm: true', async () => {
@@ -2102,7 +2104,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       });
     };
 
-    it('round-trips linked v4 calendar data, task transfers, and immutable grammar completion without FK violations', async () => {
+    it('round-trips calendar transfers and immutable grammar completion without FK violations', async () => {
       const now = new Date().toISOString();
       const wordId = insertSampleWord('calendar-roundtrip');
       db.insert(studyPreferences).values({
@@ -2138,7 +2140,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       `).run(JSON.stringify({ type: 'choice', text: 'answer' }), now);
 
       const backup = new ImportExportService(db).getBackup();
-      expect(backup.version).toBe(4);
+      expect(backup.version).toBe(5);
       expect(backup.data.studyTasks.find((task) => task.id === 'learning-source')?.transferredToTaskId).toBe('learning-destination');
       const restoredDb = getDb(':memory:');
       const restoredApp = Fastify();
@@ -2193,6 +2195,8 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       legacyBackup.version = 3;
       delete legacyBackup.data.studyPreferences;
       delete legacyBackup.data.studyTasks;
+      delete legacyBackup.data.grammarPracticeAttempts;
+      delete legacyBackup.data.grammarReviewStates;
       for (const row of legacyBackup.data.learningSessions) delete row.studyTaskId;
       for (const row of legacyBackup.data.reviewLogs) delete row.studyTaskId;
       for (const row of legacyBackup.data.grammarExerciseAttempts) {
@@ -2327,7 +2331,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       db.insert(learningAttempts).values({ id: 'v2-attempt', sessionItemId: 'v2-item', requestId: 'v2-request', type: 'RECALL', attemptNumber: 2, answer: 'roundtrip', result: 'CORRECT_AFTER_HINT', performanceScore: 70, feedbackCodes: null, source: 'LOCAL', createdAt: now }).run();
       db.insert(reviewLogs).values({ id: 'v2-log', wordId: 'word-roundtrip', reviewType: 'RECALL', rating: 'GOOD', correct: true, performanceScore: 70, createdAt: now }).run();
       const backup = new ImportExportService(db).getBackup();
-      expect(backup.version).toBe(4);
+      expect(backup.version).toBe(5);
       expect(backup.data.learningAttempts).toHaveLength(1);
       const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
       const restore = await app.inject({ method: 'POST', url: '/api/restore', payload: { backup, confirm: true, previewToken: JSON.parse(preview.payload).data.previewToken } });

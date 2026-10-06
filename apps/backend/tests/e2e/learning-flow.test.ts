@@ -434,7 +434,7 @@ describe('learning lifecycle end to end', () => {
 
     const firstSeed = await seedDatabase(app.db);
     const firstBackupPayload = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
-    expect(firstBackupPayload.version).toBe(4);
+    expect(firstBackupPayload.version).toBe(5);
     expect(firstBackupPayload.application).toBe('Lexora');
     const firstBackup = firstBackupPayload.data;
     expect(firstBackup).toEqual(expect.objectContaining(Object.fromEntries(backupTables.map((table) => [table, expect.any(Array)]))));
@@ -458,7 +458,7 @@ describe('learning lifecycle end to end', () => {
 
     const secondSeed = await seedDatabase(app.db);
     const secondBackupPayload = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
-    expect(secondBackupPayload.version).toBe(4);
+    expect(secondBackupPayload.version).toBe(5);
     expect(secondBackupPayload.application).toBe('Lexora');
     const secondBackup = secondBackupPayload.data;
 

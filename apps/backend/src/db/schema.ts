@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { sqliteTable, text, integer, real, primaryKey, index, uniqueIndex, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, primaryKey, index, uniqueIndex, unique, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 
 // 1. Users table
@@ -342,6 +342,34 @@ export const grammarExerciseAttempts = sqliteTable('grammar_exercise_attempts', 
   exerciseIdx: index('idx_grammar_exercise_attempts_exercise_id').on(table.exerciseId),
   createdAtIdx: index('idx_grammar_exercise_attempts_created_at').on(table.createdAt),
   studyTaskIdIdx: index('idx_grammar_exercise_attempts_study_task_id').on(table.studyTaskId),
+}));
+
+// Practice evidence is separate from vocabulary and can include output before a lesson is complete.
+export const grammarReviewStates = sqliteTable('grammar_review_states', {
+  id: text('id').notNull().primaryKey(),
+  lessonId: text('lesson_id').notNull(), revisionId: text('revision_id').notNull(), revision: text('revision').notNull(),
+  easeFactor: real('ease_factor').notNull(), repetitions: integer('repetitions').notNull(),
+  interval: integer('interval').notNull(), lapses: integer('lapses').notNull(),
+  dueAt: text('due_at').notNull(), lastReviewedAt: text('last_reviewed_at'),
+  createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
+}, (table) => ({
+  lessonRevisionUnique: unique().on(table.lessonId, table.revisionId),
+  dueIdx: index('idx_grammar_review_states_due_at').on(table.dueAt),
+  lessonRevisionIdx: index('idx_grammar_review_states_lesson_revision').on(table.lessonId, table.revisionId),
+}));
+
+export const grammarPracticeAttempts = sqliteTable('grammar_practice_attempts', {
+  id: text('id').notNull().primaryKey(), requestId: text('request_id').notNull().unique(),
+  lessonId: text('lesson_id').notNull(), revisionId: text('revision_id').notNull(), revision: text('revision').notNull(),
+  kind: text('kind').notNull(), exerciseId: text('exercise_id'), promptId: text('prompt_id'),
+  answer: text('answer'), text: text('text'), rubric: text('rubric'),
+  assessmentSource: text('assessment_source').notNull(), isCorrect: integer('is_correct', { mode: 'boolean' }),
+  feedback: text('feedback'), rating: text('rating'), state: text('state'), createdAt: text('created_at').notNull(),
+}, (table) => ({
+  lessonRevisionIdx: index('idx_grammar_practice_attempts_lesson_revision').on(table.lessonId, table.revisionId),
+  createdIdx: index('idx_grammar_practice_attempts_created_at').on(table.createdAt),
+  requestIdx: index('idx_grammar_practice_attempts_request_id').on(table.requestId),
+  kindIdx: index('idx_grammar_practice_attempts_kind').on(table.kind),
 }));
 
 // Relations definitions for Drizzle Relational Queries

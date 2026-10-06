@@ -6,7 +6,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb, type AppDatabase } from '../db/client.js';
 import { getGrammarCurriculum } from '../grammar/content/manifest.js';
 import type { GrammarCurriculum } from '../grammar/content/types.js';
-import { GrammarLessonUnavailableError } from '../grammar/course-read-model.js';
+import { GrammarLessonUnavailableError, GrammarCurriculumChangedConflictError } from '../grammar/course-read-model.js';
 import { GrammarRepository, GrammarRepositoryConflictError } from '../repositories/grammar.repository.js';
 import { grammarLessonParamsSchema, submitGrammarAnswerSchema } from '../schemas/grammar.schema.js';
 import {
@@ -22,7 +22,7 @@ import { registerApiErrorHandler } from './vocabulary.routes.js';
 export interface GrammarRouteOptions {
   db?: AppDatabase;
   service?: GrammarService;
-  /** @internal Test seam; production uses the unpublished bundled manifest. */
+  /** @internal Injected curriculum for isolated route tests. */
   curriculum?: GrammarCurriculum;
   tutorProvider?: GrammarTutorProvider;
 }
@@ -31,9 +31,13 @@ interface GrammarApiError {
   status: number;
   code: string;
   message: string;
+  reason?: 'CURRICULUM_CHANGED';
 }
 
 function mapGrammarError(error: unknown): GrammarApiError | undefined {
+  if (error instanceof GrammarCurriculumChangedConflictError) {
+    return { status: 409, code: 'CONFLICT', message: error.message, reason: error.reason };
+  }
   if (error instanceof GrammarLessonUnavailableError) {
     return { status: 404, code: 'NOT_FOUND', message: 'Grammar lesson not found.' };
   }
@@ -52,7 +56,7 @@ function mapGrammarError(error: unknown): GrammarApiError | undefined {
 function sendGrammarError(error: unknown, reply: FastifyReply) {
   const mapped = mapGrammarError(error);
   if (!mapped) throw error;
-  return reply.status(mapped.status).send({ success: false, error: { code: mapped.code, message: mapped.message } });
+  return reply.status(mapped.status).send({ success: false, error: { code: mapped.code, message: mapped.message, ...(mapped.reason ? { details: { reason: mapped.reason } } : {}) } });
 }
 const TUTOR_CALLS_PER_HOUR = 20;
 const TUTOR_WINDOW_MS = 60 * 60 * 1000;
@@ -121,6 +125,7 @@ export const grammarRoutes: FastifyPluginAsync<GrammarRouteOptions> = async (fas
         data: {
           attempt: result.attempt,
           progress: result.progress,
+          firstAttemptAccuracy: result.firstAttemptAccuracy,
           nextLessonId: course.nextLessonId,
         },
       });
@@ -140,7 +145,7 @@ export const grammarRoutes: FastifyPluginAsync<GrammarRouteOptions> = async (fas
     try {
       return reply.send({ success: true, data: await tutor.tutor(lessonId, input) });
     } catch (error) {
-      if (error instanceof GrammarLessonUnavailableError) return sendGrammarError(error, reply);
+      if (error instanceof GrammarLessonUnavailableError || error instanceof GrammarCurriculumChangedConflictError) return sendGrammarError(error, reply);
       if (error instanceof GrammarTutorUnavailableError || error instanceof GrammarTutorTimeoutError || error instanceof GrammarTutorInvalidOutputError || error instanceof GrammarTutorProviderError) {
         return reply.status(503).send({ success: false, error: { code: 'SERVICE_UNAVAILABLE', message: 'Grammar tutor is temporarily unavailable.' } });
       }

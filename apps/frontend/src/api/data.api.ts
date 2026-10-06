@@ -17,10 +17,29 @@ export type ImportPreview = {
 };
 export type ImportCommitResult = { importedCount: number; wordIds: string[] };
 export type ExportResult = { format: ExportFormat; scope: 'words'; content?: string; items?: unknown[]; data?: unknown };
-export type BackupPayload = { version: 1 | 2 | 3 | 4; application: 'Lexora'; exportedAt: string; data: Record<string, unknown[]> };
+export type BackupPayload = { version: 1 | 2 | 3 | 4 | 5; application: 'Lexora'; exportedAt: string; data: Record<string, unknown[]> };
+export type PracticeSummary = {
+  includedInBackup: boolean;
+  willOverwrite: boolean;
+  warning: string | null;
+  backupTableCounts: { grammarPracticeAttempts: number; grammarReviewStates: number };
+  existingTableCounts: { grammarPracticeAttempts: number; grammarReviewStates: number };
+};
 /** Explicit calendar restore warning contract consumed by Task21. */
 export type CalendarSummary = { includedInBackup: boolean; willOverwrite: boolean; backupTaskCount: number; existingTaskCount: number; willReplacePreferences: boolean };
-export type RestorePreview = { valid: boolean; version: number; application: string; exportedAt: string; tableCounts: Record<string, number>; totalRecords: number; previewToken: string; conflictSummary?: { existingRecordsCount: number; willOverwrite: boolean; existingTableCounts: Record<string, number> }; grammarSummary?: { includedInBackup: boolean; willOverwrite: boolean; warning: string | null; backupTableCounts: { grammarLessonProgress: number; grammarExerciseAttempts: number }; existingTableCounts: { grammarLessonProgress: number; grammarExerciseAttempts: number } }; calendarSummary?: CalendarSummary };
+export type RestorePreview = {
+  valid: boolean;
+  version: number;
+  application: string;
+  exportedAt: string;
+  tableCounts: Record<string, number>;
+  totalRecords: number;
+  previewToken: string;
+  conflictSummary?: { existingRecordsCount: number; willOverwrite: boolean; existingTableCounts: Record<string, number> };
+  grammarSummary?: { includedInBackup: boolean; willOverwrite: boolean; warning: string | null; backupTableCounts: { grammarLessonProgress: number; grammarExerciseAttempts: number }; existingTableCounts: { grammarLessonProgress: number; grammarExerciseAttempts: number } };
+  practiceSummary?: PracticeSummary;
+  calendarSummary?: CalendarSummary;
+};
 export type RestoreResult = { restored: boolean };
 export type ResetResult = { reset: boolean; scope: 'progress' | 'all' };
 
