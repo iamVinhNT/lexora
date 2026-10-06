@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 ### Added
+- `pnpm run desktop:local` builds and launches the local Electron app through the existing desktop development flow, without generating installers.
 - Grammar v2: 160 internally AI-reviewed lessons, 960 bilingual examples, 1,920 controlled exercises, 640 transfer review items, and 320 original-writing prompts.
 - Separate grammar spaced-review queue, immutable review/output history, self-assessment rubric, and first-attempt recognition/recall accuracy.
 - Grammar catalog level/topic filters and responsive, keyboard-accessible practice for English/Vietnamese and light/dark interfaces.
