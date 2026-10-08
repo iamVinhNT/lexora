@@ -21,7 +21,6 @@ export function GrammarLessonContent({ lesson }: { lesson: GrammarLessonDetail }
     { id: 'grammar-summary', label: t('summary') },
     ...(lesson.exercises.length ? [{ id: 'grammar-practice-heading', label: t('exercises') }] : []),
     ...(lesson.outputPrompts?.length ? [{ id: 'grammar-output-heading', label: t('outputSectionTitle') }] : []),
-    { id: 'grammar-tutor-heading', label: t('tutorTitle') },
   ];
   return <>
     <nav aria-label={t('contents')} className="rounded-2xl border border-border bg-surface p-3.5 sm:p-5">

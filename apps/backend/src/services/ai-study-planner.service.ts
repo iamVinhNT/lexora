@@ -2,7 +2,6 @@
  * @file ai-study-planner.service.ts
  * @description Backend-only provider configuration and AI study-plan generation.
  */
-import { ChatOpenAI } from '@langchain/openai';
 import { ZodError } from 'zod';
 import { addCivilDays, civilDateAt } from '../domain/study/calendar-date.js';
 import { buildAiStudyPlanSnapshot, InvalidAiStudyPlanError, validateAiStudyPlan } from '../domain/study/ai-study-plan.js';
@@ -12,67 +11,11 @@ import type { StudyRepository } from '../repositories/study.repository.js';
 import type { StudyCalendarRepository } from '../repositories/study-calendar.repository.js';
 import type { GrammarService } from './grammar.service.js';
 import { AppError } from './vocabulary.service.js';
-
-export type AiStudyPlannerConfig = {
-  apiKey: string;
-  baseURL: string;
-  model: string;
-  timeoutMs: number;
-};
-
-const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
-const DEFAULT_MODEL = 'gpt-4o-mini';
-const DEFAULT_TIMEOUT_MS = 15_000;
-const MAX_TIMEOUT_MS = 30_000;
-
-export function readAiStudyPlannerConfig(env: NodeJS.ProcessEnv = process.env): AiStudyPlannerConfig {
-  const apiKey = env.API_KEY?.trim();
-  if (!apiKey) throw new AppError(503, 'AI_NOT_CONFIGURED', 'AI planner is not configured');
-
-  const rawBaseURL = env.BASE_URL?.trim();
-  const baseURL = rawBaseURL || DEFAULT_BASE_URL;
-  let parsedBaseURL: URL;
-  try {
-    parsedBaseURL = new URL(baseURL);
-  } catch {
-    throw new AppError(503, 'AI_NOT_CONFIGURED', 'AI planner is not configured');
-  }
-  if (!['http:', 'https:'].includes(parsedBaseURL.protocol)
-    || parsedBaseURL.username || parsedBaseURL.password || parsedBaseURL.search || parsedBaseURL.hash) {
-    throw new AppError(503, 'AI_NOT_CONFIGURED', 'AI planner is not configured');
-  }
-
-  const isOfficialOpenAI = parsedBaseURL.origin === 'https://api.openai.com'
-    && ['', '/', '/v1', '/v1/'].includes(parsedBaseURL.pathname);
-  const model = env.AI_MODEL?.trim() || (isOfficialOpenAI ? DEFAULT_MODEL : '');
-  if (!model) throw new AppError(503, 'AI_NOT_CONFIGURED', 'AI planner is not configured');
-
-  let timeoutMs = DEFAULT_TIMEOUT_MS;
-  if (env.AI_TIMEOUT_MS !== undefined) {
-    if (!/^\d+$/.test(env.AI_TIMEOUT_MS.trim())) {
-      throw new AppError(503, 'AI_NOT_CONFIGURED', 'AI planner is not configured');
-    }
-    timeoutMs = Number(env.AI_TIMEOUT_MS);
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
-      throw new AppError(503, 'AI_NOT_CONFIGURED', 'AI planner is not configured');
-    }
-  }
-
-  return { apiKey, baseURL, model, timeoutMs };
-}
-
-export function createAiStudyPlannerChatModel(config: AiStudyPlannerConfig): ChatOpenAI {
-  return new ChatOpenAI({
-    apiKey: config.apiKey,
-    model: config.model,
-    timeout: config.timeoutMs,
-    maxRetries: 0,
-    configuration: { baseURL: config.baseURL },
-  });
-}
+import { createAiChatModel, readAiConfig, type AiConfig, type AiConfigResolver } from './ai-client.js';
 export type AiStudyPlannerGenerator = (input: AiStudyPlannerProviderInput) => Promise<unknown>;
 
 export interface AiStudyPlannerDependencies {
+  getConfig?: AiConfigResolver;
   env?: NodeJS.ProcessEnv;
   generate?: AiStudyPlannerGenerator;
 }
@@ -115,8 +58,8 @@ function isStructuredOutputError(error: unknown): boolean {
     (error.name === 'OutputParserException' || error.name === 'StructuredOutputParserError'));
 }
 
-async function generateWithProvider(config: AiStudyPlannerConfig, input: AiStudyPlannerProviderInput): Promise<unknown> {
-  const model = createAiStudyPlannerChatModel(config).withStructuredOutput(aiStudyPlannerModelOutputSchema, { strict: true });
+async function generateWithProvider(config: AiConfig, input: AiStudyPlannerProviderInput): Promise<unknown> {
+  const model = createAiChatModel(config).withStructuredOutput(aiStudyPlannerModelOutputSchema, { strict: true });
   const prompt = [SYSTEM_INSTRUCTIONS, 'Planner snapshot JSON:', JSON.stringify(input)].join('\n');
   return model.invoke(prompt);
 }
@@ -131,7 +74,7 @@ export class AiStudyPlannerService {
   ) {}
 
   async preview(locale: 'en' | 'vi', now: string) {
-    const config = readAiStudyPlannerConfig(this.dependencies.env);
+    const config = this.dependencies.getConfig ? (await this.dependencies.getConfig()).config : readAiConfig(this.dependencies.env);
     const preferences = this.study.getPreferences() ?? DEFAULT_PREFERENCES;
     const today = civilDateAt(now, preferences.timeZone);
     const to = addCivilDays(today, 6);

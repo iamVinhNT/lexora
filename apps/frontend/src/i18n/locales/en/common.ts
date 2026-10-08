@@ -35,7 +35,10 @@ export default {
   errors: {
     VALIDATION_ERROR: 'Please check the submitted information.', BAD_REQUEST: 'That request could not be completed.', NOT_FOUND: 'The requested item could not be found.',
     CONFLICT: 'This action conflicts with existing data.', SERVICE_UNAVAILABLE: 'AI grading is temporarily unavailable. Your sentence was kept; please retry.', INTERNAL_ERROR: 'Something went wrong on the server.', INVALID_RESPONSE: 'The server returned an invalid response.',
-    HTTP_ERROR: 'The request could not be completed.', generic: 'Something went wrong. Please try again.',
+    HTTP_ERROR: 'The request could not be completed.', FORBIDDEN: 'You do not have permission to perform this action.', RATE_LIMITED: 'AI assistant is busy. Please wait a moment before trying again.', AI_NOT_CONFIGURED: 'AI assistant is not configured on this installation.', AI_PROVIDER_ERROR: 'The AI provider encountered an error. Please try again.', AI_INVALID_OUTPUT: 'The AI assistant generated an unexpected response. Please try again.', AI_TIMEOUT: 'The request timed out. Please try again.', generic: 'Something went wrong. Please try again.',
+    AI_API_KEY_REQUIRED: 'Enter a new API key for this endpoint.',
+    AI_SETTINGS_UNAVAILABLE: 'Saved AI settings cannot be opened. Enter a new API key or delete saved settings.',
+    AI_CONFIG_CHANGED: 'AI settings changed. Your question was kept; send it again with the current settings.',
   },
   language: { label: 'Language', vietnamese: 'Tiếng Việt', english: 'English' },
   theme: { light: 'light', dark: 'dark', switchToLight: 'Switch to light theme', switchToDark: 'Switch to dark theme' },

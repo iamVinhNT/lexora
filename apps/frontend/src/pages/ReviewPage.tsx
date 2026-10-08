@@ -12,6 +12,7 @@ import { useReviewQueue, useSubmitReview } from '../hooks/useReviewQueue';
 import { useStudyTask } from '../hooks/useStudyCalendar';
 import { ReviewCard } from '../components/review/ReviewCard';
 import { ReviewCompletion } from '../components/review/ReviewCompletion';
+import { useAiAssistantStore } from '../stores/ai-assistant.store';
 import { PageHeader } from '../components/layout/PageHeader';
 import { formatIntervalDays, formatNumber } from '../i18n/formatters';
 import { getLocalizedErrorMessage } from '../i18n/presentation';
@@ -34,6 +35,15 @@ export function ReviewPage() {
   const isRevealed = revealedWordId === item?.wordId;
   const dueCount = queue.data?.counts.total ?? queue.data?.total ?? 0;
 
+  const registerAiContext = useAiAssistantStore((state) => state.registerContext);
+
+  useEffect(() => {
+    if (!item?.wordId) return;
+    return registerAiContext({
+      kind: 'review',
+      wordId: item.wordId,
+    });
+  }, [item?.wordId, registerAiContext]);
   const submitRating = useCallback(async (rating: ReviewRating) => {
     if (!item || !isRevealed || submitMutation.isPending || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
@@ -56,7 +66,7 @@ export function ReviewPage() {
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      if (!item || submitMutation.isPending || (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable))) return;
+      if (!item || submitMutation.isPending || (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable || Boolean(target.closest('[data-ai-guide]'))))) return;
       if (event.key === 'Enter' && !isRevealed) {
         event.preventDefault();
         setRevealedWordId(item.wordId);

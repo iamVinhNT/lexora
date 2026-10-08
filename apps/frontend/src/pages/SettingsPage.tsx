@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import { StudyPreferencesForm } from '../components/calendar/StudyPreferencesForm';
 import { DataManagementPanel } from '../components/data-management/DataManagementPanel';
+import { AiSettingsCard } from '../components/settings/AiSettingsCard';
 import { PageHeader } from '../components/layout/PageHeader';
 import { LanguageSelector } from '../components/ui/LanguageSelector';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
@@ -32,6 +33,7 @@ export function SettingsPage() {
         </Card>
       </div>
     </section>
+    <AiSettingsCard />
     <StudyPreferencesForm loadOnMount={false} />
     <DataManagementPanel />
   </div>;

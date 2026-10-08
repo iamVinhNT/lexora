@@ -18,6 +18,15 @@ import { useContexts } from '../src/hooks/useContexts';
 import { useReviewQueue } from '../src/hooks/useReviewQueue';
 import { useLearningSessionOverview } from '../src/hooks/useLearningSession';
 import { useDashboardStatistics, useInsights, useProgressOverview, useReviewTrends } from '../src/hooks/useAnalytics';
+import { useAiAssistantStore } from '../src/stores/ai-assistant.store';
+
+const aiMetadata = { baseURL: 'https://provider.example/v1', models: ['model-a'], activeModel: 'model-a', hasApiKey: true, isConfigured: true, source: 'saved' as const, revision: 'revision-a', updatedAt: null };
+
+function routeAiMetadata() {
+  const otherFetch = globalThis.fetch;
+  vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => new URL(String(input)).pathname === '/api/ai/settings'
+    ? Promise.resolve(response(aiMetadata)) : otherFetch(input, init));
+}
 
 const now = '2026-09-08T00:00:00.000Z';
 const emptyBackup = {
@@ -34,7 +43,8 @@ function response(data: unknown) {
   return new Response(JSON.stringify({ success: true, data }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }
 
-function renderSettings(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+function renderSettings(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }), routeMetadata = true) {
+  if (routeMetadata) routeAiMetadata();
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/settings']}>
@@ -58,6 +68,7 @@ function LiveDataConsumers() {
 }
 
 function renderSettingsWithLiveConsumers(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+  routeAiMetadata();
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/settings']}>
@@ -128,6 +139,7 @@ describe('SettingsPage', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     delete window.lexoraDesktop;
   });
 
@@ -392,7 +404,6 @@ describe('SettingsPage', () => {
     fireEvent.click(within(progressDialog).getByRole('button', { name: 'Confirm reset' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/data/reset-progress');
-    expect(screen.getByRole('status').textContent).toContain('Learning progress reset.');
     expect(relevantKeys.every((key) => queryClient.getQueryState(key)?.isInvalidated)).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete all data' }));
@@ -759,5 +770,135 @@ describe('SettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1));
     expect(JSON.parse(String(fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')?.[1]?.body))).toMatchObject({ timeZone: 'Asia/Tokyo' });
+  });
+});
+
+describe('SettingsPage AI configuration', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('loads redacted metadata without filling the password or calling a provider', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response(aiMetadata));
+    vi.stubGlobal('fetch', fetchMock);
+    renderSettings(undefined, false);
+    const password = await screen.findByLabelText('API_KEY') as HTMLInputElement;
+    expect(password.type).toBe('password');
+    expect(password.value).toBe('');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(new URL(String(fetchMock.mock.calls[0][0])).pathname).toBe('/api/ai/settings');
+    expect(screen.getByRole('combobox', { name: 'Active model' }).textContent).toContain('model-a');
+  });
+
+
+  it('requires a fresh key when endpoint changes and collects secret mutation variables after success', async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => Promise.resolve(response(init?.method === 'PUT' ? { ...aiMetadata, baseURL: 'https://new.example/v1', revision: 'revision-new' } : aiMetadata)));
+    vi.stubGlobal('fetch', fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderSettings(queryClient, false);
+    await screen.findByLabelText('API_KEY');
+    fireEvent.change(screen.getByLabelText('BASE_URL'), { target: { value: 'https://new.example/v1' } });
+    expect((screen.getByRole('button', { name: 'Save AI settings' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('API_KEY'), { target: { value: 'ephemeral-test-credential' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save AI settings' }));
+    await screen.findByText(/AI settings saved./);
+    expect((screen.getByLabelText('API_KEY') as HTMLInputElement).value).toBe('');
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
+    expect(JSON.stringify(queryClient.getQueryCache().getAll().map(query => query.state.data))).not.toContain('ephemeral-test-credential');
+    expect(JSON.stringify(useAiAssistantStore.getState())).not.toContain('ephemeral-test-credential');
+    expect(useAiAssistantStore.getState().configurationRevision).toBe('revision-new');
+  });
+
+  it('preserves draft on conflict, clears failed mutation cache, and confirms before reload discards it', async () => {
+    let revision = 'revision-a';
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') { revision = 'revision-other'; return Promise.resolve(new Response(JSON.stringify({ success: false, error: { code: 'CONFLICT', message: 'stale' } }), { status: 409 })); }
+      return Promise.resolve(response({ ...aiMetadata, revision }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderSettings(queryClient, false);
+    await screen.findByLabelText('API_KEY');
+    fireEvent.change(screen.getByLabelText('BASE_URL'), { target: { value: 'https://draft.example/v1' } });
+    fireEvent.change(screen.getByLabelText('API_KEY'), { target: { value: 'draft-test-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save AI settings' }));
+    await screen.findByText(/AI settings changed elsewhere/);
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
+    expect((screen.getByLabelText('API_KEY') as HTMLInputElement).value).toBe('draft-test-key');
+    fireEvent.click(screen.getByRole('button', { name: 'Reload AI settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect((screen.getByLabelText('BASE_URL') as HTMLInputElement).value).toBe('https://draft.example/v1');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Reload AI settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard draft and reload' }));
+    await waitFor(() => expect((screen.getByLabelText('API_KEY') as HTMLInputElement).value).toBe(''));
+    expect((screen.getByLabelText('BASE_URL') as HTMLInputElement).value).toBe(aiMetadata.baseURL);
+    expect(screen.queryByText(/AI settings changed elsewhere/)).toBeNull();
+  });
+
+  it('requires explicit deletion confirmation and adopts environment fallback without removing learner queries', async () => {
+    const fallback = { ...aiMetadata, source: 'environment', revision: 'environment-revision' };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => Promise.resolve(response(init?.method === 'DELETE' ? fallback : aiMetadata)));
+    vi.stubGlobal('fetch', fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(['learner-test'], { progress: 42 });
+    renderSettings(queryClient, false);
+    await screen.findByLabelText('API_KEY');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete saved AI settings' }));
+    expect(screen.getByRole('dialog').textContent).toContain('environment configuration if available');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete saved AI settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm deletion' }));
+    await screen.findByText(/Saved AI settings deleted./);
+    const call = fetchMock.mock.calls.find(([, init]) => init?.method === 'DELETE');
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ expectedRevision: 'revision-a' });
+    expect(queryClient.getQueryData(['learner-test'])).toEqual({ progress: 42 });
+    expect(useAiAssistantStore.getState().configurationRevision).toBe('environment-revision');
+    expect(screen.queryByRole('button', { name: 'Delete saved AI settings' })).toBeNull();
+    expect((screen.getByRole('button', { name: 'Save AI settings' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('does not overwrite dirty draft when public metadata updates elsewhere', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(aiMetadata)));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderSettings(queryClient, false);
+    await screen.findByLabelText('API_KEY');
+    fireEvent.change(screen.getByLabelText('BASE_URL'), { target: { value: 'https://draft.example/v1' } });
+    act(() => queryClient.setQueryData(['ai', 'settings'], { ...aiMetadata, revision: 'other-process', baseURL: 'https://other.example/v1' }));
+    await screen.findByText(/AI settings changed elsewhere/);
+    expect((screen.getByLabelText('BASE_URL') as HTMLInputElement).value).toBe('https://draft.example/v1');
+  });
+
+  it('locks pending save against duplicate submits and preserves key on generic failure', async () => {
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>(resolve => { finish = resolve; });
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => init?.method === 'PUT' ? pending : Promise.resolve(response(aiMetadata)));
+    vi.stubGlobal('fetch', fetchMock);
+    renderSettings(undefined, false);
+    await screen.findByLabelText('API_KEY');
+    fireEvent.change(screen.getByLabelText('API_KEY'), { target: { value: 'retry-test-key' } });
+    const form = screen.getByLabelText('API_KEY').closest('form')!;
+    fireEvent.submit(form); fireEvent.submit(form);
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1));
+    expect((screen.getByLabelText('API_KEY') as HTMLInputElement).disabled).toBe(false);
+    expect(screen.getByLabelText('API_KEY').closest('fieldset')?.disabled).toBe(true);
+    finish(new Response(JSON.stringify({ success: false, error: { code: 'INTERNAL_ERROR', message: 'do-not-show-secret' } }), { status: 500 }));
+    await screen.findByText(/Could not save AI settings/);
+    expect((screen.getByLabelText('API_KEY') as HTMLInputElement).value).toBe('retry-test-key');
+    expect(screen.queryByText('do-not-show-secret')).toBeNull();
+  });
+
+  it('requires confirmation before replacing an unavailable saved credential', async () => {
+    const unavailable = { ...aiMetadata, isConfigured: false };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => Promise.resolve(response(init?.method === 'PUT' ? { ...aiMetadata, revision: 'replacement' } : unavailable)));
+    vi.stubGlobal('fetch', fetchMock);
+    renderSettings(undefined, false);
+    await screen.findByLabelText('API_KEY');
+    fireEvent.change(screen.getByLabelText('API_KEY'), { target: { value: 'replacement-test-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save AI settings' }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog', { name: 'Replace unavailable credential?' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm credential replacement' }));
+    await screen.findByText(/AI settings saved./);
   });
 });

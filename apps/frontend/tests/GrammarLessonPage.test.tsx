@@ -1,6 +1,6 @@
 /**
  * @file GrammarLessonPage.test.tsx
- * @description Verifies answer feedback, retry identity, repeat practice, and tutor privacy behavior.
+ * @description Verifies answer feedback, retry identity, repeat practice, and completion behavior.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -131,76 +131,6 @@ describe('GrammarLessonPage', () => {
     expect(requestIds[0]).toBe(requestIds[1]);
   });
 
-  it('sends tutor questions only after submit and renders external tutor explanations', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).includes('/tutor')) return json({ explanation: 'The -s ending marks third person singular.', contrast: 'She walks; they walk.' });
-      return json({ lesson, progress: initialProgress, nextLessonId: lessonId });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    renderPage();
-
-    const question = await screen.findByRole('textbox', { name: 'Your question' });
-    fireEvent.change(question, { target: { value: 'Why does she take -s?' } });
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/tutor'))).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Ask tutor' }));
-
-    expect(await screen.findByText('The -s ending marks third person singular.')).toBeTruthy();
-    const tutorCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/tutor'));
-    expect(String(tutorCall?.[0])).toContain(`/api/grammar/${lessonId}/tutor`);
-    expect(JSON.parse(String(tutorCall?.[1]?.body))).toEqual({ question: 'Why does she take -s?' });
-    expect(screen.getByText(/external AI provider/i)).toBeTruthy();
-    expect(question).toHaveProperty('value', 'Why does she take -s?');
-  });
-
-  it('keeps a tutor question after the provider returns an error', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      if (String(input).includes('/tutor')) return json({ code: 'SERVICE_UNAVAILABLE', message: 'Unavailable' }, 503);
-      return json({ lesson, progress: initialProgress, nextLessonId: lessonId });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    renderPage();
-
-    const question = await screen.findByRole('textbox', { name: 'Your question' });
-    fireEvent.change(question, { target: { value: 'Why does she take -s?' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Ask tutor' }));
-
-    expect((await screen.findByText(/Tutor is temporarily unavailable/)).textContent).toMatch(/temporarily unavailable/i);
-    expect(question).toHaveProperty('value', 'Why does she take -s?');
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/answers'))).toHaveLength(0);
-  });
-
-  it.each(['resolved', 'pending'])('clears %s tutor state when moving to the next lesson', async (state) => {
-    const nextLessonId = 'grammar-a1-past-simple';
-    let resolveTutor!: (response: Response) => void;
-    const tutorResponse = new Promise<Response>((resolve) => { resolveTutor = resolve; });
-    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
-      if (String(input).includes('/tutor')) return tutorResponse;
-      if (String(input).endsWith(nextLessonId)) return json({
-        lesson: { ...lesson, id: nextLessonId, title: 'Past simple', exercises: [{ ...lesson.exercises[0], id: `${nextLessonId}-exercise` }] },
-        progress: null, nextLessonId: null,
-      });
-      return json({ lesson, progress: { ...initialProgress, lastPosition: 1, isComplete: true }, nextLessonId });
-    }));
-    renderPage();
-
-    const question = await screen.findByRole('textbox', { name: 'Your question' });
-    fireEvent.change(question, { target: { value: 'Why does she take -s?' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Ask tutor' }));
-    const answer = await json({ explanation: 'Present-simple tutor answer.', contrast: 'She walks; they walk.' });
-    if (state === 'resolved') {
-      await act(async () => { resolveTutor(answer); });
-      await screen.findByText('Present-simple tutor answer.');
-    } else {
-      await screen.findByRole('button', { name: 'Asking tutor…' });
-    }
-    fireEvent.click(screen.getByRole('link', { name: 'Continue to next lesson' }));
-
-    await screen.findByRole('heading', { name: 'Past simple' });
-    expect(screen.getByRole('textbox', { name: 'Your question' })).toHaveProperty('value', '');
-    if (state === 'pending') await act(async () => { resolveTutor(answer); });
-    expect(screen.queryByText('Present-simple tutor answer.')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Ask tutor' })).toHaveProperty('disabled', true);
-  });
   it('links final completion to the exact unfinished study task and keeps next lesson unlinked', async () => {
     const nextLessonId = 'grammar-a1-past-simple';
     let taskCompleted = false;

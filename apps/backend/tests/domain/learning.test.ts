@@ -7,7 +7,8 @@ import { groupSessionItems, type LearningWord } from '../../src/domain/learning/
 import { deriveLearningCursor, type LearningCursorItem, type LearningAttempt } from '../../src/domain/learning/cursor.js';
 import { evaluateOutput } from '../../src/domain/learning/output-evaluation.js';
 import { advanceStateOneLevel, deriveEffectiveRating, scoreAttempt } from '../../src/domain/learning/scoring.js';
-import { LangGraphOutputGrader, outputGradeSchema } from '../../src/domain/learning/ai-output-grader.js';
+import { outputGradeSchema } from '../../src/domain/learning/ai-output-grader.js';
+import { LangGraphOutputGrader } from '../../src/services/output-grader.service.js';
 
 const words = (count: number, difficulty = 'B1'): LearningWord[] => Array.from({ length: count }, (_, index) => ({ id: `word-${index + 1}`, difficulty }));
 function item(overrides: Partial<LearningCursorItem> = {}): LearningCursorItem {
@@ -71,14 +72,15 @@ describe('learning domain', () => {
     expect(() => outputGradeSchema.parse({ score: 101, explanation: 'Invalid.', suggestion: 'Retry.' })).toThrow();
     expect(() => outputGradeSchema.parse({ score: 60.5, explanation: 'Invalid.', suggestion: 'Retry.' })).toThrow();
   });
-  it('fails before any provider call when OpenAI is not configured', async () => {
-    const previous = process.env.OPENAI_API_KEY;
-    delete process.env.OPENAI_API_KEY;
+  it('fails before any provider call when AI is not configured', async () => {
+    const previous = process.env.API_KEY;
+    delete process.env.API_KEY;
     try {
-      await expect(new LangGraphOutputGrader().grade({ word: 'occupy', definition: 'to fill a place', sentence: 'She occupies the room.' })).rejects.toThrow('AI grading is not configured');
+      await expect(new LangGraphOutputGrader().grade({ word: 'occupy', definition: 'to fill a place', sentence: 'She occupies the room.' }))
+        .rejects.toMatchObject({ statusCode: 503, code: 'AI_NOT_CONFIGURED' });
     } finally {
-      if (previous === undefined) delete process.env.OPENAI_API_KEY;
-      else process.env.OPENAI_API_KEY = previous;
+      if (previous === undefined) delete process.env.API_KEY;
+      else process.env.API_KEY = previous;
     }
   });
 });

@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/app.js';
 import { createTestCurriculum } from '../grammar/fixtures.js';
-import { readAiStudyPlannerConfig, type AiStudyPlannerDependencies } from '../../src/services/ai-study-planner.service.js';
+import { type AiStudyPlannerDependencies } from '../../src/services/ai-study-planner.service.js';
+import { readAiConfig } from '../../src/services/ai-client.js';
 import { reviewLogs, reviewStates, words } from '../../src/db/schema.js';
 
 const apps: FastifyInstance[] = [];
@@ -199,13 +200,6 @@ describe('study HTTP routes', () => {
   });
 });
 describe('AI planner provider configuration', () => {
-  it('uses the official endpoint default and a named model for custom providers', () => {
-    expect(readAiStudyPlannerConfig({ API_KEY: 'fixture-key' })).toMatchObject({
-      baseURL: 'https://api.openai.com/v1', model: 'gpt-4o-mini', timeoutMs: 15_000,
-    });
-    expect(readAiStudyPlannerConfig({ API_KEY: 'fixture-key', BASE_URL: 'https://provider.example/v1', AI_MODEL: 'custom-model' }))
-      .toMatchObject({ baseURL: 'https://provider.example/v1', model: 'custom-model', timeoutMs: 15_000 });
-  });
 
   it('rejects missing credentials, malformed or credential-bearing URLs, missing custom models, and unsafe timeouts', () => {
     const invalidConfigurations: NodeJS.ProcessEnv[] = [
@@ -218,10 +212,10 @@ describe('AI planner provider configuration', () => {
     ];
     for (const env of invalidConfigurations) {
       let error: unknown;
-      try { readAiStudyPlannerConfig(env); } catch (caught) { error = caught; }
+      try { readAiConfig(env); } catch (caught) { error = caught; }
       expect(error).toMatchObject({ statusCode: 503, code: 'AI_NOT_CONFIGURED' });
     }
-    expect(readAiStudyPlannerConfig({ API_KEY: 'fixture-key', AI_TIMEOUT_MS: '1' }).timeoutMs).toBe(1);
-    expect(readAiStudyPlannerConfig({ API_KEY: 'fixture-key', AI_TIMEOUT_MS: '30000' }).timeoutMs).toBe(30_000);
+    expect(readAiConfig({ API_KEY: 'fixture-key', AI_TIMEOUT_MS: '1' }).timeoutMs).toBe(1);
+    expect(readAiConfig({ API_KEY: 'fixture-key', AI_TIMEOUT_MS: '30000' }).timeoutMs).toBe(30_000);
   });
 });

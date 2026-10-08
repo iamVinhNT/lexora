@@ -11,7 +11,8 @@ import {
   type LearningActionResult,
 } from '../repositories/session.repository.js';
 import type { StartSessionInput, SubmitStepInput } from '../schemas/session.schema.js';
-import { LangGraphOutputGrader, type OutputGrader } from '../domain/learning/ai-output-grader.js';
+import type { OutputGrader } from '../domain/learning/ai-output-grader.js';
+import { LangGraphOutputGrader } from './output-grader.service.js';
 
 export { AppError, ConflictError, NotFoundError, ValidationError };
 

@@ -27,7 +27,28 @@ import { getGrammarCurriculum } from './grammar/content/manifest.js';
 import { registerApiErrorHandler } from './routes/vocabulary.routes.js';
 import type { OutputGrader } from './domain/learning/ai-output-grader.js';
 import type { GrammarCurriculum } from './grammar/content/types.js';
-import type { GrammarTutorProvider } from './services/grammar-tutor.service.js';
+import { VocabularyRepository } from './repositories/vocabulary.repository.js';
+import { ContextRepository } from './repositories/context.repository.js';
+import { SessionRepository } from './repositories/session.repository.js';
+import { ReviewRepository } from './repositories/review.repository.js';
+import { VocabularyService } from './services/vocabulary.service.js';
+import { ContextService } from './services/context.service.js';
+import { SessionService } from './services/session.service.js';
+import { ReviewService } from './services/review.service.js';
+import { AnalyticsService } from './services/analytics.service.js';
+import {
+  AiAssistantService,
+  type AiAssistantPrompt,
+  type AiAssistantDependencies,
+  type AiAssistantGenerator,
+} from './services/ai-assistant.service.js';
+import { aiRoutes } from './routes/ai.routes.js';
+import { AiSettingsService } from './services/ai-settings.service.js';
+import { AiSettingsRepository } from './repositories/ai-settings.repository.js';
+import { AiSettingsCrypto } from './services/ai-settings-crypto.js';
+import { LangGraphOutputGrader } from './services/output-grader.service.js';
+
+export type { AiAssistantPrompt, AiAssistantDependencies, AiAssistantGenerator };
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -42,10 +63,12 @@ export interface BuildAppOptions {
   spaRoot?: string;
   spaContentSecurityPolicy?: string;
   outputGrader?: OutputGrader;
+  /** @internal Isolated environment/key path for tests and runtime smoke. */
+  aiSettings?: { env?: NodeJS.ProcessEnv; keyPath?: string };
   /** @internal Test seam for reviewed grammar route fixtures. */
   grammarCurriculum?: GrammarCurriculum;
-  /** @internal Offline test provider; production uses configured OpenAI. */
-  grammarTutorProvider?: GrammarTutorProvider;
+  /** @internal Offline assistant provider or environment fixture for AI assistant route tests. */
+  aiAssistant?: AiAssistantDependencies;
   /** @internal Offline provider and environment fixture for AI planner route tests. */
   aiStudyPlanner?: AiStudyPlannerDependencies;
   /** @internal Test seam for failures after database acquisition. */
@@ -84,27 +107,45 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     });
 
     const grammarCurriculum = options.grammarCurriculum ?? getGrammarCurriculum();
+    const settings = new AiSettingsService(new AiSettingsRepository(db.sqlite), new AiSettingsCrypto(db.sqlite.name === ':memory:', options.aiSettings?.keyPath), options.aiSettings?.env ?? options.aiAssistant?.env ?? options.aiStudyPlanner?.env ?? process.env);
+    const getConfig = () => settings.resolve();
+    const outputGrader = options.outputGrader ?? new LangGraphOutputGrader({ getConfig });
     const grammarService = new GrammarService(grammarCurriculum, new GrammarRepository(db.sqlite));
     const studyRepository = new StudyRepository(db);
     const calendarRepository = new StudyCalendarRepository(db);
     const studyService = new StudyService(studyRepository, calendarRepository, grammarService);
     const analyticsRepository = new AnalyticsRepository(db);
-    const aiPlanner = new AiStudyPlannerService(studyRepository, calendarRepository, grammarService, analyticsRepository, options.aiStudyPlanner);
+    const aiPlanner = new AiStudyPlannerService(studyRepository, calendarRepository, grammarService, analyticsRepository, { ...options.aiStudyPlanner, getConfig: options.aiStudyPlanner?.getConfig ?? getConfig });
+    const vocabularyService = new VocabularyService(new VocabularyRepository(db));
+    const contextService = new ContextService(new ContextRepository(db));
+    const sessionService = new SessionService(new SessionRepository(db), outputGrader);
+    const reviewService = new ReviewService(new ReviewRepository(db));
+    const analyticsService = new AnalyticsService(analyticsRepository);
+    const aiAssistant = new AiAssistantService({
+      vocabularyService,
+      contextService,
+      grammarService,
+      sessionService,
+      reviewService,
+      analyticsService,
+      aiAssistant: { ...options.aiAssistant, getConfig: options.aiAssistant?.getConfig ?? (options.aiAssistant?.generate ? () => settings.resolveForGenerator() : getConfig) },
+      env: options.aiAssistant?.env ?? process.env,
+    });
     app.get('/api/health', async () => ({
       success: true,
       data: { status: 'ok', app: 'Lexora API' },
     }));
 
-    await app.register(vocabularyRoutes, { db });
-    await app.register(contextRoutes, { db });
-    await app.register(sessionRoutes, { db, outputGrader: options.outputGrader });
-    await app.register(grammarRoutes, { db, curriculum: grammarCurriculum, service: grammarService, tutorProvider: options.grammarTutorProvider });
+    await app.register(vocabularyRoutes, { db, service: vocabularyService });
+    await app.register(contextRoutes, { db, service: contextService });
+    await app.register(sessionRoutes, { db, outputGrader, service: sessionService });
+    await app.register(grammarRoutes, { db, curriculum: grammarCurriculum, service: grammarService });
     await app.register(grammarPracticeRoutes, { db, curriculum: grammarCurriculum });
     await app.register(studyRoutes, { service: studyService, aiPlanner });
-    await app.register(reviewRoutes, { db });
-    await app.register(analyticsRoutes, { db });
+    await app.register(reviewRoutes, { db, service: reviewService });
+    await app.register(analyticsRoutes, { db, service: analyticsService });
     await app.register(dataRoutes, { db });
-
+    await app.register(aiRoutes, { service: aiAssistant, settings });
     if (options.spaRoot) {
       await app.register(staticPlugin, {
         root: options.spaRoot,

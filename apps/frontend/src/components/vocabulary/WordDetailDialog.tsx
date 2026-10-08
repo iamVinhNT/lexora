@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import type { Word } from '../../api/vocabulary.api';
 import { getLocalizedErrorMessage } from '../../i18n/presentation';
 import { useDeleteWord, useWord } from '../../hooks/useVocabulary';
+import { useAiAssistantStore } from '../../stores/ai-assistant.store';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { WordDetailContent } from './WordDetailContent';
@@ -21,7 +22,11 @@ export function WordDetailDialog({ word, onClose, onEdit, onDeleted, confirmOnOp
   const deleteMutation = useDeleteWord();
   const [confirming, setConfirming] = React.useState(confirmOnOpen);
   if (confirming) return <DeleteWordDialog word={activeWord} onClose={confirmOnOpen ? onClose : () => setConfirming(false)} onDeleted={onDeleted} mutation={deleteMutation} />;
-  return <Dialog title={activeWord.word} onClose={onClose} wide fixedContent><WordDetailContent word={activeWord} onEdit={onEdit} onDelete={() => setConfirming(true)} fixedActions hideHeading /></Dialog>;
+  const handleAskAssistant = () => {
+    onClose();
+    useAiAssistantStore.getState().openGuide({ kind: 'word', wordId: activeWord.id }, activeWord.word);
+  };
+  return <Dialog title={activeWord.word} onClose={onClose} wide fixedContent><WordDetailContent word={activeWord} onEdit={onEdit} onDelete={() => setConfirming(true)} onAskAssistant={handleAskAssistant} fixedActions hideHeading /></Dialog>;
 }
 
 function DeleteWordDialog({ word, onClose, onDeleted, mutation }: { word: Word; onClose: () => void; onDeleted: () => void; mutation: ReturnType<typeof useDeleteWord> }) {

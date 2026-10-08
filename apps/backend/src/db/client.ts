@@ -82,6 +82,20 @@ export function createTables(sqlite: Database.Database): void {
   sqlite.pragma('foreign_keys = ON');
   migrateLearningSchema(sqlite);
   sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS ai_settings (
+      id TEXT PRIMARY KEY CHECK (id = 'current'),
+      base_url TEXT NOT NULL,
+      models_json TEXT NOT NULL,
+      active_model TEXT NOT NULL,
+      api_key_ciphertext TEXT NOT NULL,
+      api_key_nonce TEXT NOT NULL,
+      api_key_tag TEXT NOT NULL,
+      crypto_version INTEGER NOT NULL,
+      revision TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,

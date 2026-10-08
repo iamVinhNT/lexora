@@ -798,3 +798,7 @@ Session retrieval must batch related words, examples, collocations, contexts, an
 ## 21. Unresolved decisions
 
 None.
+
+## AI configuration supersession — 2026-10-07
+
+The approved [application assistant design](./2026-10-06-application-ai-assistant-design.md) replaces the historical `OPENAI_*` configuration in this document with shared `API_KEY`, `BASE_URL`, `AI_MODEL`, `AI_TIMEOUT_MS`. Output grading semantics and failure-before-attempt-write remain unchanged; the provider adapter now lives in `services/output-grader.service.ts`, while its contract/schema remain in domain.

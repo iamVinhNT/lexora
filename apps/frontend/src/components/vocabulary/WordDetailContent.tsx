@@ -2,7 +2,7 @@
  * @file WordDetailContent.tsx
  * @description Shared presentation for vocabulary detail fields, progress, review metadata, and actions.
  */
-import { Pencil, Trash2, Volume2 } from 'lucide-react';
+import { Pencil, Sparkles, Trash2, Volume2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { Word } from '../../api/vocabulary.api';
@@ -14,13 +14,15 @@ type WordDetailContentProps = {
   word: Word;
   onEdit: () => void;
   onDelete: () => void;
+  onAskAssistant?: () => void;
   fixedActions?: boolean;
   hideHeading?: boolean;
 };
 
-export function WordDetailContent({ word, onEdit, onDelete, fixedActions = true, hideHeading = false }: WordDetailContentProps) {
+export function WordDetailContent({ word, onEdit, onDelete, onAskAssistant, fixedActions = true, hideHeading = false }: WordDetailContentProps) {
   const { t } = useTranslation('vocabulary');
   const { t: tCommon } = useTranslation('common');
+  const { t: tAssistant } = useTranslation('assistant');
   const progress = word.learningProgress;
 
   return (
@@ -63,6 +65,12 @@ export function WordDetailContent({ word, onEdit, onDelete, fixedActions = true,
       </section>
       </div>
       <div className={`${fixedActions ? 'shrink-0 border-t border-border bg-surface p-3 pt-4 sm:px-7' : ''} flex flex-row justify-end gap-3`}>
+        {onAskAssistant && (
+          <Button type="button" variant="secondary" aria-label={tAssistant('askAssistant')} className="min-h-11 px-3 gap-1.5" onClick={onAskAssistant}>
+            <Sparkles aria-hidden="true" size={17} />
+            <span className="text-xs font-medium">{tAssistant('askAssistant')}</span>
+          </Button>
+        )}
         <Button type="button" variant="secondary" aria-label={tCommon('actions.editWord')} className="min-h-11 min-w-11 px-3" onClick={onEdit}><Pencil aria-hidden="true" size={18} /></Button>
         <Button type="button" variant="ghost" aria-label={`${tCommon('actions.deleteWord')} ${word.word}`} className="min-h-11 min-w-11 px-3" onClick={onDelete}><Trash2 aria-hidden="true" size={18} /></Button>
       </div>

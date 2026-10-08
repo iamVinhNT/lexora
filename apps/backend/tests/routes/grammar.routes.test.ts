@@ -40,11 +40,11 @@ describe('grammar core HTTP contract',()=>{
   const replay=await app.inject({method:'POST',url:endpoint,payload:bad});expect(replay.json().data.attempt).toEqual(wrong.json().data.attempt);
   expect((await app.inject({method:'POST',url:endpoint,payload:{...bad,answer:{type:'choice',text:first.acceptedAnswers[0]!.text}}})).statusCode).toBe(409);
  });
- it('returns curriculum-change conflict for old lesson and tutor requests without provider or persistence mutations',async()=>{
-  const provider=vi.fn();const app=await buildApp({logger:false,grammarCurriculum:createTestCurriculum(),grammarTutorProvider:provider});apps.push(app);
-  for(const request of [{method:'GET' as const,url:'/api/grammar/grammar-0-word-roles'},{method:'POST' as const,url:'/api/grammar/grammar-0-word-roles/tutor',payload:{question:'Explain this lesson'}}]){
-   const response=await app.inject(request);expect(response.statusCode).toBe(409);expect(response.json().error).toMatchObject({code:'CONFLICT',details:{reason:'CURRICULUM_CHANGED'}});
-  }
-  expect(provider).not.toHaveBeenCalled();expect(app.db.sqlite.prepare('SELECT * FROM grammar_exercise_attempts').all()).toEqual([]);
+ it('returns curriculum-change conflict for old lesson requests without persistence mutations',async()=>{
+  const app=await buildApp({logger:false,grammarCurriculum:createTestCurriculum()});apps.push(app);
+  const response=await app.inject({method:'GET',url:'/api/grammar/grammar-0-word-roles'});
+  expect(response.statusCode).toBe(409);
+  expect(response.json().error).toMatchObject({code:'CONFLICT',details:{reason:'CURRICULUM_CHANGED'}});
+  expect(app.db.sqlite.prepare('SELECT * FROM grammar_exercise_attempts').all()).toEqual([]);
  });
 });

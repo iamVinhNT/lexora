@@ -8,7 +8,8 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 
 import type { GrammarAnswerSubmission, GrammarExerciseKind } from '../api/grammar.api';
-import { useAskGrammarTutor, useGrammarLesson, useSubmitGrammarAnswer } from '../hooks/useGrammar';
+import { useGrammarLesson, useSubmitGrammarAnswer } from '../hooks/useGrammar';
+import { useAiAssistantStore } from '../stores/ai-assistant.store';
 import { useStudyTask } from '../hooks/useStudyCalendar';
 import { getLocalizedErrorMessage } from '../i18n/presentation';
 import { GrammarLessonContent } from '../components/grammar/GrammarLessonContent';
@@ -35,9 +36,8 @@ function GrammarLessonView({ lessonId, studyTaskId }: { lessonId: string; studyT
   const lessonQuery = useGrammarLesson(lessonId);
   const taskQuery = useStudyTask(studyTaskId ?? '');
   const submitMutation = useSubmitGrammarAnswer(lessonId);
-  const tutorMutation = useAskGrammarTutor(lessonId);
   const pendingSubmission = useRef<GrammarAnswerSubmission | null>(null);
-  const [question, setQuestion] = useState('');
+  const registerAiContext = useAiAssistantStore((state) => state.registerContext);
   const [viewingAttempt, setViewingAttempt] = useState<GrammarAnswerSubmission | null>(null);
   const [viewingFeedback, setViewingFeedback] = useState<{ isCorrect: boolean; feedback: string } | null>(null);
   const [practiceIndex, setPracticeIndex] = useState<number | null>(null);
@@ -45,6 +45,15 @@ function GrammarLessonView({ lessonId, studyTaskId }: { lessonId: string; studyT
   const lessonData = lessonQuery.data;
   const lesson = lessonData?.lesson;
   const exercises = lesson?.exercises ?? [];
+
+  useEffect(() => {
+    if (!lesson?.id || !lesson?.revisionId) return;
+    return registerAiContext({
+      kind: 'grammar',
+      lessonId: lesson.id,
+      revisionId: lesson.revisionId,
+    }, lesson.title);
+  }, [lesson?.id, lesson?.revisionId, lesson?.title, registerAiContext]);
   const taskLoading = Boolean(studyTaskId && taskQuery.isPending);
   const taskMismatch = Boolean(studyTaskId && lesson && taskQuery.data && (
     taskQuery.data.kind !== 'GRAMMAR'
@@ -114,15 +123,6 @@ function GrammarLessonView({ lessonId, studyTaskId }: { lessonId: string; studyT
     submitMutation.reset();
   }
 
-  async function askTutor(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!question.trim() || tutorMutation.isPending) return;
-    try {
-      await tutorMutation.mutateAsync(question.trim());
-    } catch {
-      // Leave question in field so learner can retry after provider failure.
-    }
-  }
 
   return (
     <div className="mx-auto max-w-4xl space-y-5 sm:space-y-6">
@@ -182,20 +182,6 @@ function GrammarLessonView({ lessonId, studyTaskId }: { lessonId: string; studyT
           revisionId={lesson.revisionId}
         />
 
-        <section aria-labelledby="grammar-tutor-heading" className="space-y-3">
-          <div><h2 id="grammar-tutor-heading" className="text-xl font-semibold text-foreground">{t('tutorTitle')}</h2><p className="mt-1 text-sm text-muted">{t('tutorDescription')}</p></div>
-          <Card className="space-y-3 p-4 sm:p-5">
-            <form onSubmit={askTutor} className="space-y-3">
-              <label htmlFor="grammar-tutor-question" className="text-sm font-medium text-foreground">{t('tutorQuestion')}</label>
-              <textarea id="grammar-tutor-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder={t('tutorPlaceholder')} rows={3} className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-base text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" />
-              <p className="text-xs text-muted">{t('tutorProviderNotice')}</p>
-              {tutorMutation.isError && <p role="alert" className="text-sm text-muted">{t('tutorUnavailable')}</p>}
-              {tutorMutation.isPending && <p role="status" className="text-sm text-muted">{t('tutorLoading')}</p>}
-              {tutorMutation.data && <div role="status" className="space-y-2 rounded-xl border border-border bg-secondary p-4 text-sm"><p className="whitespace-pre-line text-foreground">{tutorMutation.data.explanation}</p><p className="whitespace-pre-line text-muted">{tutorMutation.data.contrast}</p></div>}
-              <Button type="submit" disabled={!question.trim() || tutorMutation.isPending} className="w-full sm:w-auto min-h-11">{tutorMutation.isPending ? t('tutorLoading') : t('askTutor')}</Button>
-            </form>
-          </Card>
-        </section>
       </>}
     </div>
   );

@@ -35,7 +35,10 @@ export default {
   errors: {
     VALIDATION_ERROR: 'Vui lòng kiểm tra thông tin đã gửi.', BAD_REQUEST: 'Không thể hoàn thành yêu cầu này.', NOT_FOUND: 'Không tìm thấy dữ liệu yêu cầu.',
     CONFLICT: 'Thao tác này xung đột với dữ liệu hiện có.', SERVICE_UNAVAILABLE: 'AI tạm thời chưa chấm được. Câu của bạn vẫn được giữ; hãy thử lại.', INTERNAL_ERROR: 'Đã xảy ra lỗi trên máy chủ.', INVALID_RESPONSE: 'Máy chủ trả về phản hồi không hợp lệ.',
-    HTTP_ERROR: 'Không thể hoàn thành yêu cầu.', generic: 'Đã xảy ra lỗi. Vui lòng thử lại.',
+    HTTP_ERROR: 'Không thể hoàn thành yêu cầu.', FORBIDDEN: 'Bạn không có quyền thực hiện thao tác này.', RATE_LIMITED: 'Trợ lý AI đang bận. Vui lòng đợi một lát rồi thử lại.', AI_NOT_CONFIGURED: 'Trợ lý AI chưa được cấu hình trên bản cài đặt này.', AI_PROVIDER_ERROR: 'Nhà cung cấp AI gặp lỗi. Vui lòng thử lại.', AI_INVALID_OUTPUT: 'Trợ lý AI trả về phản hồi không hợp lệ. Vui lòng thử lại.', AI_TIMEOUT: 'Yêu cầu quá thời gian phản hồi. Vui lòng thử lại.', generic: 'Đã xảy ra lỗi. Vui lòng thử lại.',
+    AI_API_KEY_REQUIRED: 'Nhập API key mới cho endpoint này.',
+    AI_SETTINGS_UNAVAILABLE: 'Không thể mở cấu hình AI đã lưu. Hãy nhập API key mới hoặc xóa cấu hình đã lưu.',
+    AI_CONFIG_CHANGED: 'Cấu hình AI đã thay đổi. Câu hỏi vẫn được giữ; hãy gửi lại bằng cấu hình hiện tại.',
   },
   language: { label: 'Ngôn ngữ', vietnamese: 'Tiếng Việt', english: 'English' },
   theme: { light: 'sáng', dark: 'tối', switchToLight: 'Chuyển sang giao diện sáng', switchToDark: 'Chuyển sang giao diện tối' },

@@ -58,7 +58,6 @@ export class ReviewRepository {
       .orderBy(asc(reviewStates.dueAt))
       .limit(limit)
       .all();
-
     const wordIds = dueRows.map((r) => r.word.id);
     let allExamples: any[] = [];
     let allContexts: any[] = [];
@@ -144,6 +143,20 @@ export class ReviewRepository {
       countsByState: counts,
       total: counts.total,
     };
+  }
+
+  /**
+   * Checks if a word is currently due for review.
+   */
+  isWordDue(wordId: string, now?: string | Date): boolean {
+    const nowStr = (now instanceof Date ? now.toISOString() : now) ?? new Date().toISOString();
+    const row = this.db
+      .select({ wordId: reviewStates.wordId })
+      .from(reviewStates)
+      .where(and(eq(reviewStates.wordId, wordId), lte(reviewStates.dueAt, nowStr)))
+      .limit(1)
+      .all()[0];
+    return Boolean(row);
   }
 
   /**

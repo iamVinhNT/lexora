@@ -11,6 +11,8 @@ import { MobileBottomNav } from './MobileBottomNav';
 import { MobileTopBar } from './MobileTopBar';
 import { Sidebar } from './Sidebar';
 import { SkipLink } from '../ui/SkipLink';
+import { AiCharacterGuide } from '../ai/AiCharacterGuide';
+import { useAiAssistantStore } from '../../stores/ai-assistant.store';
 
 export function AppShell() {
   const location = useLocation();
@@ -19,6 +21,9 @@ export function AppShell() {
   const appBackgroundRef = useRef<HTMLDivElement>(null);
   const isSidebarOpen = useUiStore((state) => state.isSidebarOpen);
   const isMoreOpen = useUiStore((state) => state.isMoreOpen);
+  useEffect(() => {
+    useAiAssistantStore.getState().clearOverrideContext();
+  }, [location.pathname]);
 
   useEffect(() => {
     const background = appBackgroundRef.current;
@@ -85,7 +90,7 @@ export function AppShell() {
           <main
             ref={mainRef}
             id="main-content"
-            className="mx-auto min-h-[calc(100dvh-4rem)] min-w-0 max-w-[1400px] px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-6 sm:px-6 md:min-h-dvh md:pb-10 md:pt-8 lg:px-8 lg:py-10 xl:px-10 xl:py-12"
+            className="mx-auto min-h-[calc(100dvh-4rem)] min-w-0 max-w-[1400px] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-6 sm:px-6 md:min-h-dvh md:pb-24 md:pt-8 lg:px-8 lg:pt-10 xl:px-10 xl:pt-12"
           >
             <Outlet />
           </main>
@@ -93,6 +98,7 @@ export function AppShell() {
         </div>
       </div>
       <MoreNavigationSheet triggerRef={moreTriggerRef} />
+      <AiCharacterGuide />
     </div>
   );
 }

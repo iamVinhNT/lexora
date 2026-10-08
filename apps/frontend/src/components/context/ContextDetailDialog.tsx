@@ -3,10 +3,12 @@
  * @description Context detail, word linking, unlinking, and delete confirmation.
  */
 import { useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
+import { useAiAssistantStore } from '../../stores/ai-assistant.store';
 import { useContext, useDeleteContext, useLinkWords, useUnlinkWord } from '../../hooks/useContexts';
 import type { Context } from '../../api/context.api';
 import type { Word } from '../../api/vocabulary.api';
@@ -18,6 +20,7 @@ type Props = { context: Context; words: Word[]; onClose: () => void; onEdit: () 
 export function ContextDetailDialog({ context, words, onClose, onEdit, onDeleted }: Props) {
   const { t } = useTranslation('contexts');
   const { t: tCommon } = useTranslation('common');
+  const { t: tAssistant } = useTranslation('assistant');
   const [linking, setLinking] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const detailQuery = useContext(context.id);
@@ -26,7 +29,11 @@ export function ContextDetailDialog({ context, words, onClose, onEdit, onDeleted
   const unlinkMutation = useUnlinkWord();
   if (confirming) return <DeleteContextDialog context={activeContext} onClose={() => setConfirming(false)} onDeleted={onDeleted} mutation={deleteMutation} />;
   if (linking) return <LinkWordsDialog context={activeContext} words={words} onClose={() => setLinking(false)} />;
-  return <Dialog title={activeContext.title} onClose={onClose} wide><div className="min-w-0 space-y-6"><div><div className="flex flex-wrap gap-2 break-words text-xs font-semibold text-primary"><span>{activeContext.sourceType ? getLocalizedEnumLabel(t, 'sourceTypes', activeContext.sourceType) : t('uncategorized')}</span>{activeContext.sourceUrl && <a href={activeContext.sourceUrl} target="_blank" rel="noreferrer" className="break-all underline">{t('openSource')}</a>}</div><p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-foreground">{activeContext.content}</p></div><section><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-foreground">{t('linkedWords')}</h3><Button type="button" variant="secondary" onClick={() => setLinking(true)}>{t('linkWords')}</Button></div>{activeContext.words?.length ? <ul className="mt-3 space-y-3">{activeContext.words.map((item) => <li key={item.wordId} className="flex min-w-0 flex-col gap-2 rounded-lg bg-secondary p-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="break-words font-semibold text-foreground">{item.word.word}</p><p className="break-words text-xs text-muted">{t('exposure', { formattedCount: formatNumber(item.exposureCount), firstSeen: formatDate(item.firstSeenAt), lastSeen: formatDate(item.lastSeenAt) })}</p></div><Button type="button" variant="ghost" aria-label={`${t('unlink')} ${item.word.word}`} onClick={() => unlinkMutation.mutate({ contextId: activeContext.id, wordId: item.wordId })} disabled={unlinkMutation.isPending}>{t('unlink')}</Button></li>)}</ul> : <p className="mt-3 text-sm text-muted">{t('noWordsLinked')}</p>}</section><div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onEdit}>{tCommon('actions.editContext')}</Button><Button type="button" variant="ghost" aria-label={`${tCommon('actions.deleteContext')} ${activeContext.title}`} onClick={() => setConfirming(true)}>{tCommon('actions.deleteContext')}</Button></div></div></Dialog>;
+  const handleAskAssistant = () => {
+    onClose();
+    useAiAssistantStore.getState().openGuide({ kind: 'context', contextId: activeContext.id }, activeContext.title);
+  };
+  return <Dialog title={activeContext.title} onClose={onClose} wide><div className="min-w-0 space-y-6"><div><div className="flex flex-wrap gap-2 break-words text-xs font-semibold text-primary"><span>{activeContext.sourceType ? getLocalizedEnumLabel(t, 'sourceTypes', activeContext.sourceType) : t('uncategorized')}</span>{activeContext.sourceUrl && <a href={activeContext.sourceUrl} target="_blank" rel="noreferrer" className="break-all underline">{t('openSource')}</a>}</div><p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-foreground">{activeContext.content}</p></div><section><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-foreground">{t('linkedWords')}</h3><Button type="button" variant="secondary" onClick={() => setLinking(true)}>{t('linkWords')}</Button></div>{activeContext.words?.length ? <ul className="mt-3 space-y-3">{activeContext.words.map((item) => <li key={item.wordId} className="flex min-w-0 flex-col gap-2 rounded-lg bg-secondary p-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="break-words font-semibold text-foreground">{item.word.word}</p><p className="break-words text-xs text-muted">{t('exposure', { formattedCount: formatNumber(item.exposureCount), firstSeen: formatDate(item.firstSeenAt), lastSeen: formatDate(item.lastSeenAt) })}</p></div><Button type="button" variant="ghost" aria-label={`${t('unlink')} ${item.word.word}`} onClick={() => unlinkMutation.mutate({ contextId: activeContext.id, wordId: item.wordId })} disabled={unlinkMutation.isPending}>{t('unlink')}</Button></li>)}</ul> : <p className="mt-3 text-sm text-muted">{t('noWordsLinked')}</p>}</section><div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={handleAskAssistant} className="gap-2 min-h-11"><Sparkles aria-hidden="true" size={17} />{tAssistant('askAssistant')}</Button><Button type="button" variant="secondary" onClick={onEdit}>{tCommon('actions.editContext')}</Button><Button type="button" variant="ghost" aria-label={`${tCommon('actions.deleteContext')} ${activeContext.title}`} onClick={() => setConfirming(true)}>{tCommon('actions.deleteContext')}</Button></div></div></Dialog>;
 }
 
 function LinkWordsDialog({ context, words, onClose }: { context: Context; words: Word[]; onClose: () => void }) {

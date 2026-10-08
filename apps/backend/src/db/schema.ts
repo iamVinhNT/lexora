@@ -2,6 +2,21 @@ import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, real, primaryKey, index, uniqueIndex, unique, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 
+// AI credentials stay outside learner export/restore/reset and legacy merge allowlists.
+export const aiSettings = sqliteTable('ai_settings', {
+  id: text('id').primaryKey(),
+  baseURL: text('base_url').notNull(),
+  modelsJson: text('models_json').notNull(),
+  activeModel: text('active_model').notNull(),
+  apiKeyCiphertext: text('api_key_ciphertext').notNull(),
+  apiKeyNonce: text('api_key_nonce').notNull(),
+  apiKeyTag: text('api_key_tag').notNull(),
+  cryptoVersion: integer('crypto_version').notNull(),
+  revision: text('revision').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 // 1. Users table
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),

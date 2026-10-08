@@ -5,7 +5,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  askGrammarTutor,
   getGrammarCourse,
   getGrammarLesson,
   submitGrammarAnswer,
@@ -57,11 +56,5 @@ export function useSubmitGrammarAnswer(lessonId: string) {
       }
       void invalidateStudyQueries(queryClient);
     },
-  });
-}
-
-export function useAskGrammarTutor(lessonId: string) {
-  return useMutation({
-    mutationFn: (question: string) => askGrammarTutor(lessonId, question),
   });
 }

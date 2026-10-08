@@ -127,14 +127,6 @@ export type GrammarAnswerResult = {
   firstAttemptAccuracy?: GrammarFirstAttemptAccuracy | null;
 };
 
-export type GrammarTutorAnswer = { explanation: string; contrast: string };
-
-export function askGrammarTutor(lessonId: string, question: string) {
-  return apiFetch<GrammarTutorAnswer>(`/api/grammar/${encodeURIComponent(lessonId)}/tutor`, {
-    method: 'POST',
-    body: { question },
-  });
-}
 
 export function getGrammarCourse(signal?: AbortSignal) {
   return apiFetch<GrammarCourse>('/api/grammar', { signal });
