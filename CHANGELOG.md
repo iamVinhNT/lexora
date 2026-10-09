@@ -19,11 +19,11 @@
 
 ### Fixed
 - Keep the desktop vocabulary layout within the browser or Electron viewport; only the word list and detail content scroll, with filters, pagination and actions remaining visible.
-- Keep vocabulary create/edit dialog headers and Save/Cancel actions visible while only form fields scroll.
-- Enable Speech Dispatcher before Electron startup on Linux so vocabulary pronunciation uses installed system voices instead of failing silently.
 - Conversational AI accepts ordinary text replies from OpenAI-compatible providers without requiring JSON-schema response formatting; blank, reasoning-only and oversized replies remain rejected.
 - Keep chat input and header visible on short mobile screens while conversation content scrolls independently.
 - Remove the 3D robot's outer frame, background panel and hover fill while preserving its keyboard focus indicator.
+- Keep vocabulary create/edit dialog headers and Save/Cancel actions visible while only form fields scroll.
+- Enable Speech Dispatcher before Electron startup on Linux so vocabulary pronunciation uses installed system voices instead of failing silently.
 - Desktop release smoke checks use separate AppImage/Debian profiles and in-memory databases, and report startup logs on failure. Manual package verification builds the requested immutable version tag.
 - Isolate the real Electron IPC test profile and avoid a top-level readiness await that prevented Electron startup.
 - Keep grammar context translations readable on the primary-subtle surface and stabilize cold lazy calendar navigation verification without replacing the real page.
@@ -37,6 +37,7 @@
 - AI Assistant streams replies over SSE with cancellation, bounded output, validated completion, and recoverable mid-stream errors that retain drafts.
 - Assistant context follows the current menu and saved collections rather than the selected word, lesson, or context. Content and progress have separate sharing controls; bounded samples disclose omitted data.
 - Resize chat with pointer dragging, arrow keys, or preset sizes. Dragging uses animation-frame DOM updates and commits React state only on release. Remove the separate show/hide Lexi feature.
+- Grammar lesson details use compact section and nested-panel padding, with tighter reading/practice spacing while preserving text sizes and touch targets.
 - Compact bilingual review workspace, stage-specific actions, keyboard boundaries and a smaller mobile Lexi launcher leave controls clear on short screens.
 - Chat, study planning, and output grading share one backend AI configuration; the former grammar tutor endpoint and bottom-of-lesson form are removed.
 - Saved AI settings apply immediately to assistant, planner and output grading. Configuration revisions reject stale requests; sharing saved conversation history with another provider/model requires explicit confirmation.

@@ -117,7 +117,7 @@ export function GrammarOutputPractice({
   ];
 
   return (
-    <section aria-labelledby="grammar-output-heading" className="space-y-4">
+    <section aria-labelledby="grammar-output-heading" className="space-y-3">
       <div>
         <div className="flex items-center gap-2">
           <PenTool aria-hidden="true" size={20} className="text-primary" />
@@ -148,14 +148,14 @@ export function GrammarOutputPractice({
           ))}
         </div>
       )}
-      <Card className="space-y-5 p-4 sm:p-6 md:p-7">
+      <Card className="space-y-3 p-3 sm:p-4">
         <div className="space-y-2">
           <h3 className="text-base sm:text-lg font-semibold text-foreground">
             {activePrompt.prompt}
           </h3>
 
           {activePrompt.checks.length > 0 && (
-            <div className="rounded-xl border border-border bg-secondary/40 p-3.5">
+            <div className="rounded-xl border border-border bg-secondary/40 p-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted">
                 {t('criteriaChecklist')}
               </p>
@@ -175,7 +175,7 @@ export function GrammarOutputPractice({
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-3">
           <div className="space-y-1.5">
             <label
               htmlFor={`output-text-${activePrompt.id}`}
@@ -191,14 +191,14 @@ export function GrammarOutputPractice({
               rows={4}
               maxLength={2000}
               placeholder={t('outputPlaceholder')}
-              className="w-full rounded-xl border border-border bg-background p-3.5 text-base text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-75"
+              className="w-full rounded-xl border border-border bg-background p-3 text-base text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-75"
             />
             <div className="flex justify-end text-xs text-muted">
               {currentDraft.text.length}/2000
             </div>
           </div>
 
-          <fieldset disabled={submitOutput.isPending || Boolean(currentResult)} className="space-y-3 rounded-xl border border-border bg-surface p-4">
+          <fieldset disabled={submitOutput.isPending || Boolean(currentResult)} className="space-y-3 rounded-xl border border-border bg-surface p-3">
             <legend className="text-sm font-semibold text-foreground">{t('outputRubricTitle')}</legend>
 
             <div className="space-y-3">

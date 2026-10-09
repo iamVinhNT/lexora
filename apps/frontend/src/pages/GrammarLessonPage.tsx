@@ -115,20 +115,20 @@ function GrammarLessonView({ lessonId, studyTaskId }: { lessonId: string; studyT
 
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 sm:space-y-6">
+    <div className="mx-auto max-w-4xl space-y-4">
       <Link to="/grammar" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-muted hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ArrowLeft aria-hidden="true" size={17} />{t('backToCourse')}</Link>
       {lessonQuery.isLoading && <p role="status" aria-busy="true" className="rounded-xl border border-border bg-surface p-5 text-sm text-muted">{t('loadingLesson')}</p>}
       {lessonQuery.isError && <div role="alert" className="space-y-4 rounded-xl border border-border bg-secondary p-5"><p className="text-sm text-foreground">{getLocalizedErrorMessage(lessonQuery.error, tCommon)}</p><Button type="button" variant="secondary" onClick={() => void lessonQuery.refetch()}>{t('retry')}</Button></div>}
       {lesson && <>
         <header className="space-y-3">
           <h1 tabIndex={-1} className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground focus:outline-none">{lesson.title}</h1>
-          <div className="rounded-xl border border-primary/30 bg-primary-subtle p-3.5 sm:p-5"><h2 className="text-sm font-semibold text-foreground">{t('objective')}</h2><p className="mt-1 text-sm leading-6 text-foreground">{lesson.objective}</p></div>
+          <div className="rounded-xl border border-primary/30 bg-primary-subtle p-3"><h2 className="text-sm font-semibold text-foreground">{t('objective')}</h2><p className="mt-1 text-sm leading-6 text-foreground">{lesson.objective}</p></div>
           {studyTaskId && (taskLoading || taskIssue) && <p role={taskIssue ? 'alert' : 'status'} className="rounded-xl border border-border bg-secondary p-4 text-sm text-foreground">{taskLoading ? tCommon('status.loading') : taskIssue}</p>}
           {(() => {
             const acc = submitMutation.data?.firstAttemptAccuracy ?? lessonData?.firstAttemptAccuracy;
             if (!acc) return null;
             return (
-              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2.5 text-xs sm:text-sm">
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs sm:text-sm">
                 <span className="font-semibold text-foreground">{t('firstAttemptAccuracy')}:</span>
                 {acc.percent !== null ? (
                   <span className="font-medium text-primary">
@@ -149,7 +149,7 @@ function GrammarLessonView({ lessonId, studyTaskId }: { lessonId: string; studyT
 
         <GrammarLessonContent lesson={lesson} />
 
-        {exercises.length > 0 && <section aria-labelledby="grammar-practice-heading" className="space-y-4">
+        {exercises.length > 0 && <section aria-labelledby="grammar-practice-heading" className="space-y-3">
           <div><h2 id="grammar-practice-heading" className="text-2xl font-bold tracking-tight text-foreground">{t('exercises')}</h2><p className="mt-1 text-sm text-muted">{isComplete ? t('lessonComplete') : t('exerciseProgress', { current: exerciseIndex + 1, total: exercises.length })}</p></div>
           {submitMutation.isError && <p role="alert" className="rounded-xl border border-border bg-secondary p-4 text-sm text-foreground">{getLocalizedErrorMessage(submitMutation.error, tCommon)}</p>}
           {!isComplete && exercise && <ExerciseCard key={exercise.id} exercise={exercise} focusOnMount={focusExerciseAfterContinue} disabled={submitMutation.isPending || taskLoading || Boolean(taskIssue)} blocked={Boolean(taskIssue)} hasError={submitMutation.isError} result={currentResult ?? undefined} onAnswerChange={answerChanged} onContinue={continueAfterFeedback} onSubmit={submitAnswer} />}
@@ -223,11 +223,11 @@ function ExerciseCard({
     onAnswerChange();
   }
 
-  return <Card className="space-y-4 sm:space-y-5 p-4 sm:p-6 md:p-7">
+  return <Card className="space-y-3 p-3 sm:p-4">
     <h3 ref={headingRef} tabIndex={-1} className="text-base sm:text-lg font-semibold leading-relaxed text-foreground focus:outline-none focus:ring-2 focus:ring-primary">{exercise.prompt}</h3>
-    <form onSubmit={submit} className="space-y-4 sm:space-y-5">
-      {isChoice ? <fieldset disabled={disabled || hasResult} className="space-y-3">
-        <legend className="mb-3 text-sm font-medium text-muted">{t('answerChoice')}</legend>
+    <form onSubmit={submit} className="space-y-2">
+      {isChoice ? <fieldset disabled={disabled || hasResult} className="space-y-2">
+        <legend className="mb-2 text-sm font-medium text-muted">{t('answerChoice')}</legend>
         {exercise.options.map((option, index) => <label key={`${index}-${option.text}`} className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-border bg-background p-3 text-sm sm:text-base text-foreground has-[:checked]:border-primary has-[:checked]:bg-primary-subtle has-[:disabled]:cursor-not-allowed focus-within:ring-2 focus-within:ring-primary">
           <input type="radio" required name={`grammar-answer-${exercise.id}`} value={option.text} checked={answer === option.text} onChange={() => changeAnswer(option.text)} className="h-4 w-4 accent-primary" />
           <span>{option.text}</span>
@@ -235,7 +235,7 @@ function ExerciseCard({
       </fieldset> : <div className="space-y-2"><label htmlFor={`grammar-answer-${exercise.id}`} className="text-sm font-medium text-foreground">{t('answerText')}</label><textarea id={`grammar-answer-${exercise.id}`} value={answer} onChange={(event) => changeAnswer(event.target.value)} disabled={disabled || hasResult} required rows={3} placeholder={t('answerPlaceholder')} className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-base text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-70" /></div>}
       {!hasResult && <Button type="submit" disabled={disabled || !answer.trim()} className="w-full sm:w-auto min-h-11">{hasError ? t('retryAnswer') : blocked ? t('submitAnswer') : disabled ? t('submitting') : t('submitAnswer')}</Button>}
     </form>
-    {result && <div role="status" aria-live="polite" className={`space-y-2 rounded-xl border p-4 text-sm ${result.isCorrect ? 'border-primary/30 bg-primary-subtle text-foreground' : 'border-border bg-secondary text-foreground'}`}>
+    {result && <div role="status" aria-live="polite" className={`space-y-2 rounded-xl border p-3 text-sm ${result.isCorrect ? 'border-primary/30 bg-primary-subtle text-foreground' : 'border-border bg-secondary text-foreground'}`}>
       <p className="font-semibold">{result.isCorrect ? t('correct') : t('incorrect')}</p>
       <p className="whitespace-pre-line leading-6">{result.feedback}</p>
       <p className="text-muted">{t('answerSaved')}</p>
