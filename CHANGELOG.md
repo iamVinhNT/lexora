@@ -19,6 +19,7 @@
 
 ### Fixed
 - Keep the desktop vocabulary layout within the browser or Electron viewport; only the word list and detail content scroll, with filters, pagination and actions remaining visible.
+- Enable Speech Dispatcher before Electron startup on Linux so vocabulary pronunciation uses installed system voices instead of failing silently.
 - Conversational AI accepts ordinary text replies from OpenAI-compatible providers without requiring JSON-schema response formatting; blank, reasoning-only and oversized replies remain rejected.
 - Keep chat input and header visible on short mobile screens while conversation content scrolls independently.
 - Remove the 3D robot's outer frame, background panel and hover fill while preserving its keyboard focus indicator.

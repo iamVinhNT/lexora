@@ -312,6 +312,8 @@ export async function bootstrapDesktop(dependencies: BootstrapDependencies): Pro
 }
 
 function createProductionDependencies(): BootstrapDependencies {
+  // Chromium disables Linux system voices unless Speech Dispatcher is explicitly enabled before ready.
+  if (process.platform === 'linux') app.commandLine.appendSwitch('enable-speech-dispatcher');
   const desktopRoot = dirname(fileURLToPath(import.meta.url));
   const packagedResourcesPath = app.isPackaged ? process.resourcesPath : resolve(desktopRoot, '../../');
   const iconPath = resolveDesktopIconPath(desktopRoot, packagedResourcesPath, app.isPackaged);
