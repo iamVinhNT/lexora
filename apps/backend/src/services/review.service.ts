@@ -11,7 +11,6 @@ import {
   ValidationError,
 } from './vocabulary.service.js';
 import type {
-  SubmitReviewInput,
   QueryDueReviewsInput,
   QueryReviewHistoryInput,
   ReviewRating,
@@ -196,14 +195,6 @@ export class ReviewService {
    */
   isWordDue(wordId: string, now?: string | Date): boolean {
     return this.repo.isWordDue(wordId, now);
-  }
-
-  /**
-   * Coordinates SM-2 calculation and 3D knowledge assessment,
-   * validates word existence (throws 404 if not found), and records review log.
-   */
-  submitReview(input: SubmitReviewInput) {
-    return this.repo.submitReview(input);
   }
 
   /**

@@ -91,9 +91,44 @@ describe('study calendar flow end to end', () => {
     }
     const completed = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/complete` });
     expect(completed.statusCode).toBe(200);
-    const review = await app.inject({ method: 'POST', url: '/api/reviews', payload: {
-      wordId: item.wordId, reviewType: 'RECALL', rating: 'GOOD', correct: true, studyTaskId: reviewTask.task.id,
-    } });
+
+    app.db.sqlite.prepare('UPDATE review_states SET due_at = ? WHERE word_id = ?')
+      .run(new Date(Date.now() - 60000).toISOString(), item.wordId);
+
+    const startReview = await app.inject({
+      method: 'POST',
+      url: '/api/reviews/attempt',
+      payload: { requestId: 'cal-review-start', wordId: item.wordId, studyTaskId: reviewTask.task.id },
+    });
+    expect(startReview.statusCode).toBe(200);
+    const reviewAttempt = JSON.parse(startReview.payload).data;
+
+    const recallStep = await app.inject({
+      method: 'POST',
+      url: `/api/reviews/attempt/${reviewAttempt.id}/step`,
+      payload: { requestId: 'cal-review-recall', expectedVersion: reviewAttempt.version, action: 'RECALL', answer: item.word.word },
+    });
+    expect(recallStep.statusCode).toBe(200);
+    const recallFeedback = JSON.parse(recallStep.payload).data;
+
+    const continueStep = await app.inject({
+      method: 'POST',
+      url: `/api/reviews/attempt/${reviewAttempt.id}/step`,
+      payload: { requestId: 'cal-review-continue', expectedVersion: recallFeedback.version, action: 'CONTINUE' },
+    });
+    expect(continueStep.statusCode).toBe(200);
+    const readyAssess = JSON.parse(continueStep.payload).data;
+
+    const review = await app.inject({
+      method: 'POST',
+      url: '/api/reviews',
+      payload: {
+        requestId: 'cal-review-complete',
+        attemptId: reviewAttempt.id,
+        expectedVersion: readyAssess.version,
+        rating: 'GOOD',
+      },
+    });
     expect(review.statusCode).toBe(200);
 
     for (const [index, exercise] of lesson.exercises.entries()) {

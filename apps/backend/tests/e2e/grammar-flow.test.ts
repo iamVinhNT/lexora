@@ -57,7 +57,7 @@ describe('bundled grammar expansion',()=>{
    expect(await request(app,'POST','/api/grammar-practice/reviews',reviewPayload)).toEqual(reviewed);
    expect((await request(app,'GET','/api/grammar-practice/due')).items).toEqual([]);
    const changed=await app.inject({method:'POST',url:'/api/grammar-practice/reviews',payload:{...reviewPayload,answer:{type:'choice',text:'not the original payload'}}});expect(changed.statusCode).toBe(409);
-   const before=await request(app,'GET','/api/backup');expect(before.version).toBe(5);
+   const before=await request(app,'GET','/api/backup');expect(before.version).toBe(6);
    expect(before.data.grammarPracticeAttempts.map((a:{kind:string})=>a.kind)).toEqual(['output','review']);
    await app.close();app=await buildApp({dbPath,logger:false});
    expect(await request(app,'POST','/api/grammar-practice/reviews',reviewPayload)).toEqual(reviewed);

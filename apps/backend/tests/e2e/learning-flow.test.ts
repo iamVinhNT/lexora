@@ -46,8 +46,9 @@ const backupTables: BackupTable[] = [
   'wordTags',
   'learningSessions',
   'learningSessionItems',
+  'reviewAttempts',
+  'reviewAttemptRequests',
 ];
-
 const rowKeyDefinitions: Record<BackupTable, Record<string, (row: BackupRow) => string>> = {
   users: {
     id: (row) => row.id,
@@ -90,6 +91,8 @@ const rowKeyDefinitions: Record<BackupTable, Record<string, (row: BackupRow) => 
     id: (row) => row.id,
     sessionWord: (row) => `${row.sessionId}\u0000${row.wordId}`,
   },
+  reviewAttempts: { id: (row) => row.id },
+  reviewAttemptRequests: { requestId: (row) => row.requestId },
 };
 
 const sortKeyDefinitions: Record<BackupTable, (row: BackupRow) => string> = {
@@ -107,8 +110,9 @@ const sortKeyDefinitions: Record<BackupTable, (row: BackupRow) => string> = {
   wordTags: (row) => `${row.wordId}\u0000${row.tagId}`,
   learningSessions: (row) => row.id,
   learningSessionItems: (row) => `${row.sessionId}\u0000${row.wordId}`,
+  reviewAttempts: (row) => row.id,
+  reviewAttemptRequests: (row) => row.requestId,
 };
-
 function withoutFields(row: BackupRow, fields: string[]): BackupRow {
   return Object.fromEntries(Object.entries(row).filter(([field]) => !fields.includes(field)));
 }
@@ -158,6 +162,10 @@ function canonicalizeBackup(data: BackupData): Record<BackupTable, BackupRow[]> 
         return withoutFields({ ...row, id: sessionKeys.get(row.id) ?? row.id }, ['startedAt']);
       case 'learningSessionItems':
         return withoutFields({ ...row, id: `${row.sessionId}\u0000${wordName}`, wordId: wordName }, ['createdAt']);
+      case 'reviewAttempts':
+        return withoutFields({ ...row, wordId: wordName }, ['createdAt', 'updatedAt']);
+      case 'reviewAttemptRequests':
+        return withoutFields(row, ['createdAt']);
     }
   };
 
@@ -186,7 +194,10 @@ describe('learning lifecycle end to end', () => {
   });
 
   it('learns, reviews, analyzes, backs up, resets, and restores seed data', async () => {
-    app = await buildApp({ dbPath: ':memory:', logger: false, outputGrader });
+    app = await buildApp({
+      dbPath: ':memory:', logger: false, outputGrader,
+      aiSettings: { env: { API_KEY: 'offline-grader-fixture', BASE_URL: 'http://127.0.0.1:1/v1', AI_MODEL: 'offline-grader' } },
+    });
     const firstSeed = await seedDatabase(app.db);
     const secondSeed = await seedDatabase(app.db);
     expect(firstSeed.wordCount).toBeGreaterThanOrEqual(50);
@@ -276,16 +287,71 @@ describe('learning lifecycle end to end', () => {
     });
     expect(completeResponse.statusCode).toBe(200);
     expect(JSON.parse(completeResponse.payload).data.completedAt).not.toBeNull();
+    app.db
+      .update(reviewStates)
+      .set({ dueAt: new Date(Date.now() - 60000).toISOString() })
+      .where(eq(reviewStates.wordId, sessionWordId))
+      .run();
+
+    const attemptStartRes = await app.inject({
+      method: 'POST',
+      url: '/api/reviews/attempt',
+      payload: { requestId: 'req-e2e-start', wordId: sessionWordId },
+    });
+    expect(attemptStartRes.statusCode).toBe(200);
+    const attempt = JSON.parse(attemptStartRes.payload).data;
+
+    const attemptRecallRes = await app.inject({
+      method: 'POST',
+      url: `/api/reviews/attempt/${attempt.id}/step`,
+      payload: {
+        requestId: 'req-e2e-recall',
+        expectedVersion: attempt.version,
+        action: 'RECALL',
+        answer: 'resilient',
+        responseTime: 1200,
+      },
+    });
+    expect(attemptRecallRes.statusCode).toBe(200);
+    const feedback = JSON.parse(attemptRecallRes.payload).data;
+
+    const attemptContinueRes = await app.inject({
+      method: 'POST',
+      url: `/api/reviews/attempt/${attempt.id}/step`,
+      payload: {
+        requestId: 'req-e2e-continue',
+        expectedVersion: feedback.version,
+        action: 'CONTINUE',
+        practice: true,
+      },
+    });
+    expect(attemptContinueRes.statusCode).toBe(200);
+    const outputStage = JSON.parse(attemptContinueRes.payload).data;
+    const aiMetadata = JSON.parse((await app.inject({ method: 'GET', url: '/api/ai/settings' })).payload).data;
+
+    const attemptOutputRes = await app.inject({
+      method: 'POST',
+      url: `/api/reviews/attempt/${attempt.id}/step`,
+      payload: {
+        requestId: 'req-e2e-output',
+        expectedVersion: outputStage.version,
+        action: 'OUTPUT',
+        answer: 'The team built a resilient service that recovered quickly.',
+        method: 'AI',
+        configRevision: aiMetadata.revision,
+      },
+    });
+    expect(attemptOutputRes.statusCode).toBe(200);
+    const readyForAssess = JSON.parse(attemptOutputRes.payload).data;
 
     const reviewResponse = await app.inject({
       method: 'POST',
       url: '/api/reviews',
       payload: {
-        wordId: sessionWordId,
-        reviewType: 'PRODUCTION',
+        requestId: 'req-e2e-complete',
+        attemptId: attempt.id,
+        expectedVersion: readyForAssess.version,
         rating: 'GOOD',
-        answer: 'The team built a resilient service that recovered quickly.',
-        correct: true,
       },
     });
     expect(reviewResponse.statusCode).toBe(200);
@@ -434,7 +500,7 @@ describe('learning lifecycle end to end', () => {
 
     const firstSeed = await seedDatabase(app.db);
     const firstBackupPayload = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
-    expect(firstBackupPayload.version).toBe(5);
+    expect(firstBackupPayload.version).toBe(6);
     expect(firstBackupPayload.application).toBe('Lexora');
     const firstBackup = firstBackupPayload.data;
     expect(firstBackup).toEqual(expect.objectContaining(Object.fromEntries(backupTables.map((table) => [table, expect.any(Array)]))));
@@ -458,7 +524,7 @@ describe('learning lifecycle end to end', () => {
 
     const secondSeed = await seedDatabase(app.db);
     const secondBackupPayload = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
-    expect(secondBackupPayload.version).toBe(5);
+    expect(secondBackupPayload.version).toBe(6);
     expect(secondBackupPayload.application).toBe('Lexora');
     const secondBackup = secondBackupPayload.data;
 

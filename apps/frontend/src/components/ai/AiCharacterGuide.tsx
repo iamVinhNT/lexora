@@ -176,6 +176,7 @@ export function AiCharacterGuide() {
 
   // When chat is closed: robot is mounted and focusable
   const pose: LexiPose = unavailable || settings.isError ? 'error' : 'idle';
+  const size = screen === 'review' ? 'h-16 w-14 md:h-28 md:w-24 [&>span]:h-full [&>span]:w-full' : 'min-h-28 min-w-24';
 
   return (
     <button
@@ -184,7 +185,7 @@ export function AiCharacterGuide() {
       type="button"
       onClick={handleOpen}
       aria-label={t('openAssistant')}
-      className={`${position} flex min-h-28 min-w-24 items-center justify-center rounded-2xl bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
+      className={`${position} flex ${size} items-center justify-center rounded-2xl bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
     >
       <LexiCharacter pose={pose} />
     </button>

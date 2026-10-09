@@ -31,10 +31,12 @@ import { VocabularyRepository } from './repositories/vocabulary.repository.js';
 import { ContextRepository } from './repositories/context.repository.js';
 import { SessionRepository } from './repositories/session.repository.js';
 import { ReviewRepository } from './repositories/review.repository.js';
+import { ReviewAttemptRepository } from './repositories/review-attempt.repository.js';
 import { VocabularyService } from './services/vocabulary.service.js';
 import { ContextService } from './services/context.service.js';
 import { SessionService } from './services/session.service.js';
 import { ReviewService } from './services/review.service.js';
+import { ReviewAttemptService } from './services/review-attempt.service.js';
 import { AnalyticsService } from './services/analytics.service.js';
 import {
   AiAssistantService,
@@ -142,7 +144,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await app.register(grammarRoutes, { db, curriculum: grammarCurriculum, service: grammarService });
     await app.register(grammarPracticeRoutes, { db, curriculum: grammarCurriculum });
     await app.register(studyRoutes, { service: studyService, aiPlanner });
-    await app.register(reviewRoutes, { db, service: reviewService });
+    await app.register(reviewRoutes, {
+      db,
+      service: reviewService,
+      attemptService: new ReviewAttemptService(db, new ReviewAttemptRepository(db.sqlite), {
+        outputGrader, getConfig, aiSettings: settings,
+      }),
+    });
     await app.register(analyticsRoutes, { db, service: analyticsService });
     await app.register(dataRoutes, { db });
     await app.register(aiRoutes, { service: aiAssistant, settings });

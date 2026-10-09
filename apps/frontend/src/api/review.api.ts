@@ -1,6 +1,6 @@
 /**
  * @file review.api.ts
- * @description Typed client contracts for the spaced-repetition review queue.
+ * @description Typed client contracts for the spaced-repetition adaptive review workflow.
  */
 import { apiFetch } from './client';
 
@@ -99,37 +99,150 @@ export type ReviewQueue = {
   total: number;
 };
 
-export type SubmitReviewPayload = {
+export interface ReviewAttemptPrompt {
+  type: 'RECALL' | 'CLOZE';
+  text: string;
+}
+
+export interface ReviewAttemptRecall {
+  answer: string;
+  result: 'EXACT' | 'TYPO' | 'INCORRECT';
+  score: number;
+  responseTime: number | null;
+}
+
+export interface ReviewAttemptOutput {
+  answer: string;
+  method: 'SELF' | 'AI';
+  score: number | null;
+  explanation: string | null;
+  suggestion: string | null;
+  configRevision: string | null;
+}
+
+export interface ReviewAttemptWord {
+  id: string;
+  word: string;
+  definition: string;
+  translation: string | null;
+  phonetic: string | null;
+  partOfSpeech: string | null;
+}
+
+export interface ReviewAttemptView {
+  id: string;
   wordId: string;
-  reviewType: ReviewType;
+  studyTaskId: string | null;
+  status: 'ACTIVE' | 'COMPLETED' | 'ABANDONED';
+  stage: 'RECALL' | 'FEEDBACK' | 'OUTPUT' | 'ASSESS';
+  version: number;
+  prompt: ReviewAttemptPrompt;
+  needsOutput: boolean;
+  weakReasons: string[];
+  recall: ReviewAttemptRecall | null;
+  output: ReviewAttemptOutput | null;
+  word: ReviewAttemptWord | null;
+  examples: Array<{ sentence: string; translation?: string | null }>;
+  contexts: Array<{ title: string; content: string }>;
+  intervalPreviews: Record<ReviewRating, string>;
+  effectiveRatings: Record<ReviewRating, ReviewRating>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompleteReviewResult {
+  attempt: ReviewAttemptView;
+  selfRating: ReviewRating;
+  effectiveRating: ReviewRating;
+  reviewState: {
+    id: string;
+    wordId: string;
+    interval: number;
+    easeFactor: number;
+    repetitions: number;
+    lapses: number;
+    dueAt: string;
+    lastReviewedAt: string | null;
+  };
+  learningProgress: {
+    wordId: string;
+    status: string;
+    recognitionScore: number;
+    recallScore: number;
+    productionScore: number;
+  };
+  reviewLog: {
+    id: string;
+    wordId: string;
+    reviewType: string;
+    rating: ReviewRating;
+    answer: string | null;
+    correct: boolean | null;
+    responseTime: number | null;
+    createdAt: string;
+  };
+}
+
+export interface CompleteReviewPayload {
+  requestId: string;
+  attemptId: string;
+  expectedVersion: number;
   rating: ReviewRating;
-  answer?: string | null;
-  correct?: boolean | null;
-  responseTime?: number | null;
+}
+export type ReviewLog = CompleteReviewResult['reviewLog'];
+
+export type ReviewStepAction =
+  | { action: 'RECALL'; answer: string; responseTime?: number }
+  | { action: 'CONTINUE'; practice?: boolean }
+  | { action: 'OUTPUT'; answer: string; method: 'SELF' | 'AI'; configRevision?: string };
+
+export type ReviewStepInput = {
+  requestId: string;
+  expectedVersion: number;
+} & ReviewStepAction;
+
+export type BeginReviewAttemptInput = {
+  requestId: string;
+  wordId: string;
   studyTaskId?: string;
 };
 
-export type ReviewLog = {
-  id?: string;
-  wordId?: string;
-  reviewType?: ReviewType;
-  rating?: ReviewRating;
-  answer?: string | null;
-  correct?: boolean | null;
-  responseTime?: number | null;
-  createdAt?: string;
-};
-
-export type SubmitReviewResult = {
-  reviewState: Partial<ReviewState> & Pick<ReviewState, 'interval'>;
-  learningProgress?: LearningProgress | null;
-  reviewLog?: ReviewLog | null;
+export type AbandonReviewAttemptInput = {
+  requestId: string;
+  expectedVersion: number;
 };
 
 export function getDueReviews(query: ReviewQuery = {}) {
   return apiFetch<ReviewQueue>('/api/reviews/due', { query });
 }
 
-export function submitReview(payload: SubmitReviewPayload) {
-  return apiFetch<SubmitReviewResult>('/api/reviews', { method: 'POST', body: payload });
+export function getActiveReviewAttempt(signal?: AbortSignal) {
+  return apiFetch<ReviewAttemptView | null>('/api/reviews/attempt', { signal });
+}
+
+export function beginReviewAttempt(input: BeginReviewAttemptInput) {
+  return apiFetch<ReviewAttemptView>('/api/reviews/attempt', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export function submitReviewAttemptStep(attemptId: string, input: ReviewStepInput) {
+  return apiFetch<ReviewAttemptView>(`/api/reviews/attempt/${attemptId}/step`, {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export function completeReview(payload: CompleteReviewPayload) {
+  return apiFetch<CompleteReviewResult>('/api/reviews', {
+    method: 'POST',
+    body: payload,
+  });
+}
+export function abandonReviewAttempt(attemptId: string, input: AbandonReviewAttemptInput) {
+  return apiFetch<ReviewAttemptView>(`/api/reviews/attempt/${attemptId}/abandon`, {
+    method: 'POST',
+    body: input,
+  });
 }

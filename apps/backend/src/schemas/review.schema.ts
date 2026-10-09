@@ -20,15 +20,14 @@ export const reviewRatingEnum = z.enum([
   'EASY',
 ]);
 
-export const submitReviewSchema = z.object({
-  wordId: z.string().uuid('wordId must be a valid UUID'),
-  reviewType: reviewTypeEnum,
-  rating: reviewRatingEnum,
-  answer: z.string().optional().nullable(),
-  correct: z.boolean().optional().nullable(),
-  responseTime: z.number().min(0, 'responseTime must be non-negative').optional().nullable(),
-  studyTaskId: z.string().min(1).max(100).optional(),
-});
+export const submitReviewSchema = z
+  .object({
+    requestId: z.string().trim().min(1).max(200),
+    attemptId: z.string().trim().min(1).max(200),
+    expectedVersion: z.number().int().positive(),
+    rating: reviewRatingEnum,
+  })
+  .strict();
 
 export const queryDueReviewsSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(50),

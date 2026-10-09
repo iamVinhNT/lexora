@@ -1,10 +1,26 @@
 /**
  * @file useReviewQueue.ts
- * @description React Query hooks for due review retrieval and rating mutations.
+ * @description React Query hooks for due review retrieval, active attempt lifecycle, and rating mutations.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { getDueReviews, submitReview, type ReviewCounts, type ReviewQuery, type ReviewQueue, type SubmitReviewPayload } from '../api/review.api';
+import {
+  abandonReviewAttempt,
+  beginReviewAttempt,
+  completeReview,
+  getActiveReviewAttempt,
+  getDueReviews,
+  submitReviewAttemptStep,
+  type AbandonReviewAttemptInput,
+  type BeginReviewAttemptInput,
+  type CompleteReviewPayload,
+  type CompleteReviewResult,
+  type ReviewAttemptView,
+  type ReviewCounts,
+  type ReviewQuery,
+  type ReviewQueue,
+  type ReviewStepInput,
+} from '../api/review.api';
 import { analyticsKeys } from './useAnalytics';
 import { invalidateStudyQueries } from './useStudyCalendar';
 
@@ -12,6 +28,7 @@ export const reviewKeys = {
   all: ['reviews'] as const,
   dueAll: ['reviews', 'due'] as const,
   due: (query: ReviewQuery = {}) => [...reviewKeys.dueAll, query] as const,
+  attempt: ['reviews', 'attempt'] as const,
 };
 
 export function useReviewQueue(query: ReviewQuery = {}) {
@@ -22,17 +39,52 @@ export function useReviewQueue(query: ReviewQuery = {}) {
   });
 }
 
-export function useSubmitReview() {
+export function useActiveReviewAttempt() {
+  return useQuery({
+    queryKey: reviewKeys.attempt,
+    queryFn: ({ signal }) => getActiveReviewAttempt(signal),
+    staleTime: 0,
+    retry: false,
+  });
+}
+
+export function useBeginReviewAttempt() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BeginReviewAttemptInput) => beginReviewAttempt(input),
+    onSuccess: (attempt) => {
+      queryClient.setQueryData<ReviewAttemptView | null>(reviewKeys.attempt, attempt);
+    },
+  });
+}
+
+export function useSubmitReviewStep() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ attemptId, input }: { attemptId: string; input: ReviewStepInput }) =>
+      submitReviewAttemptStep(attemptId, input),
+    onSuccess: (attempt) => {
+      queryClient.setQueryData<ReviewAttemptView | null>(reviewKeys.attempt, attempt);
+    },
+  });
+}
+
+export function useCompleteReview() {
   const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: (payload: SubmitReviewPayload) => submitReview(payload),
-    onSuccess: async (_result, variables) => {
+  return useMutation<CompleteReviewResult, Error, CompleteReviewPayload>({
+    mutationFn: (payload: CompleteReviewPayload) => completeReview(payload),
+    onSuccess: async (result) => {
+      queryClient.setQueryData<ReviewAttemptView | null>(reviewKeys.attempt, null);
+
       queryClient.setQueriesData<ReviewQueue>({ queryKey: reviewKeys.dueAll }, (queue) => {
         if (!queue) return queue;
-        const index = queue.items.findIndex((item) => item.wordId === variables.wordId);
+        const wordId = result.attempt.wordId;
+        const index = queue.items.findIndex((item) => item.wordId === wordId);
         if (index < 0) return queue;
-        const status = queue.items[index].learningProgress?.status?.toLowerCase() as keyof Omit<ReviewCounts, 'total'> | undefined;
+        const status = queue.items[index].learningProgress?.status?.toLowerCase() as
+          | keyof Omit<ReviewCounts, 'total'>
+          | undefined;
         const decrementCounts = (counts: ReviewCounts): ReviewCounts => ({
           ...counts,
           ...(status && status in counts ? { [status]: Math.max(0, counts[status] - 1) } : {}),
@@ -47,11 +99,25 @@ export function useSubmitReview() {
           total: Math.max(0, queue.total - 1),
         };
       });
+
       await Promise.all([
         invalidateStudyQueries(queryClient),
         queryClient.invalidateQueries({ queryKey: ['progress'] }),
         queryClient.invalidateQueries({ queryKey: analyticsKeys.all }),
+        queryClient.invalidateQueries({ queryKey: reviewKeys.all }),
       ]);
+    },
+  });
+}
+
+
+export function useAbandonReviewAttempt() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ attemptId, input }: { attemptId: string; input: AbandonReviewAttemptInput }) =>
+      abandonReviewAttempt(attemptId, input),
+    onSuccess: () => {
+      queryClient.setQueryData<ReviewAttemptView | null>(reviewKeys.attempt, null);
     },
   });
 }

@@ -4,6 +4,7 @@ import * as schema from './schema.js';
 import { createStudyTables } from './study-tables.js';
 import { createGrammarTables } from './grammar-tables.js';
 import { createGrammarPracticeTables } from './grammar-practice-tables.js';
+import { createReviewAttemptTables } from './review-attempt-tables.js';
 import { groupSessionItems } from '../domain/learning/grouping.js';
 
 export type AppDatabase = BetterSQLite3Database<typeof schema> & {
@@ -276,6 +277,7 @@ export function createTables(sqlite: Database.Database): void {
   createStudyTables(sqlite);
   createGrammarTables(sqlite);
   createGrammarPracticeTables(sqlite);
+  createReviewAttemptTables(sqlite);
 
   const attemptColumns = new Set((sqlite.prepare("PRAGMA table_info('learning_attempts')").all() as Array<{ name: string }>).map((column) => column.name));
   if (!attemptColumns.has('explanation')) sqlite.exec('ALTER TABLE learning_attempts ADD COLUMN explanation TEXT');

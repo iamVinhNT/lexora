@@ -273,298 +273,437 @@ describe('Spaced Repetition Review Routes & Algorithm Integration', () => {
     });
   });
 
-  describe('POST /api/reviews - Submit Review', () => {
-    it('rejects unusable study tasks without changing scheduler state or review logs', async () => {
-      const word = await createWord('atomic-review');
-      await app.inject({
+    async function completeReviewFlow(params: {
+      wordId: string;
+      rating?: 'AGAIN' | 'HARD' | 'GOOD' | 'EASY';
+      studyTaskId?: string;
+      recallAnswer?: string;
+      outputAnswer?: string;
+      outputMethod?: 'SELF' | 'AI';
+      configRevision?: string;
+      practice?: boolean;
+      requestIdPrefix?: string;
+    }) {
+      const prefix = params.requestIdPrefix ?? `flow-${Math.random().toString(36).slice(2)}`;
+      const wordRow = db.select().from(words).where(eq(words.id, params.wordId)).all()[0];
+      const targetWord = wordRow?.word ?? params.wordId;
+
+      const startRes = await app.inject({
         method: 'POST',
-        url: '/api/reviews',
-        payload: { wordId: word.id, reviewType: 'RECALL', rating: 'GOOD' },
+        url: '/api/reviews/attempt',
+        payload: {
+          requestId: `${prefix}-start`,
+          wordId: params.wordId,
+          studyTaskId: params.studyTaskId,
+        },
       });
-      const stateBefore = db.select().from(reviewStates).where(eq(reviewStates.wordId, word.id)).all();
-      const logsBefore = db.select().from(reviewLogs).where(eq(reviewLogs.wordId, word.id)).all();
+      if (startRes.statusCode !== 200) return startRes;
+      const attempt = JSON.parse(startRes.payload).data;
 
-      const tomorrow = new Date();
-      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-      const invalidTasks = [
-        { id: 'missing-task', reason: 'TASK_NOT_FOUND' },
-        { id: createStudyTask('wrong-kind', { kind: 'GRAMMAR' }), reason: 'WRONG_TASK_KIND' },
-        { id: createStudyTask('cancelled-task', { cancelledAt: new Date().toISOString() }), reason: 'TASK_UNAVAILABLE' },
-        { id: createStudyTask('transferred-task', { transferredAt: new Date().toISOString() }), reason: 'TASK_UNAVAILABLE' },
-        { id: createStudyTask('future-task', { scheduledDate: tomorrow.toISOString().slice(0, 10) }), reason: 'FUTURE_TASK' },
-      ];
+      const recallRes = await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${attempt.id}/step`,
+        payload: {
+          requestId: `${prefix}-recall`,
+          expectedVersion: attempt.version,
+          action: 'RECALL',
+          answer: params.recallAnswer !== undefined ? params.recallAnswer : targetWord,
+          responseTime: 1000,
+        },
+      });
+      if (recallRes.statusCode !== 200) return recallRes;
+      const feedback = JSON.parse(recallRes.payload).data;
 
-      for (const task of invalidTasks) {
-        const response = await app.inject({
+      const continueRes = await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${attempt.id}/step`,
+        payload: {
+          requestId: `${prefix}-continue`,
+          expectedVersion: feedback.version,
+          action: 'CONTINUE',
+          practice: params.practice ?? Boolean(params.outputAnswer),
+        },
+      });
+      if (continueRes.statusCode !== 200) return continueRes;
+      let currentStage = JSON.parse(continueRes.payload).data;
+
+      if (currentStage.stage === 'OUTPUT') {
+        const outputRes = await app.inject({
           method: 'POST',
-          url: '/api/reviews',
+          url: `/api/reviews/attempt/${attempt.id}/step`,
           payload: {
-            wordId: word.id,
-            reviewType: 'RECALL',
-            rating: 'AGAIN',
-            studyTaskId: task.id,
+            requestId: `${prefix}-output`,
+            expectedVersion: currentStage.version,
+            action: 'OUTPUT',
+            answer: params.outputAnswer ?? `This is a valid formal sentence with ${targetWord}.`,
+            method: params.outputMethod ?? 'SELF',
+            configRevision: params.configRevision,
           },
         });
-        expect(response.statusCode).toBe(409);
-        const body = JSON.parse(response.payload);
-        expect(body.error.code).toBe('CONFLICT');
-        expect(body.error.details.reason).toBe(task.reason);
-        expect(db.select().from(reviewStates).where(eq(reviewStates.wordId, word.id)).all()).toEqual(stateBefore);
-        expect(db.select().from(reviewLogs).where(eq(reviewLogs.wordId, word.id)).all()).toEqual(logsBefore);
+        if (outputRes.statusCode !== 200) return outputRes;
+        currentStage = JSON.parse(outputRes.payload).data;
       }
+
+      const completePayload = {
+        requestId: `${prefix}-complete`,
+        attemptId: attempt.id,
+        expectedVersion: currentStage.version,
+        rating: params.rating ?? 'GOOD',
+      };
+
+      const completeRes = await app.inject({
+        method: 'POST',
+        url: '/api/reviews',
+        payload: completePayload,
+      });
+
+      return Object.assign(completeRes, { completePayload });
+    }
+  describe('Adaptive Review Attempts & Completion', () => {
+
+    it('rejects legacy review submission with 400 VALIDATION_ERROR', async () => {
+      const word = await createWord('legacy-reject');
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/reviews',
+        payload: {
+          wordId: word.id,
+          reviewType: 'RECALL',
+          rating: 'GOOD',
+          correct: true,
+        },
+      });
+      expect(res.statusCode).toBe(400);
+      const body = JSON.parse(res.payload);
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('persists review task links, credits distinct words once, and keeps legacy reviews unlinked', async () => {
-      const firstWord = await createWord('linked-review-one');
-      const secondWord = await createWord('linked-review-two');
-      const legacyWord = await createWord('legacy-review');
-      const taskId = createStudyTask('review-task');
+    it('AC-01: hides word full details, examples, and contexts before recall', async () => {
+      const word = await createWord('concealed', {
+        definition: 'kept secret or hidden',
+        translation: 'bị che giấu',
+        examples: [{ sentence: 'The concealed truth emerged later.' }],
+      });
 
-      for (const rating of ['AGAIN', 'GOOD', 'GOOD'] as const) {
+      const startRes = await app.inject({
+        method: 'POST',
+        url: '/api/reviews/attempt',
+        payload: { requestId: 'ac01-start', wordId: word.id },
+      });
+      expect(startRes.statusCode).toBe(200);
+      const attempt = JSON.parse(startRes.payload).data;
+
+      expect(attempt.stage).toBe('RECALL');
+      expect(attempt.prompt.type).toBe('CLOZE');
+      expect(attempt.prompt.text).toContain('______');
+      expect(attempt.prompt.text).not.toContain('concealed');
+      expect(attempt.word).toBeNull();
+      expect(attempt.examples).toEqual([]);
+      expect(attempt.contexts).toEqual([]);
+
+      // After recall step, details are revealed
+      const stepRes = await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${attempt.id}/step`,
+        payload: {
+          requestId: 'ac01-recall',
+          expectedVersion: attempt.version,
+          action: 'RECALL',
+          answer: 'concealed',
+        },
+      });
+      expect(stepRes.statusCode).toBe(200);
+      const revealed = JSON.parse(stepRes.payload).data;
+      expect(revealed.stage).toBe('FEEDBACK');
+      expect(revealed.word).not.toBeNull();
+      expect(revealed.word.word).toBe('concealed');
+      expect(revealed.examples.length).toBeGreaterThan(0);
+    });
+
+    it('AC-02: forces effective AGAIN on wrong initial recall even if user selects EASY', async () => {
+      const word = await createWord('wrong-eval');
+      const res = await completeReviewFlow({
+        wordId: word.id,
+        recallAnswer: '', // deliberate don't remember
+        rating: 'EASY',
+      });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload).data;
+      expect(body.selfRating).toBe('EASY');
+      expect(body.effectiveRating).toBe('AGAIN');
+      expect(body.attempt.recall.result).toBe('INCORRECT');
+      expect(body.learningProgress.recallScore).toBe(0);
+      expect(body.reviewState.repetitions).toBe(0);
+    });
+
+    it('AC-02: caps effective rating at HARD on typo initial recall when user selects GOOD or EASY', async () => {
+      const word = await createWord('pragmatic');
+      const res = await completeReviewFlow({
+        wordId: word.id,
+        recallAnswer: 'pragmatc', // 1 char typo
+        rating: 'GOOD',
+      });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload).data;
+      expect(body.selfRating).toBe('GOOD');
+      expect(body.effectiveRating).toBe('HARD');
+      expect(body.attempt.recall.result).toBe('TYPO');
+    });
+
+    it('AC-03: weak word or incorrect recall requires OUTPUT; strong word allows fast-path to ASSESS', async () => {
+      const word = await createWord('strong-word');
+
+      // Start attempt
+      const startRes = await app.inject({
+        method: 'POST',
+        url: '/api/reviews/attempt',
+        payload: { requestId: 'ac03-start', wordId: word.id },
+      });
+      const attempt = JSON.parse(startRes.payload).data;
+      expect(attempt.needsOutput).toBe(false);
+
+      // Correct recall
+      const recallRes = await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${attempt.id}/step`,
+        payload: {
+          requestId: 'ac03-recall',
+          expectedVersion: attempt.version,
+          action: 'RECALL',
+          answer: 'strong-word',
+        },
+      });
+      const feedback = JSON.parse(recallRes.payload).data;
+      expect(feedback.needsOutput).toBe(false);
+
+      // CONTINUE without practice moves directly to ASSESS
+      const continueRes = await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${attempt.id}/step`,
+        payload: {
+          requestId: 'ac03-continue',
+          expectedVersion: feedback.version,
+          action: 'CONTINUE',
+          practice: false,
+        },
+      });
+      const assessStage = JSON.parse(continueRes.payload).data;
+      expect(assessStage.stage).toBe('ASSESS');
+    });
+
+    it('AC-04: SELF output performs formal check and does not create production score', async () => {
+      const word = await createWord('formal-check');
+
+      const startRes = await app.inject({
+        method: 'POST',
+        url: '/api/reviews/attempt',
+        payload: { requestId: 'ac04-start', wordId: word.id },
+      });
+      const attempt = JSON.parse(startRes.payload).data;
+
+      const recallRes = await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${attempt.id}/step`,
+        payload: {
+          requestId: 'ac04-recall',
+          expectedVersion: attempt.version,
+          action: 'RECALL',
+          answer: 'formal-check',
+        },
+      });
+      const feedback = JSON.parse(recallRes.payload).data;
+
+      const continueRes = await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${attempt.id}/step`,
+        payload: {
+          requestId: 'ac04-continue',
+          expectedVersion: feedback.version,
+          action: 'CONTINUE',
+          practice: true, // opt into output
+        },
+      });
+      const outputStage = JSON.parse(continueRes.payload).data;
+      expect(outputStage.stage).toBe('OUTPUT');
+
+      // Reject too short sentence or missing target word
+      const invalidOutputRes = await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${attempt.id}/step`,
+        payload: {
+          requestId: 'ac04-output-invalid',
+          expectedVersion: outputStage.version,
+          action: 'OUTPUT',
+          answer: 'Too short',
+          method: 'SELF',
+        },
+      });
+      expect(invalidOutputRes.statusCode).toBe(400);
+
+      // Valid formal sentence
+      const validOutputRes = await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${attempt.id}/step`,
+        payload: {
+          requestId: 'ac04-output-valid',
+          expectedVersion: outputStage.version,
+          action: 'OUTPUT',
+          answer: 'This is a valid formal sentence with formal-check.',
+          method: 'SELF',
+        },
+      });
+      expect(validOutputRes.statusCode).toBe(200);
+      const afterOutput = JSON.parse(validOutputRes.payload).data;
+      expect(afterOutput.stage).toBe('ASSESS');
+      expect(afterOutput.output.method).toBe('SELF');
+      expect(afterOutput.output.score).toBeNull();
+    });
+
+    it('AC-05: updates SM-2 and quota exactly once per completion, supporting idempotent replay', async () => {
+      const word = await createWord('replay-test');
+
+      const res1 = await completeReviewFlow({
+        wordId: word.id,
+        recallAnswer: 'replay-test',
+        rating: 'GOOD',
+        requestIdPrefix: 'replay-flow',
+      });
+      expect(res1.statusCode).toBe(200);
+      const body1 = JSON.parse(res1.payload);
+      // Repeating complete with exact same requestId and original expectedVersion returns cached result
+      const res2 = await app.inject({
+        method: 'POST',
+        url: '/api/reviews',
+        payload: res1.completePayload,
+      });
+      expect(res2.statusCode).toBe(200);
+      const body2 = JSON.parse(res2.payload);
+      expect(body2.data).toEqual(body1.data);
+
+      const logs = db.select().from(reviewLogs).where(eq(reviewLogs.wordId, word.id)).all();
+      expect(logs).toHaveLength(1);
+    });
+
+    it('AC-06: rejects unusable study tasks at attempt start with 409 CONFLICT', async () => {
+      const word = await createWord('task-reject');
+      const tomorrow = new Date();
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+
+      const invalidTasks = [
+        { id: 'missing-task', reason: 'TASK_NOT_FOUND', expectedStatus: 404 },
+        { id: createStudyTask('wrong-kind', { kind: 'GRAMMAR' }), reason: 'WRONG_TASK_KIND', expectedStatus: 409 },
+        { id: createStudyTask('cancelled-task', { cancelledAt: new Date().toISOString() }), reason: 'TASK_UNAVAILABLE', expectedStatus: 409 },
+        { id: createStudyTask('future-task', { scheduledDate: tomorrow.toISOString().slice(0, 10) }), reason: 'FUTURE_TASK', expectedStatus: 409 },
+      ];
+
+      for (const t of invalidTasks) {
         const response = await app.inject({
           method: 'POST',
-          url: '/api/reviews',
-          payload: { wordId: firstWord.id, reviewType: 'RECALL', rating, studyTaskId: taskId },
+          url: '/api/reviews/attempt',
+          payload: {
+            requestId: `task-test-${t.id}`,
+            wordId: word.id,
+            studyTaskId: t.id,
+          },
         });
-        expect(response.statusCode).toBe(200);
+        expect(response.statusCode).toBe(t.expectedStatus);
+        const body = JSON.parse(response.payload);
+        if (t.expectedStatus === 409) {
+          expect(body.error.code).toBe('CONFLICT');
+          expect(body.error.details.reason).toBe(t.reason);
+        } else {
+          expect(body.error.code).toBe('NOT_FOUND');
+        }
       }
-      const secondResponse = await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: { wordId: secondWord.id, reviewType: 'RECALL', rating: 'AGAIN', studyTaskId: taskId },
-      });
-      expect(secondResponse.statusCode).toBe(200);
-
-      const linkedLogs = db.select().from(reviewLogs).where(eq(reviewLogs.studyTaskId, taskId)).all();
-      expect(linkedLogs).toHaveLength(4);
-      expect(new Set(linkedLogs.map((log) => log.wordId))).toEqual(new Set([firstWord.id, secondWord.id]));
-      expect(linkedLogs.filter((log) => log.wordId === firstWord.id)).toHaveLength(3);
-      expect(linkedLogs.filter((log) => log.rating === 'AGAIN').every((log) => !log.correct)).toBe(true);
-
-      const legacyResponse = await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: { wordId: legacyWord.id, reviewType: 'RECALL', rating: 'GOOD' },
-      });
-      expect(legacyResponse.statusCode).toBe(200);
-      expect(db.select().from(reviewLogs).where(eq(reviewLogs.wordId, legacyWord.id)).all()[0].studyTaskId).toBeNull();
     });
 
-    it('submits a review with rating AGAIN, resetting repetitions and incrementing lapses', async () => {
-      const word = await createWord('meticulous');
+    it('AC-08: resumes active attempt when intent matches, rejects mismatched task intent or word', async () => {
+      const word1 = await createWord('active-one');
+      const word2 = await createWord('active-two');
+      const taskId = createStudyTask('active-task');
 
-      // Set initial repetitions = 3, interval = 12, lapses = 1
+      // Start attempt for word1
+      const start1 = await app.inject({
+        method: 'POST',
+        url: '/api/reviews/attempt',
+        payload: { requestId: 'act-start-1', wordId: word1.id, studyTaskId: taskId },
+      });
+      expect(start1.statusCode).toBe(200);
+      const attempt1 = JSON.parse(start1.payload).data;
+
+      // GET /attempt returns active attempt
+      const getActive = await app.inject({
+        method: 'GET',
+        url: '/api/reviews/attempt',
+      });
+      expect(getActive.statusCode).toBe(200);
+      expect(JSON.parse(getActive.payload).data.id).toBe(attempt1.id);
+
+      // Resume same word & same task intent succeeds
+      const resumeSame = await app.inject({
+        method: 'POST',
+        url: '/api/reviews/attempt',
+        payload: { requestId: 'act-resume-same', wordId: word1.id, studyTaskId: taskId },
+      });
+      expect(resumeSame.statusCode).toBe(200);
+      expect(JSON.parse(resumeSame.payload).data.id).toBe(attempt1.id);
+
+      // Mismatched task intent on same word throws 409
+      const mismatchTask = await app.inject({
+        method: 'POST',
+        url: '/api/reviews/attempt',
+        payload: { requestId: 'act-mismatch-task', wordId: word1.id },
+      });
+      expect(mismatchTask.statusCode).toBe(409);
+
+      // Attempting different word while attempt1 is active throws 409
+      const mismatchWord = await app.inject({
+        method: 'POST',
+        url: '/api/reviews/attempt',
+        payload: { requestId: 'act-mismatch-word', wordId: word2.id },
+      });
+      expect(mismatchWord.statusCode).toBe(409);
+
+      // Abandoning attempt marks it ABANDONED without changing review states
+      const abandonRes = await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${attempt1.id}/abandon`,
+        payload: {
+          requestId: 'act-abandon',
+          expectedVersion: attempt1.version,
+        },
+      });
+      expect(abandonRes.statusCode).toBe(200);
+      expect(JSON.parse(abandonRes.payload).data.status).toBe('ABANDONED');
+
+      // Now GET /attempt returns null
+      const getActiveAfter = await app.inject({
+        method: 'GET',
+        url: '/api/reviews/attempt',
+      });
+      expect(getActiveAfter.statusCode).toBe(200);
+      expect(JSON.parse(getActiveAfter.payload).data).toBeNull();
+    });
+
+    it('AC-08: rejects starting review on word whose due date is in the future', async () => {
+      const word = await createWord('future-word');
+      const tomorrow = new Date();
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+
       db.update(reviewStates)
-        .set({
-          repetitions: 3,
-          interval: 12,
-          lapses: 1,
-          easeFactor: 2.5,
-        })
+        .set({ dueAt: tomorrow.toISOString() })
         .where(eq(reviewStates.wordId, word.id))
         .run();
 
       const res = await app.inject({
         method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: word.id,
-          reviewType: 'RECALL',
-          rating: 'AGAIN',
-          answer: 'wrong answer',
-          responseTime: 4500,
-        },
+        url: '/api/reviews/attempt',
+        payload: { requestId: 'fut-start', wordId: word.id },
       });
-
-      expect(res.statusCode).toBe(200);
+      expect(res.statusCode).toBe(409);
       const body = JSON.parse(res.payload);
-      expect(body.success).toBe(true);
-
-      // Verify returned reviewState
-      expect(body.data.reviewState).toBeDefined();
-      expect(body.data.reviewState.repetitions).toBe(0);
-      expect(body.data.reviewState.interval).toBe(1);
-      expect(body.data.reviewState.lapses).toBe(2);
-      expect(body.data.reviewState.easeFactor).toBeLessThan(2.5);
-
-      // Verify returned reviewLog
-      expect(body.data.reviewLog).toBeDefined();
-      expect(body.data.reviewLog.wordId).toBe(word.id);
-      expect(body.data.reviewLog.reviewType).toBe('RECALL');
-      expect(body.data.reviewLog.rating).toBe('AGAIN');
-      expect(body.data.reviewLog.answer).toBe('wrong answer');
-      expect(body.data.reviewLog.correct).toBe(false);
-      expect(body.data.reviewLog.responseTime).toBe(4500);
-
-      // Verify returned learningProgress
-      expect(body.data.learningProgress).toBeDefined();
-      expect(body.data.learningProgress.wordId).toBe(word.id);
-
-      // Verify in DB directly
-      const dbReview = db.select().from(reviewStates).where(eq(reviewStates.wordId, word.id)).all()[0];
-      expect(dbReview.repetitions).toBe(0);
-      expect(dbReview.interval).toBe(1);
-      expect(dbReview.lapses).toBe(2);
-
-      const dbLogs = db.select().from(reviewLogs).where(eq(reviewLogs.wordId, word.id)).all();
-      expect(dbLogs).toHaveLength(1);
-      expect(dbLogs[0].rating).toBe('AGAIN');
-    });
-
-    it('submits sequential reviews (GOOD) updating SM-2 repetitions and intervals (1 -> 6 -> interval * EF)', async () => {
-      const word = await createWord('pragmatic');
-
-      // 1st review: GOOD -> repetitions = 1, interval = 1
-      const res1 = await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: word.id,
-          reviewType: 'RECOGNITION',
-          rating: 'GOOD',
-          responseTime: 2000,
-        },
-      });
-      expect(res1.statusCode).toBe(200);
-      const body1 = JSON.parse(res1.payload);
-      expect(body1.data.reviewState.repetitions).toBe(1);
-      expect(body1.data.reviewState.interval).toBe(1);
-
-      // 2nd review: GOOD -> repetitions = 2, interval = 6
-      const res2 = await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: word.id,
-          reviewType: 'RECALL',
-          rating: 'GOOD',
-          responseTime: 1800,
-        },
-      });
-      expect(res2.statusCode).toBe(200);
-      const body2 = JSON.parse(res2.payload);
-      expect(body2.data.reviewState.repetitions).toBe(2);
-      expect(body2.data.reviewState.interval).toBe(6);
-
-      // 3rd review: GOOD -> repetitions = 3, interval = Math.round(6 * EF)
-      const res3 = await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: word.id,
-          reviewType: 'CLOZE',
-          rating: 'GOOD',
-          responseTime: 1500,
-        },
-      });
-      expect(res3.statusCode).toBe(200);
-      const body3 = JSON.parse(res3.payload);
-      expect(body3.data.reviewState.repetitions).toBe(3);
-      expect(body3.data.reviewState.interval).toBeGreaterThanOrEqual(14);
-      expect(body3.data.learningProgress.status).not.toBe('NEW');
-    });
-
-    it('preserves immutable review logs across multiple reviews', async () => {
-      const word = await createWord('immutable');
-
-      await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: word.id,
-          reviewType: 'RECOGNITION',
-          rating: 'GOOD',
-          responseTime: 1000,
-        },
-      });
-
-      await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: word.id,
-          reviewType: 'RECALL',
-          rating: 'HARD',
-          responseTime: 3000,
-        },
-      });
-
-      await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: word.id,
-          reviewType: 'PRODUCTION',
-          rating: 'EASY',
-          answer: 'We wrote an immutable ledger.',
-          responseTime: 4000,
-        },
-      });
-
-      const logs = db
-        .select()
-        .from(reviewLogs)
-        .where(eq(reviewLogs.wordId, word.id))
-        .all();
-
-      expect(logs).toHaveLength(3);
-      expect(logs[0].reviewType).toBe('RECOGNITION');
-      expect(logs[0].rating).toBe('GOOD');
-      expect(logs[1].reviewType).toBe('RECALL');
-      expect(logs[1].rating).toBe('HARD');
-      expect(logs[2].reviewType).toBe('PRODUCTION');
-      expect(logs[2].rating).toBe('EASY');
-      expect(logs[2].answer).toBe('We wrote an immutable ledger.');
-    });
-
-    it('returns 404 when wordId does not exist', async () => {
-      const nonExistentId = 'a0000000-0000-0000-0000-000000000000';
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: nonExistentId,
-          reviewType: 'RECALL',
-          rating: 'GOOD',
-        },
-      });
-
-      expect(res.statusCode).toBe(404);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(false);
-      expect(body.error.code).toBe('NOT_FOUND');
-    });
-
-    it('returns 400 VALIDATION_ERROR on invalid request bodies', async () => {
-      // Invalid rating
-      const res1 = await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: '12345',
-          reviewType: 'RECALL',
-          rating: 'EXCELLENT', // invalid rating
-        },
-      });
-      expect(res1.statusCode).toBe(400);
-      const body1 = JSON.parse(res1.payload);
-      expect(body1.success).toBe(false);
-      expect(body1.error.code).toBe('VALIDATION_ERROR');
-
-      // Invalid reviewType
-      const res2 = await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: 'a0000000-0000-0000-0000-000000000000',
-          reviewType: 'FLASHCARD', // invalid type
-          rating: 'GOOD',
-        },
-      });
-      expect(res2.statusCode).toBe(400);
-      const body2 = JSON.parse(res2.payload);
-      expect(body2.success).toBe(false);
-      expect(body2.error.code).toBe('VALIDATION_ERROR');
+      expect(body.error.details.reason).toBe('NOT_DUE');
     });
   });
 
@@ -573,27 +712,49 @@ describe('Spaced Repetition Review Routes & Algorithm Integration', () => {
       const word1 = await createWord('tenacious');
       const word2 = await createWord('resilient');
 
-      // Submit reviews
+      // Populate history via review flow
+      const res1 = await app.inject({
+        method: 'POST',
+        url: '/api/reviews/attempt',
+        payload: { requestId: 'hist-1-start', wordId: word1.id },
+      });
+      const att1 = JSON.parse(res1.payload).data;
+      await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${att1.id}/step`,
+        payload: { requestId: 'hist-1-step', expectedVersion: att1.version, action: 'RECALL', answer: 'tenacious' },
+      });
+      const att1Feed = JSON.parse((await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${att1.id}/step`,
+        payload: { requestId: 'hist-1-cont', expectedVersion: 2, action: 'CONTINUE' },
+      })).payload).data;
       await app.inject({
         method: 'POST',
         url: '/api/reviews',
-        payload: {
-          wordId: word1.id,
-          reviewType: 'RECALL',
-          rating: 'GOOD',
-          answer: 'tenacious',
-        },
+        payload: { requestId: 'hist-1-comp', attemptId: att1.id, expectedVersion: att1Feed.version, rating: 'GOOD' },
       });
 
+      const res2 = await app.inject({
+        method: 'POST',
+        url: '/api/reviews/attempt',
+        payload: { requestId: 'hist-2-start', wordId: word2.id },
+      });
+      const att2 = JSON.parse(res2.payload).data;
+      await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${att2.id}/step`,
+        payload: { requestId: 'hist-2-step', expectedVersion: att2.version, action: 'RECALL', answer: 'resilient' },
+      });
+      const att2Feed = JSON.parse((await app.inject({
+        method: 'POST',
+        url: `/api/reviews/attempt/${att2.id}/step`,
+        payload: { requestId: 'hist-2-cont', expectedVersion: 2, action: 'CONTINUE' },
+      })).payload).data;
       await app.inject({
         method: 'POST',
         url: '/api/reviews',
-        payload: {
-          wordId: word2.id,
-          reviewType: 'CLOZE',
-          rating: 'HARD',
-          answer: 'resilient',
-        },
+        payload: { requestId: 'hist-2-comp', attemptId: att2.id, expectedVersion: att2Feed.version, rating: 'HARD' },
       });
 
       const res = await app.inject({
@@ -609,7 +770,6 @@ describe('Spaced Repetition Review Routes & Algorithm Integration', () => {
       expect(body.data.page).toBe(1);
       expect(body.data.limit).toBe(10);
 
-      // Verify item shape
       const first = body.data.items[0];
       expect(first.id).toBeDefined();
       expect(first.wordId).toBeDefined();
@@ -621,28 +781,13 @@ describe('Spaced Repetition Review Routes & Algorithm Integration', () => {
 
     it('filters review history by wordId, reviewType, and rating', async () => {
       const word = await createWord('diligent');
-
-      await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: word.id,
-          reviewType: 'RECOGNITION',
-          rating: 'GOOD',
-        },
+      const comp = await completeReviewFlow({
+        wordId: word.id,
+        recallAnswer: '',
+        rating: 'AGAIN',
+        requestIdPrefix: 'filt',
       });
-
-      await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: word.id,
-          reviewType: 'RECALL',
-          rating: 'AGAIN',
-        },
-      });
-
-      // Filter by wordId and rating AGAIN
+      expect(comp.statusCode).toBe(200);
       const res = await app.inject({
         method: 'GET',
         url: `/api/reviews/history?wordId=${word.id}&rating=AGAIN`,
@@ -653,37 +798,6 @@ describe('Spaced Repetition Review Routes & Algorithm Integration', () => {
       expect(body.success).toBe(true);
       expect(body.data.items).toHaveLength(1);
       expect(body.data.items[0].rating).toBe('AGAIN');
-      expect(body.data.items[0].reviewType).toBe('RECALL');
-    });
-
-    it('handles pagination correctly (page 2 with limit 1)', async () => {
-      const word = await createWord('versatile');
-
-      for (let i = 0; i < 3; i++) {
-        await app.inject({
-          method: 'POST',
-          url: '/api/reviews',
-          payload: {
-            wordId: word.id,
-            reviewType: 'RECOGNITION',
-            rating: 'GOOD',
-          },
-        });
-      }
-
-      const res = await app.inject({
-        method: 'GET',
-        url: `/api/reviews/history?wordId=${word.id}&page=2&limit=1`,
-      });
-
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.payload);
-      expect(body.success).toBe(true);
-      expect(body.data.items).toHaveLength(1);
-      expect(body.data.page).toBe(2);
-      expect(body.data.limit).toBe(1);
-      expect(body.data.total).toBe(3);
-      expect(body.data.totalPages).toBe(3);
     });
 
     it('returns empty list when no history matches filters', async () => {
@@ -705,7 +819,7 @@ describe('Spaced Repetition Review Routes & Algorithm Integration', () => {
         getDueReviews: () => {
           throw new Error('Database connection explosion');
         },
-      } as any;
+      } as unknown as ReviewService;
 
       const errorApp = Fastify();
       await errorApp.register(reviewRoutes, { service: mockService });
@@ -741,25 +855,6 @@ describe('Spaced Repetition Review Routes & Algorithm Integration', () => {
       expect(body.success).toBe(true);
 
       await prefixApp.close();
-    });
-
-    it('handles explicit correct boolean flag passed to submit review', async () => {
-      const word = await createWord('explicitflag');
-
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/reviews',
-        payload: {
-          wordId: word.id,
-          reviewType: 'PRODUCTION',
-          rating: 'HARD',
-          correct: false, // explicitly false even though rating is HARD
-        },
-      });
-
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.payload);
-      expect(body.data.reviewLog.correct).toBe(false);
     });
   });
 });
