@@ -25,3 +25,7 @@ Mỗi record nên ghi:
 - Nội dung chính.
 - Impact/compatibility.
 - Verification nếu có.
+
+## Recent records
+
+- [2026-10-09 — Unreleased AI planner, backup v7 and assistant API migration](./2026-10-09/docs-unreleased-feature-audit.md)

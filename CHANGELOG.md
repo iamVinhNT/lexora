@@ -11,6 +11,7 @@
 - Settings supports one OpenAI-compatible provider, multiple model names and one active model; API_KEY is AES-256-GCM encrypted in SQLite with a protected key file outside learner backups.
 - Hybrid conversation memory combines a structured rolling summary, recent complete turns and relevant original excerpts with source IDs. Bounded compaction runs only when needed, at most once per send; invalid summaries fall back to honest limited-memory mode.
 - `pnpm run desktop:local` builds and launches the local Electron app through the existing desktop development flow, without generating installers.
+- [AI-assisted seven-day study planning](./changes-log/2026-10-09/docs-unreleased-feature-audit.md#ai-weekly-study-planner) proposes learning, review and grammar tasks using saved preferences, current calendar, weak-word counts and grammar progress; suggestions remain editable and are saved only when selected and confirmed.
 - Grammar v2: 160 internally AI-reviewed lessons, 960 bilingual examples, 1,920 controlled exercises, 640 transfer review items, and 320 original-writing prompts.
 - Separate grammar spaced-review queue, immutable review/output history, self-assessment rubric, and first-attempt recognition/recall accuracy.
 - Grammar catalog level/topic filters and responsive, keyboard-accessible practice for English/Vietnamese and light/dark interfaces.
@@ -33,7 +34,7 @@
 - Empty due queues do not falsely complete calendar review targets; partial tasks retain their recorded count and offer a return to the calendar.
 
 ### Changed
-- Learner backup v7 includes raw AI conversations and request outcomes, excluding summary caches and credentials. History is plaintext in SQLite/backups; progress reset retains transcripts as historical evidence, while full reset removes history.
+- Learner backup v7 preserves adaptive vocabulary review attempts/receipts, grammar output/review snapshots and raw AI conversations/request outcomes, excluding summary caches and credentials. History is plaintext in SQLite/backups; progress reset retains transcripts as historical evidence, while full reset removes history.
 - AI Assistant streams replies over SSE with cancellation, bounded output, validated completion, and recoverable mid-stream errors that retain drafts.
 - Assistant context follows the current menu and saved collections rather than the selected word, lesson, or context. Content and progress have separate sharing controls; bounded samples disclose omitted data.
 - Resize chat with pointer dragging, arrow keys, or preset sizes. Dragging uses animation-frame DOM updates and commits React state only on release. Remove the separate show/hide Lexi feature.
@@ -41,11 +42,12 @@
 - Compact bilingual review workspace, stage-specific actions, keyboard boundaries and a smaller mobile Lexi launcher leave controls clear on short screens.
 - Chat, study planning, and output grading share one backend AI configuration; the former grammar tutor endpoint and bottom-of-lesson form are removed.
 - Saved AI settings apply immediately to assistant, planner and output grading. Configuration revisions reject stale requests; sharing saved conversation history with another provider/model requires explicit confirmation.
-- Backup v6 preserves adaptive vocabulary review attempts/receipts alongside grammar output/review snapshots. Restoring v1–v5 warns before replacing adaptive evidence; v1–v4 also warn about missing grammar practice.
 - Preserve 34 retired lesson IDs, historical attempts, completion dates, and calendar links. New lessons use revision-pinned v2 IDs; old lesson requests return `CURRICULUM_CHANGED` instead of silently regrading or migrating evidence.
 
 ### Upgrade notes
 - Upgrade backend, frontend, and desktop together after creating a backup. Previous binaries cannot restore v7; rollback requires a compatible pre-upgrade backup on a separate database.
+- Restoring v1–v6 replaces current AI history without restoring conversations or turns; preview warns before confirmation. Restoring v1–v5 also clears adaptive review attempts/receipts, and v1–v4 lacks grammar practice snapshots.
+- `/api/ai/chat` now returns SSE `meta`, `delta`, and `done`/`error` events instead of a JSON reply. Create/select a conversation first, then send `conversationId`, `requestId`, `expectedConversationRevision` and `configRevision`; context accepts only `{kind:"general"}` or `{kind:"screen",screen}`. Remove client-supplied `history` and resource-ID context descriptors; reuse the request ID only when replaying the same send. See the [detailed migration record](./changes-log/2026-10-09/docs-unreleased-feature-audit.md#assistant-chat-api-migration).
 - Lesson completion means all controlled items were submitted, not mastery. Writing scores are self-assessed; course level labels and internal AI review are not CEFR certification.
 - Review completion now requires `{requestId, attemptId, expectedVersion, rating}`; direct `wordId`/`correct` submissions are rejected. Self-check saves practice without claiming a graded Production score.
 - AI configuration now uses `API_KEY`, `BASE_URL`, `AI_MODEL`, and `AI_TIMEOUT_MS` for every capability. Rename legacy `OPENAI_API_KEY`/`OPENAI_MODEL`/`OPENAI_TIMEOUT_MS` variables before restarting; no environment files are changed automatically.
