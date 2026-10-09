@@ -14,7 +14,7 @@ let reply: unknown;
 let formatRequested: boolean;
 let calls: number;
 let revision: string;
-
+let conversationId: string;
 function parseSseEvents(body: string): Array<{ event: string; data: Record<string, unknown> }> {
   const events: Array<{ event: string; data: Record<string, unknown> }> = [];
   const frames = body.split('\n\n');
@@ -118,6 +118,18 @@ beforeEach(async () => {
     },
   });
   revision = (await app.inject({ method: 'GET', url: '/api/ai/settings' })).json().data.revision;
+  const convRes = await app.inject({
+    method: 'POST',
+    url: '/api/ai/conversations',
+    payload: {
+      context: { kind: 'general' },
+      locale: 'vi',
+      includeContent: true,
+      includeProgress: false,
+      configRevision: revision,
+    },
+  });
+  conversationId = convRes.json().data.id;
 });
 
 afterEach(async () => {
@@ -126,13 +138,22 @@ afterEach(async () => {
 });
 
 function ask(bodyOverrides: Record<string, unknown> = {}) {
+  const targetConversationId = typeof bodyOverrides.conversationId === 'string' ? bodyOverrides.conversationId : conversationId;
+  const conversationRow = app.db.sqlite.prepare('SELECT revision FROM ai_conversations WHERE id = ?').get(targetConversationId);
+  if (!conversationRow || typeof conversationRow !== 'object' || !('revision' in conversationRow) || typeof conversationRow.revision !== 'number') {
+    throw new Error('Conversation revision is unavailable');
+  }
   return app.inject({
     method: 'POST',
     url: '/api/ai/chat',
     payload: {
+      conversationId: targetConversationId,
+      requestId: crypto.randomUUID(),
+      expectedConversationRevision: conversationRow.revision,
       message: 'hi',
       locale: 'vi',
       context: { kind: 'general' },
+      includeContent: true,
       includeProgress: false,
       configRevision: revision,
       ...bodyOverrides,
@@ -142,7 +163,6 @@ function ask(bodyOverrides: Record<string, unknown> = {}) {
 
 describe('conversational provider compatibility', () => {
   it('accepts ordinary provider text without requiring a JSON schema or tool response', async () => {
-    const before = app.db.sqlite.serialize();
     const result = await ask();
     expect(result.statusCode).toBe(200);
     expect(result.headers['content-type']).toContain('text/event-stream');
@@ -152,7 +172,10 @@ describe('conversational provider compatibility', () => {
     expect(done?.data.configRevision).toBe(revision);
     expect(formatRequested).toBe(false);
     expect(calls).toBe(1);
-    expect(before.equals(app.db.sqlite.serialize())).toBe(true);
+
+    const turn = app.db.sqlite.prepare('SELECT * FROM ai_conversation_turns WHERE conversation_id = ?').get(conversationId) as { status: string; assistant_reply: string };
+    expect(turn.status).toBe('COMPLETED');
+    expect(turn.assistant_reply).toBe(reply);
   });
 
   it('streams distinct delta frames across multi-chunk responses', async () => {
@@ -196,7 +219,19 @@ describe('conversational provider compatibility', () => {
     for (const value of ['', '   ', 'x'.repeat(4001)]) {
       reply = value;
       const before = calls;
-      const result = await ask();
+      const cRes = await app.inject({
+        method: 'POST',
+        url: '/api/ai/conversations',
+        payload: {
+          context: { kind: 'general' },
+          locale: 'vi',
+          includeContent: true,
+          includeProgress: false,
+          configRevision: revision,
+        },
+      });
+      const convId = cRes.json().data.id;
+      const result = await ask({ conversationId: convId });
       expect(result.statusCode).toBe(200);
       const err = parseSseData<{ error: { code: string } }>(result.body, 'error');
       expect(err?.error.code).toBe('AI_INVALID_OUTPUT');

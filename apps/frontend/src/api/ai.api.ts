@@ -7,17 +7,27 @@ import { ApiError, resolveApiBaseUrl } from './client';
 export type AiChatLocale = 'vi' | 'en';
 export type AiChatScreen = 'overview' | 'learn' | 'review' | 'vocabulary' | 'calendar' | 'grammar' | 'contexts' | 'statistics' | 'settings';
 export type AiChatContext = { kind: 'general' } | { kind: 'screen'; screen: AiChatScreen };
-export type AiChatMessage = { role: 'user' | 'assistant'; content: string };
+export type MemoryMode = 'full' | 'compacted' | 'limited';
 export type AiChatRequest = {
+  conversationId: string;
+  requestId: string;
+  expectedConversationRevision: number;
   configRevision: string;
   message: string;
   locale: AiChatLocale;
   context: AiChatContext;
   includeContent: boolean;
   includeProgress: boolean;
-  history?: AiChatMessage[];
+  allowProviderChange?: boolean;
 };
-export type AiChatStreamMeta = { configRevision: string; context: { kind: string; label: string } };
+export type AiChatStreamMeta = {
+  conversationId: string;
+  requestId: string;
+  conversationRevision: number;
+  memoryMode: MemoryMode;
+  configRevision: string;
+  context: { kind: string; label: string };
+};
 export type AiChatStreamDone = AiChatStreamMeta & { reply: string };
 export type AiChatStreamCallbacks = {
   onMeta?: (meta: AiChatStreamMeta) => void;
@@ -29,13 +39,32 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 function malformed() { return new ApiError('Invalid assistant stream.', 502, 'MALFORMED_STREAM'); }
-function metadata(value: unknown, revision: string): AiChatStreamMeta {
+function metadata(
+  value: unknown,
+  expected: { configRevision: string; conversationId: string; requestId: string },
+): AiChatStreamMeta {
   const data = object(value);
   const context = object(data.context);
-  if (typeof data.configRevision !== 'string' || !['general', 'screen'].includes(String(context.kind))
-    || typeof context.label !== 'string' || !context.label || context.label.length > 1000) throw malformed();
-  if (data.configRevision !== revision) throw new ApiError('AI configuration changed.', 409, 'AI_CONFIG_CHANGED');
-  return { configRevision: data.configRevision, context: { kind: String(context.kind), label: context.label } };
+  if (
+    typeof data.conversationId !== 'string' || data.conversationId !== expected.conversationId
+    || typeof data.requestId !== 'string' || data.requestId !== expected.requestId
+    || typeof data.conversationRevision !== 'number'
+    || !Number.isInteger(data.conversationRevision)
+    || data.conversationRevision <= 0
+    || !['full', 'compacted', 'limited'].includes(String(data.memoryMode))
+    || typeof data.configRevision !== 'string'
+    || !['general', 'screen'].includes(String(context.kind))
+    || typeof context.label !== 'string' || !context.label || context.label.length > 1000
+  ) throw malformed();
+  if (data.configRevision !== expected.configRevision) throw new ApiError('AI configuration changed.', 409, 'AI_CONFIG_CHANGED');
+  return {
+    conversationId: data.conversationId,
+    requestId: data.requestId,
+    conversationRevision: data.conversationRevision,
+    memoryMode: data.memoryMode as MemoryMode,
+    configRevision: data.configRevision,
+    context: { kind: String(context.kind), label: context.label },
+  };
 }
 
 export async function streamAiChatMessage(
@@ -96,7 +125,7 @@ export async function streamAiChatMessage(
         if (body.success !== true) throw malformed();
         if (event === 'meta') {
           if (meta) throw malformed();
-          meta = metadata(body.data, payload.configRevision);
+          meta = metadata(body.data, payload);
           callbacks.onMeta?.(meta);
         } else if (event === 'delta') {
           const data = object(body.data);
@@ -106,9 +135,13 @@ export async function streamAiChatMessage(
         } else if (event === 'done') {
           if (!meta) throw malformed();
           const data = object(body.data);
-          const doneMeta = metadata(data, payload.configRevision);
-          if (typeof data.reply !== 'string' || !data.reply.trim() || data.reply.length > 4000 || data.reply !== text.trim()
-            || doneMeta.context.kind !== meta.context.kind || doneMeta.context.label !== meta.context.label) throw malformed();
+          const doneMeta = metadata(data, payload);
+          if (
+            typeof data.reply !== 'string' || !data.reply.trim() || data.reply.length > 4000 || data.reply !== text.trim()
+            || doneMeta.context.kind !== meta.context.kind || doneMeta.context.label !== meta.context.label
+            || doneMeta.conversationId !== meta.conversationId || doneMeta.requestId !== meta.requestId
+            || doneMeta.conversationRevision < meta.conversationRevision
+          ) throw malformed();
           return { ...doneMeta, reply: data.reply };
         } else throw malformed();
       }

@@ -7,8 +7,9 @@
 
 ### Added
 - Lexi, an original lazy-loaded procedural WebGL3D robot, opens a resizable, nonmodal chat window. Opening chat unmounts the robot and releases GPU resources; closing restores the robot.
-- Context-aware, read-only multi-turn chat with opt-in progress snapshots, session-only history, and recoverable provider errors.
+- Context-aware, read-only multi-turn chat with persistent local SQLite conversation history, paginated archive, resume/delete controls, opt-in progress snapshots, and explicit consent before sharing an old conversation with another provider/model.
 - Settings supports one OpenAI-compatible provider, multiple model names and one active model; API_KEY is AES-256-GCM encrypted in SQLite with a protected key file outside learner backups.
+- Hybrid conversation memory combines a structured rolling summary, recent complete turns and relevant original excerpts with source IDs. Bounded compaction runs only when needed, at most once per send; invalid summaries fall back to honest limited-memory mode.
 - `pnpm run desktop:local` builds and launches the local Electron app through the existing desktop development flow, without generating installers.
 - Grammar v2: 160 internally AI-reviewed lessons, 960 bilingual examples, 1,920 controlled exercises, 640 transfer review items, and 320 original-writing prompts.
 - Separate grammar spaced-review queue, immutable review/output history, self-assessment rubric, and first-attempt recognition/recall accuracy.
@@ -30,17 +31,18 @@
 - Empty due queues do not falsely complete calendar review targets; partial tasks retain their recorded count and offer a return to the calendar.
 
 ### Changed
+- Learner backup v7 includes raw AI conversations and request outcomes, excluding summary caches and credentials. History is plaintext in SQLite/backups; progress reset retains transcripts as historical evidence, while full reset removes history.
 - AI Assistant streams replies over SSE with cancellation, bounded output, validated completion, and recoverable mid-stream errors that retain drafts.
 - Assistant context follows the current menu and saved collections rather than the selected word, lesson, or context. Content and progress have separate sharing controls; bounded samples disclose omitted data.
 - Resize chat with pointer dragging, arrow keys, or preset sizes. Dragging uses animation-frame DOM updates and commits React state only on release. Remove the separate show/hide Lexi feature.
 - Compact bilingual review workspace, stage-specific actions, keyboard boundaries and a smaller mobile Lexi launcher leave controls clear on short screens.
 - Chat, study planning, and output grading share one backend AI configuration; the former grammar tutor endpoint and bottom-of-lesson form are removed.
-- Saved AI settings apply immediately to assistant, planner and output grading. Configuration revisions reject stale requests and prevent conversation history crossing provider/model changes.
+- Saved AI settings apply immediately to assistant, planner and output grading. Configuration revisions reject stale requests; sharing saved conversation history with another provider/model requires explicit confirmation.
 - Backup v6 preserves adaptive vocabulary review attempts/receipts alongside grammar output/review snapshots. Restoring v1–v5 warns before replacing adaptive evidence; v1–v4 also warn about missing grammar practice.
 - Preserve 34 retired lesson IDs, historical attempts, completion dates, and calendar links. New lessons use revision-pinned v2 IDs; old lesson requests return `CURRICULUM_CHANGED` instead of silently regrading or migrating evidence.
 
 ### Upgrade notes
-- Upgrade backend, frontend, and desktop together after creating a backup. Previous binaries cannot restore v6; rollback requires a compatible pre-upgrade backup on a separate database.
+- Upgrade backend, frontend, and desktop together after creating a backup. Previous binaries cannot restore v7; rollback requires a compatible pre-upgrade backup on a separate database.
 - Lesson completion means all controlled items were submitted, not mastery. Writing scores are self-assessed; course level labels and internal AI review are not CEFR certification.
 - Review completion now requires `{requestId, attemptId, expectedVersion, rating}`; direct `wordId`/`correct` submissions are rejected. Self-check saves practice without claiming a graded Production score.
 - AI configuration now uses `API_KEY`, `BASE_URL`, `AI_MODEL`, and `AI_TIMEOUT_MS` for every capability. Rename legacy `OPENAI_API_KEY`/`OPENAI_MODEL`/`OPENAI_TIMEOUT_MS` variables before restarting; no environment files are changed automatically.

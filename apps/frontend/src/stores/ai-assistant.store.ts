@@ -1,119 +1,96 @@
 /**
  * @file ai-assistant.store.ts
- * @description Session state for Lexi, menu-scoped history, and configuration/reset race guards.
+ * @description Session state for Lexi, active conversation selection, and configuration/send race guards.
  */
 import { create } from 'zustand';
 
 import type {
   AiChatContext,
-  AiChatMessage,
+  AiChatLocale,
+  MemoryMode,
 } from '../api/ai.api';
 
-export const MAX_STORED_MESSAGES = 40;
-export const MAX_PROMPT_HISTORY = 8;
-export const MAX_HISTORY_CHARS = 16000;
+export type ChatViewMode = 'chat' | 'history';
 
-export type StoredChatMessage = {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
-  scopeKey: string;
-  contextLabel?: string;
-};
-
-export function getContextDescriptorKey(context: AiChatContext): string {
-  switch (context.kind) {
-    case 'general':
-      return 'general';
-    case 'screen':
-      return `screen:${context.screen}`;
+export function isConversationScopeMatching(
+  conversation: {
+    context: AiChatContext;
+    locale: AiChatLocale;
+    includeContent: boolean;
+    includeProgress: boolean;
+  },
+  current: {
+    context: AiChatContext;
+    locale: AiChatLocale;
+    includeContent: boolean;
+    includeProgress: boolean;
+  },
+): boolean {
+  if (conversation.locale !== current.locale) return false;
+  if (conversation.includeContent !== current.includeContent) return false;
+  if (conversation.includeProgress !== current.includeProgress) return false;
+  if (conversation.context.kind !== current.context.kind) return false;
+  if (conversation.context.kind === 'screen' && current.context.kind === 'screen') {
+    return current.context.screen === conversation.context.screen;
   }
+  return true;
 }
 
-export function buildScopeKey(
-  descriptorKey: string,
-  locale: string,
-  includeProgress: boolean,
-  configurationRevision: string,
-  includeContent: boolean,
-): string {
-  return JSON.stringify([descriptorKey, locale, includeProgress, configurationRevision, includeContent]);
-}
-
-export function filterHistoryForScope(
-  messages: StoredChatMessage[],
-  scopeKey: string,
-): AiChatMessage[] {
-  const matching = messages.filter((msg) => msg.scopeKey === scopeKey);
-  const sliced = matching.slice(-MAX_PROMPT_HISTORY);
-
-  let totalChars = sliced.reduce((sum, msg) => sum + msg.content.length, 0);
-  while (sliced.length > 0 && totalChars > MAX_HISTORY_CHARS) {
-    const dropped = sliced.shift();
-    if (dropped) {
-      totalChars -= dropped.content.length;
-    }
-  }
-
-  return sliced.map((msg) => ({
-    role: msg.role,
-    content: msg.content.slice(0, 4000),
-  }));
-}
-
-
-type AiAssistantState = {
+export type AiAssistantState = {
   isOpen: boolean;
+  view: ChatViewMode;
+  activeConversationId: string | null;
   configurationRevision: string | null;
   includeContent: boolean;
   includeProgress: boolean;
   draft: string;
-  messages: StoredChatMessage[];
   isSending: boolean;
   error: string | null;
-  errorScopeKey: string | null;
-  prunedNotice: boolean;
   epoch: number;
+  currentRequestId: string | null;
+  lastSentDraft: string | null;
+  activeMemoryMode: MemoryMode | null;
+  allowProviderChange: boolean;
 
   openGuide: () => void;
   closeGuide: () => void;
+  setView: (view: ChatViewMode) => void;
+  selectConversation: (id: string | null) => void;
+  bindCreatedConversation: (id: string, epoch: number) => boolean;
   syncConfiguration: (revision: string) => void;
   setIncludeContent: (include: boolean) => void;
   setIncludeProgress: (include: boolean) => void;
   setDraft: (draft: string) => void;
   setError: (error: string | null) => void;
-  beginSend: () => number | null;
+  setAllowProviderChange: (allow: boolean) => void;
+  beginSend: (opts?: { reuseRequestId?: boolean; message?: string }) => number | null;
   abortSend: () => void;
-  recordSuccess: (
-    userContent: string,
-    assistantReply: string,
-    scopeKey: string,
-    contextLabel: string,
-    epoch: number,
-  ) => boolean;
-  recordError: (errorMessage: string, epoch: number, scopeKey?: string) => boolean;
-  resetConversation: () => void;
+  recordSuccess: (opts: {
+    conversationId: string;
+    memoryMode?: MemoryMode;
+    userContent: string;
+    epoch: number;
+  }) => boolean;
+  recordError: (errorMessage: string, epoch: number, retireRequestId?: boolean) => boolean;
+  retireCurrentRequestId: (epoch: number) => boolean;
+  resetActiveConversation: () => void;
 };
-
-let messageCounter = 0;
-function nextMessageId() {
-  messageCounter += 1;
-  return `msg-${Date.now()}-${messageCounter}`;
-}
 
 export const useAiAssistantStore = create<AiAssistantState>()((set, get) => ({
   isOpen: false,
+  view: 'chat',
+  activeConversationId: null,
   configurationRevision: null,
   includeContent: true,
   includeProgress: false,
   draft: '',
-  messages: [],
   isSending: false,
   error: null,
-  errorScopeKey: null,
-  prunedNotice: false,
   epoch: 0,
+  currentRequestId: null,
+  lastSentDraft: null,
+  activeMemoryMode: null,
+  allowProviderChange: false,
 
   openGuide: () => set({ isOpen: true }),
 
@@ -125,16 +102,35 @@ export const useAiAssistantStore = create<AiAssistantState>()((set, get) => ({
       error: state.isSending ? null : state.error,
     })),
 
+  setView: (view) => set({ view, error: null }),
+
+  selectConversation: (id) =>
+    set((state) => ({
+      activeConversationId: id,
+      view: 'chat',
+      error: null,
+      activeMemoryMode: null,
+      allowProviderChange: false,
+      currentRequestId: null,
+      lastSentDraft: null,
+      isSending: false,
+      epoch: state.epoch + 1,
+    })),
+
+  bindCreatedConversation: (id, epoch) => {
+    if (get().epoch !== epoch) return false;
+    set({ activeConversationId: id });
+    return true;
+  },
+
   syncConfiguration: (revision) => {
     if (get().configurationRevision === revision) return;
     set((state) => ({
       configurationRevision: revision,
-      epoch: state.epoch + 1,
-      messages: [],
+      epoch: state.isSending ? state.epoch + 1 : state.epoch,
       error: null,
-      errorScopeKey: null,
       isSending: false,
-      prunedNotice: false,
+      allowProviderChange: false,
     }));
   },
 
@@ -145,7 +141,6 @@ export const useAiAssistantStore = create<AiAssistantState>()((set, get) => ({
         epoch: state.epoch + 1,
         isSending: false,
         error: null,
-        errorScopeKey: null,
       }));
     }
   },
@@ -157,7 +152,6 @@ export const useAiAssistantStore = create<AiAssistantState>()((set, get) => ({
         epoch: state.epoch + 1,
         isSending: false,
         error: null,
-        errorScopeKey: null,
       }));
     }
   },
@@ -166,10 +160,25 @@ export const useAiAssistantStore = create<AiAssistantState>()((set, get) => ({
 
   setError: (error) => set({ error }),
 
-  beginSend: () => {
+  setAllowProviderChange: (allowProviderChange) => set({ allowProviderChange }),
+
+  beginSend: (opts) => {
     if (get().isSending) return null;
     const epoch = get().epoch;
-    set({ isSending: true, error: null, errorScopeKey: null });
+    const currentMsg = opts?.message ?? get().draft;
+    let requestId = get().currentRequestId;
+    const sameIntent = Boolean(
+      opts?.reuseRequestId && requestId && get().lastSentDraft === currentMsg,
+    );
+    if (!sameIntent) {
+      requestId = crypto.randomUUID();
+    }
+    set({
+      isSending: true,
+      error: null,
+      currentRequestId: requestId,
+      lastSentDraft: currentMsg,
+    });
     return epoch;
   },
 
@@ -180,68 +189,51 @@ export const useAiAssistantStore = create<AiAssistantState>()((set, get) => ({
     }));
   },
 
-  recordSuccess: (userContent, assistantReply, scopeKey, contextLabel, epoch) => {
+  recordSuccess: ({ conversationId, memoryMode, userContent, epoch }) => {
     if (get().epoch !== epoch) {
       return false;
     }
-
-    const now = Date.now();
-    const userMsg: StoredChatMessage = {
-      id: nextMessageId(),
-      role: 'user',
-      content: userContent,
-      timestamp: now,
-      scopeKey,
-      contextLabel,
-    };
-    const assistantMsg: StoredChatMessage = {
-      id: nextMessageId(),
-      role: 'assistant',
-      content: assistantReply,
-      timestamp: now + 1,
-      scopeKey,
-      contextLabel,
-    };
-
-    const combined = [...get().messages, userMsg, assistantMsg];
-    let prunedNotice = get().prunedNotice;
-    let nextMessages = combined;
-    if (combined.length > MAX_STORED_MESSAGES) {
-      nextMessages = combined.slice(-MAX_STORED_MESSAGES);
-      prunedNotice = true;
-    }
-
-    set({
-      messages: nextMessages,
-      draft: get().draft.trim() === userContent ? '' : get().draft,
-      error: null,
-      errorScopeKey: null,
-      isSending: false,
-      prunedNotice,
-    });
-    return true;
-  },
-
-  recordError: (errorMessage, epoch, scopeKey) => {
-    if (get().epoch !== epoch) {
-      return false;
-    }
-    set({
-      error: errorMessage,
-      errorScopeKey: scopeKey ?? null,
-      isSending: false,
-    });
-    return true;
-  },
-
-  resetConversation: () =>
     set((state) => ({
-      messages: [],
+      activeConversationId: conversationId,
+      activeMemoryMode: memoryMode ?? null,
+      currentRequestId: null,
+      lastSentDraft: null,
+      draft: state.draft.trim() === userContent.trim() ? '' : state.draft,
+      error: null,
+      isSending: false,
+    }));
+    return true;
+  },
+
+  recordError: (errorMessage, epoch, retireRequestId = false) => {
+    if (get().epoch !== epoch) {
+      return false;
+    }
+    set((state) => ({
+      error: errorMessage,
+      isSending: false,
+      currentRequestId: retireRequestId ? null : state.currentRequestId,
+      lastSentDraft: retireRequestId ? null : state.lastSentDraft,
+    }));
+    return true;
+  },
+
+  retireCurrentRequestId: (epoch) => {
+    if (get().epoch !== epoch) return false;
+    set({ currentRequestId: null, lastSentDraft: null });
+    return true;
+  },
+  resetActiveConversation: () =>
+    set((state) => ({
+      activeConversationId: null,
       draft: '',
       error: null,
-      errorScopeKey: null,
       isSending: false,
-      prunedNotice: false,
-      epoch: state.epoch + 1,
+      view: 'chat',
+      activeMemoryMode: null,
+      currentRequestId: null,
+      lastSentDraft: null,
+      allowProviderChange: false,
+      epoch: state.isSending ? state.epoch + 1 : state.epoch,
     })),
 }));

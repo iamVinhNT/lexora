@@ -28,7 +28,7 @@ import type { BackupData } from '../../src/schemas/data.schema.js';
 
 const outputGrader = { grade: async ({ sentence }: { sentence: string }) => ({ score: 80, explanation: 'Valid test sentence.', suggestion: sentence }) };
 
-type BackupTable = Exclude<keyof BackupData, 'studyPreferences' | 'studyTasks'>;
+type BackupTable = Exclude<keyof BackupData, 'studyPreferences' | 'studyTasks' | 'aiConversations' | 'aiConversationTurns'>;
 type BackupRow = Record<string, any>;
 
 const backupTables: BackupTable[] = [
@@ -500,7 +500,7 @@ describe('learning lifecycle end to end', () => {
 
     const firstSeed = await seedDatabase(app.db);
     const firstBackupPayload = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
-    expect(firstBackupPayload.version).toBe(6);
+    expect(firstBackupPayload.version).toBe(7);
     expect(firstBackupPayload.application).toBe('Lexora');
     const firstBackup = firstBackupPayload.data;
     expect(firstBackup).toEqual(expect.objectContaining(Object.fromEntries(backupTables.map((table) => [table, expect.any(Array)]))));
@@ -524,7 +524,7 @@ describe('learning lifecycle end to end', () => {
 
     const secondSeed = await seedDatabase(app.db);
     const secondBackupPayload = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
-    expect(secondBackupPayload.version).toBe(6);
+    expect(secondBackupPayload.version).toBe(7);
     expect(secondBackupPayload.application).toBe('Lexora');
     const secondBackup = secondBackupPayload.data;
 

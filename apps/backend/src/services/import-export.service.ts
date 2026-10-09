@@ -30,7 +30,7 @@ import { groupSessionItems } from '../domain/learning/grouping.js';
 import { AppError, ValidationError } from './vocabulary.service.js';
 import {
   backupSchema,
-  backupV6Schema,
+  backupV7Schema,
   type ImportPreviewInput,
   type ImportCommitInput,
   type ExportQuery,
@@ -40,6 +40,7 @@ import {
 } from '../schemas/data.schema.js';
 import { clearGrammarPractice, countGrammarPractice, exportGrammarPractice, restoreGrammarPractice } from './grammar-practice-backup.js';
 import { clearReviewAttempts, countReviewAttempts, exportReviewAttempts, restoreReviewAttempts } from '../repositories/review-attempt-backup.repository.js';
+import { clearAiHistory, countAiHistory, exportAiHistory, restoreAiHistory, resetAiHistoryProgress } from '../repositories/ai-history-backup.repository.js';
 
 export interface RawImportItem {
   word?: string;
@@ -119,6 +120,13 @@ export interface RestorePreviewResult {
     includedInBackup: boolean; willOverwrite: boolean; warning: string | null;
     backupTableCounts: { reviewAttempts: number; reviewAttemptRequests: number };
     existingTableCounts: { reviewAttempts: number; reviewAttemptRequests: number };
+  };
+  aiHistorySummary: {
+    includedInBackup: boolean;
+    willOverwrite: boolean;
+    warning: string | null;
+    backupTableCounts: { aiConversations: number; aiConversationTurns: number };
+    existingTableCounts: { aiConversations: number; aiConversationTurns: number };
   };
   calendarSummary: {
     includedInBackup: boolean;
@@ -674,9 +682,10 @@ export class ImportExportService {
         studyPreferences: tx.select().from(studyPreferences).all(),
         studyTasks: tx.select().from(studyTasks).all(),
         ...exportReviewAttempts(this.db.sqlite),
+        ...exportAiHistory(this.db.sqlite),
       };
     });
-    return backupV6Schema.parse({ version: 6, exportedAt: new Date().toISOString(), application: 'Lexora', data });
+    return backupV7Schema.parse({ version: 7, exportedAt: new Date().toISOString(), application: 'Lexora', data });
   }
 
   previewRestore(backupPayload: unknown): RestorePreviewResult {
@@ -699,6 +708,8 @@ export class ImportExportService {
       grammarReviewStates: 'grammarReviewStates' in data ? data.grammarReviewStates.length : 0,
       reviewAttempts: 'reviewAttempts' in data ? data.reviewAttempts.length : 0,
       reviewAttemptRequests: 'reviewAttemptRequests' in data ? data.reviewAttemptRequests.length : 0,
+      aiConversations: 'aiConversations' in data && Array.isArray(data.aiConversations) ? data.aiConversations.length : 0,
+      aiConversationTurns: 'aiConversationTurns' in data && Array.isArray(data.aiConversationTurns) ? data.aiConversationTurns.length : 0,
       studyPreferences: studyPreferencesCount, studyTasks: studyTasksCount,
     };
     const existingTableCounts: Record<string, number> = {
@@ -715,6 +726,7 @@ export class ImportExportService {
       grammarExerciseAttempts: Number((this.db.sqlite.prepare('SELECT count(*) AS count FROM grammar_exercise_attempts').get() as { count: number }).count),
       ...countGrammarPractice(this.db.sqlite),
       ...countReviewAttempts(this.db.sqlite),
+      ...countAiHistory(this.db.sqlite),
       studyPreferences: this.db.select().from(studyPreferences).all().length,
       studyTasks: this.db.select().from(studyTasks).all().length,
     };
@@ -751,6 +763,21 @@ export class ImportExportService {
         backupTableCounts: { reviewAttempts: tableCounts.reviewAttempts, reviewAttemptRequests: tableCounts.reviewAttemptRequests },
         existingTableCounts: { reviewAttempts: existingTableCounts.reviewAttempts, reviewAttemptRequests: existingTableCounts.reviewAttemptRequests },
       },
+      aiHistorySummary: {
+        includedInBackup: validated.version >= 7,
+        willOverwrite: true,
+        warning: validated.version >= 7
+          ? null
+          : 'This older backup has no AI conversations or turns; restoring it will clear current AI history.',
+        backupTableCounts: {
+          aiConversations: tableCounts.aiConversations,
+          aiConversationTurns: tableCounts.aiConversationTurns,
+        },
+        existingTableCounts: {
+          aiConversations: existingTableCounts.aiConversations,
+          aiConversationTurns: existingTableCounts.aiConversationTurns,
+        },
+      },
       calendarSummary: {
         includedInBackup: validated.version >= 4,
         willOverwrite: true,
@@ -773,6 +800,7 @@ export class ImportExportService {
     const { data } = validated.backup;
 
     this.db.transaction((tx) => {
+      clearAiHistory(this.db.sqlite);
       clearReviewAttempts(this.db.sqlite);
       clearGrammarPractice(this.db.sqlite);
       tx.run(sql`DELETE FROM grammar_exercise_attempts`);
@@ -794,11 +822,10 @@ export class ImportExportService {
       tx.delete(wordFamilies).run();
       tx.delete(words).run();
       tx.delete(users).run();
-      if (validated.backup.version === 4 || validated.backup.version === 5 || validated.backup.version === 6) {
-        const calendarData = validated.backup.data;
-        for (const preference of calendarData.studyPreferences) tx.insert(studyPreferences).values(preference).run();
-        for (const task of calendarData.studyTasks) tx.insert(studyTasks).values({ ...task, transferredToTaskId: null }).run();
-        for (const task of calendarData.studyTasks) {
+      if ('studyPreferences' in data && 'studyTasks' in data) {
+        for (const preference of data.studyPreferences) tx.insert(studyPreferences).values(preference).run();
+        for (const task of data.studyTasks) tx.insert(studyTasks).values({ ...task, transferredToTaskId: null }).run();
+        for (const task of data.studyTasks) {
           if (task.transferredToTaskId !== null) {
             tx.update(studyTasks).set({ transferredToTaskId: task.transferredToTaskId }).where(eq(studyTasks.id, task.id)).run();
           }
@@ -840,25 +867,32 @@ export class ImportExportService {
       }
       for (const attempt of ('learningAttempts' in data ? data.learningAttempts : [])) tx.insert(learningAttempts).values(attempt).run();
 
-      if (validated.backup.version === 3 || validated.backup.version === 4 || validated.backup.version === 5 || validated.backup.version === 6) {
+      if ('grammarLessonProgress' in data && 'grammarExerciseAttempts' in data) {
         const insertLesson = this.db.sqlite.prepare(`
           INSERT INTO grammar_lesson_progress (lesson_id, revision_id, revision, last_position, is_complete, completed_at, created_at, updated_at)
           VALUES (@lessonId, @revisionId, @revision, @lastPosition, @isComplete, @completedAt, @createdAt, @updatedAt)
         `);
-        for (const row of validated.backup.data.grammarLessonProgress) insertLesson.run({ ...row, isComplete: Number(row.isComplete) });
+        for (const row of data.grammarLessonProgress) insertLesson.run({ ...row, isComplete: Number(row.isComplete) });
         const insertAttempt = this.db.sqlite.prepare(`
           INSERT INTO grammar_exercise_attempts
             (id, lesson_id, revision_id, revision, exercise_id, request_id, answer, is_correct, feedback, created_at, study_task_id, completed_lesson)
           VALUES (@id, @lessonId, @revisionId, @revision, @exerciseId, @requestId, @answer, @isCorrect, @feedback, @createdAt, @studyTaskId, @completedLesson)
         `);
-        for (const row of validated.backup.data.grammarExerciseAttempts) insertAttempt.run({
+        for (const row of data.grammarExerciseAttempts) insertAttempt.run({
           ...row, answer: JSON.stringify(row.answer), isCorrect: Number(row.isCorrect),
           studyTaskId: 'studyTaskId' in row ? row.studyTaskId : null,
           completedLesson: 'completedLesson' in row ? Number(row.completedLesson) : 0,
         });
       }
-      if (validated.backup.version === 5 || validated.backup.version === 6) restoreGrammarPractice(this.db.sqlite, validated.backup.data);
-      if (validated.backup.version === 6) restoreReviewAttempts(this.db.sqlite, validated.backup.data);
+      if ('grammarPracticeAttempts' in data && 'grammarReviewStates' in data) {
+        restoreGrammarPractice(this.db.sqlite, data);
+      }
+      if ('reviewAttempts' in data && 'reviewAttemptRequests' in data) {
+        restoreReviewAttempts(this.db.sqlite, data);
+      }
+      if ('aiConversations' in data && 'aiConversationTurns' in data) {
+        restoreAiHistory(this.db.sqlite, data);
+      }
 
       const foreignKeyViolations = this.db.sqlite.prepare('PRAGMA foreign_key_check').all();
       if (foreignKeyViolations.length > 0) throw new Error('Restored backup violates foreign keys');
@@ -876,6 +910,7 @@ export class ImportExportService {
 
     if (input.scope === 'progress') {
       this.db.transaction((tx) => {
+        resetAiHistoryProgress(this.db.sqlite, now);
         clearReviewAttempts(this.db.sqlite);
         clearGrammarPractice(this.db.sqlite);
         tx.delete(learningSessionItems).run();
@@ -914,6 +949,7 @@ export class ImportExportService {
     if (input.scope === 'all') {
       this.db.transaction((tx) => {
         clearReviewAttempts(this.db.sqlite);
+        clearAiHistory(this.db.sqlite);
         clearGrammarPractice(this.db.sqlite);
         tx.run(sql`DELETE FROM grammar_exercise_attempts`);
         tx.run(sql`DELETE FROM grammar_lesson_progress`);

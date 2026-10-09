@@ -42,6 +42,27 @@ export class GrammarService {
     return getGrammarCourse(this.curriculum);
   }
 
+  getProgressSummary() {
+    const course = this.getCourse();
+    const lessonIds: string[] = [];
+    for (const stage of course.stages) {
+      for (const lesson of stage.lessons) lessonIds.push(lesson.id);
+    }
+    const progress = new Map<string, GrammarLessonProgress>();
+    for (const stored of this.repository.findProgressByLessonIds(lessonIds)) progress.set(stored.lessonId, stored);
+    let completedLessons = 0;
+    let nextLessonId: string | null = null;
+    for (const stage of course.stages) {
+      for (const lesson of stage.lessons) {
+        const stored = progress.get(lesson.id);
+        const complete = stored?.isComplete && stored.revisionId === lesson.revisionId && stored.revision === lesson.revision;
+        if (complete) completedLessons += 1;
+        else if (nextLessonId === null) nextLessonId = lesson.id;
+      }
+    }
+    return { totalLessons: lessonIds.length, completedLessons, nextLessonId };
+  }
+
   getCourseWithProgress() {
     const course = this.getCourse();
     const progress = new Map<string, GrammarLessonProgress | null>();

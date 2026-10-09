@@ -42,12 +42,13 @@ export function readAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig {
   }
 }
 
-export function createAiChatModel(config: AiConfig): ChatOpenAI {
+export function createAiChatModel(config: AiConfig, maxTokens?: number): ChatOpenAI {
   return new ChatOpenAI({
     apiKey: config.apiKey,
     model: config.model,
     timeout: config.timeoutMs,
     maxRetries: 0,
+    maxTokens,
     configuration: { baseURL: config.baseURL },
   });
 }

@@ -29,6 +29,9 @@ function createMockStreamResponse(chunks: (string | Uint8Array)[]): Response {
 }
 
 const baseRequest: AiChatRequest = {
+  conversationId: 'conv-123',
+  requestId: 'req-456',
+  expectedConversationRevision: 1,
   configRevision: 'rev-1',
   message: 'Hello',
   locale: 'en',
@@ -45,10 +48,10 @@ describe('SSE streamAiChatMessage parser behavior', () => {
 
   it('delivers progressive deltas and resolves with final payload on complete SSE stream', async () => {
     const rawChunks = [
-      'event: meta\ndata: {"success":true,"data":{"configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n',
+      'event: meta\ndata: {"success":true,"data":{"conversationId":"conv-123","requestId":"req-456","conversationRevision":1,"memoryMode":"full","configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n',
       'event: delta\ndata: {"success":true,"data":{"text":"Hello "}}\n\n',
       'event: delta\ndata: {"success":true,"data":{"text":"world!"}}\n\n',
-      'event: done\ndata: {"success":true,"data":{"reply":"Hello world!","configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n',
+      'event: done\ndata: {"success":true,"data":{"reply":"Hello world!","conversationId":"conv-123","requestId":"req-456","conversationRevision":1,"memoryMode":"full","configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n',
     ];
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createMockStreamResponse(rawChunks)));
@@ -66,12 +69,20 @@ describe('SSE streamAiChatMessage parser behavior', () => {
     });
 
     expect(metaEvent).toEqual({
+      conversationId: 'conv-123',
+      requestId: 'req-456',
+      conversationRevision: 1,
+      memoryMode: 'full',
       configRevision: 'rev-1',
       context: { kind: 'screen', label: 'Vocabulary' },
     });
     expect(receivedDeltas).toEqual(['Hello ', 'world!']);
     expect(result).toEqual({
       reply: 'Hello world!',
+      conversationId: 'conv-123',
+      requestId: 'req-456',
+      conversationRevision: 1,
+      memoryMode: 'full',
       configRevision: 'rev-1',
       context: { kind: 'screen', label: 'Vocabulary' },
     });
@@ -79,10 +90,9 @@ describe('SSE streamAiChatMessage parser behavior', () => {
 
   it('correctly decodes multi-byte UTF-8 sequences split across network chunks', async () => {
     const encoder = new TextEncoder();
-    const fullText = 'event: meta\ndata: {"success":true,"data":{"configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n' +
+    const fullText = 'event: meta\ndata: {"success":true,"data":{"conversationId":"conv-123","requestId":"req-456","conversationRevision":1,"memoryMode":"full","configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n' +
       'event: delta\ndata: {"success":true,"data":{"text":"Tiếng Việt học tập"}}\n\n' +
-      'event: done\ndata: {"success":true,"data":{"reply":"Tiếng Việt học tập","configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n';
-
+      'event: done\ndata: {"success":true,"data":{"reply":"Tiếng Việt học tập","conversationId":"conv-123","requestId":"req-456","conversationRevision":1,"memoryMode":"full","configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n';
     const fullBytes = encoder.encode(fullText);
     // Split byte buffer arbitrarily into 7-byte network chunks to cut through UTF-8 multi-byte characters
     const chunks: Uint8Array[] = [];
@@ -117,23 +127,35 @@ describe('SSE streamAiChatMessage parser behavior', () => {
 
   it('rejects with AI_CONFIG_CHANGED when response configRevision differs from request', async () => {
     const rawChunks = [
-      'event: meta\ndata: {"success":true,"data":{"configRevision":"rev-stale","context":{"kind":"screen","label":"Vocabulary"}}}\n\n',
+      'event: meta\ndata: {"success":true,"data":{"conversationId":"conv-123","requestId":"req-456","conversationRevision":1,"memoryMode":"full","configRevision":"rev-stale","context":{"kind":"screen","label":"Vocabulary"}}}\n\n',
     ];
-
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createMockStreamResponse(rawChunks)));
-
     await expect(streamAiChatMessage(baseRequest)).rejects.toMatchObject({
       name: 'ApiError',
       code: 'AI_CONFIG_CHANGED',
       status: 409,
     });
   });
+  it('rejects with MALFORMED_STREAM when response IDs mismatch or revision is not positive integer', async () => {
+    for (const badMeta of [
+      { conversationId: 'other-conv', requestId: 'req-456', conversationRevision: 1, memoryMode: 'full', configRevision: 'rev-1', context: { kind: 'screen', label: 'Vocabulary' } },
+      { conversationId: 'conv-123', requestId: 'other-req', conversationRevision: 1, memoryMode: 'full', configRevision: 'rev-1', context: { kind: 'screen', label: 'Vocabulary' } },
+      { conversationId: 'conv-123', requestId: 'req-456', conversationRevision: 0, memoryMode: 'full', configRevision: 'rev-1', context: { kind: 'screen', label: 'Vocabulary' } },
+      { conversationId: 'conv-123', requestId: 'req-456', conversationRevision: 1.5, memoryMode: 'full', configRevision: 'rev-1', context: { kind: 'screen', label: 'Vocabulary' } },
+    ]) {
+      const raw = [`event: meta\ndata: ${JSON.stringify({ success: true, data: badMeta })}\n\n`];
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createMockStreamResponse(raw)));
+      await expect(streamAiChatMessage(baseRequest)).rejects.toMatchObject({
+        name: 'ApiError',
+        code: 'MALFORMED_STREAM',
+      });
+    }
+  });
 
   it('rejects with STREAM_TRUNCATED when stream terminates without terminal done or error', async () => {
     const rawChunks = [
-      'event: meta\ndata: {"success":true,"data":{"configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n',
+      'event: meta\ndata: {"success":true,"data":{"conversationId":"conv-123","requestId":"req-456","conversationRevision":1,"memoryMode":"full","configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n',
       'event: delta\ndata: {"success":true,"data":{"text":"Partial..."}}\n\n',
-      // Stream abruptly ends here without done
     ];
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createMockStreamResponse(rawChunks)));
@@ -159,12 +181,11 @@ describe('SSE streamAiChatMessage parser behavior', () => {
 
   it('rejects with server error code when stream emits error event', async () => {
     const rawChunks = [
-      'event: meta\ndata: {"success":true,"data":{"configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n',
+      'event: meta\ndata: {"success":true,"data":{"conversationId":"conv-123","requestId":"req-456","conversationRevision":1,"memoryMode":"full","configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n',
       'event: error\ndata: {"success":false,"error":{"code":"RATE_LIMIT_EXCEEDED","message":"Too many requests"}}\n\n',
     ];
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createMockStreamResponse(rawChunks)));
-
     await expect(streamAiChatMessage(baseRequest)).rejects.toMatchObject({
       name: 'ApiError',
       code: 'RATE_LIMIT_EXCEEDED',
@@ -173,14 +194,14 @@ describe('SSE streamAiChatMessage parser behavior', () => {
   });
 
   it('rejects incomplete terminal frames and mismatched final text', async () => {
-    const prefix = 'event: meta\ndata: {"success":true,"data":{"configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n' +
+    const prefix = 'event: meta\ndata: {"success":true,"data":{"conversationId":"conv-123","requestId":"req-456","conversationRevision":1,"memoryMode":"full","configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n' +
       'event: delta\ndata: {"success":true,"data":{"text":"Visible text"}}\n\n';
     for (const [reply, ending, code] of [
       ['Visible text', '', 'STREAM_TRUNCATED'],
       ['Different text', '\n\n', 'MALFORMED_STREAM'],
       ['', '\n\n', 'MALFORMED_STREAM'],
     ]) {
-      const terminal = `event: done\ndata: ${JSON.stringify({ success: true, data: { reply, configRevision: 'rev-1', context: { kind: 'screen', label: 'Vocabulary' } } })}${ending}`;
+      const terminal = `event: done\ndata: ${JSON.stringify({ success: true, data: { reply, conversationId: 'conv-123', requestId: 'req-456', conversationRevision: 1, memoryMode: 'full', configRevision: 'rev-1', context: { kind: 'screen', label: 'Vocabulary' } } })}${ending}`;
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createMockStreamResponse([prefix, terminal])));
       await expect(streamAiChatMessage(baseRequest)).rejects.toMatchObject({ code });
     }
@@ -191,7 +212,7 @@ describe('SSE streamAiChatMessage parser behavior', () => {
 
     const stream = new ReadableStream<Uint8Array>({
       start(ctrl) {
-        ctrl.enqueue(new TextEncoder().encode('event: meta\ndata: {"success":true,"data":{"configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n'));
+        ctrl.enqueue(new TextEncoder().encode('event: meta\ndata: {"success":true,"data":{"conversationId":"conv-123","requestId":"req-456","conversationRevision":1,"memoryMode":"full","configRevision":"rev-1","context":{"kind":"screen","label":"Vocabulary"}}}\n\n'));
       },
       pull() {
         controller.abort();

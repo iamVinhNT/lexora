@@ -1,116 +1,198 @@
 /**
  * @file ai-assistant.store.test.ts
- * @description Guards conversation reset races, privacy scopes, and bounded session/history state.
+ * @description Guards conversation selection, epoch concurrency, idempotent request retries, and scope matching.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { buildScopeKey, filterHistoryForScope, getContextDescriptorKey, useAiAssistantStore } from '../../src/stores/ai-assistant.store';
+import {
+  isConversationScopeMatching,
+  useAiAssistantStore,
+} from '../../src/stores/ai-assistant.store';
 
 beforeEach(() => {
-  useAiAssistantStore.getState().resetConversation();
+  useAiAssistantStore.getState().resetActiveConversation();
   useAiAssistantStore.getState().closeGuide();
 });
 
-describe('assistant conversation boundaries', () => {
-  it('claims sends atomically and ignores stale response after resetting during an in-flight request', () => {
-    const oldEpoch = useAiAssistantStore.getState().beginSend()!;
+describe('assistant store concurrency and lifecycle', () => {
+  it('claims sends atomically and ignores stale response after resetting active conversation', () => {
+    const oldEpoch = useAiAssistantStore.getState().beginSend();
+    expect(oldEpoch).not.toBeNull();
     expect(useAiAssistantStore.getState().beginSend()).toBeNull();
-    useAiAssistantStore.getState().resetConversation();
+
+    useAiAssistantStore.getState().resetActiveConversation();
     useAiAssistantStore.getState().setDraft('A new question');
-    const newEpoch = useAiAssistantStore.getState().beginSend()!;
+    const newEpoch = useAiAssistantStore.getState().beginSend();
+    expect(newEpoch).not.toBeNull();
     expect(newEpoch).not.toBe(oldEpoch);
-    useAiAssistantStore.getState().recordSuccess('Old question', 'Old reply', 'old-scope', 'Old lesson', oldEpoch);
-    expect(useAiAssistantStore.getState().messages).toEqual([]);
+
+    const oldSuccessRecorded = useAiAssistantStore.getState().recordSuccess({
+      conversationId: 'conv-old',
+      memoryMode: 'full',
+      userContent: 'Old question',
+      epoch: oldEpoch!,
+    });
+    expect(oldSuccessRecorded).toBe(false);
+    expect(useAiAssistantStore.getState().activeConversationId).toBeNull();
     expect(useAiAssistantStore.getState().draft).toBe('A new question');
     expect(useAiAssistantStore.getState().isSending).toBe(true);
-    useAiAssistantStore.getState().recordError('Old failure', oldEpoch);
+
+    const oldErrorRecorded = useAiAssistantStore.getState().recordError('Old failure', oldEpoch!);
+    expect(oldErrorRecorded).toBe(false);
     expect(useAiAssistantStore.getState().error).toBeNull();
     expect(useAiAssistantStore.getState().isSending).toBe(true);
   });
 
-  it('excludes previously shared progress and another screen menu from next prompt history', () => {
-    const state = useAiAssistantStore.getState();
-    const learnScreen = getContextDescriptorKey({ kind: 'screen', screen: 'learn' });
-    const reviewScreen = getContextDescriptorKey({ kind: 'screen', screen: 'review' });
-    const privateScope = buildScopeKey(learnScreen, 'en', true, 'provider-a', true);
-    state.recordSuccess('How is my progress?', 'Private progress and target spelling', privateScope, 'Learn', state.epoch);
-    const messages = useAiAssistantStore.getState().messages;
-    expect(filterHistoryForScope(messages, buildScopeKey(learnScreen, 'en', false, 'provider-a', true))).toEqual([]);
-    expect(filterHistoryForScope(messages, buildScopeKey(reviewScreen, 'en', true, 'provider-a', true))).toEqual([]);
-    expect(filterHistoryForScope(messages, buildScopeKey(learnScreen, 'vi', true, 'provider-a', true))).toEqual([]);
-    expect(filterHistoryForScope(messages, buildScopeKey(learnScreen, 'en', true, 'provider-b', true))).toEqual([]);
-    expect(filterHistoryForScope(messages, buildScopeKey(learnScreen, 'en', true, 'provider-a', false))).toEqual([]);
-  });
-
   it('aborts sending and increments epoch on close or explicit abort without clearing draft', () => {
     useAiAssistantStore.getState().setDraft('My pending question');
-    const epoch = useAiAssistantStore.getState().beginSend()!;
+    const epoch = useAiAssistantStore.getState().beginSend();
+    expect(epoch).not.toBeNull();
     expect(useAiAssistantStore.getState().isSending).toBe(true);
+
     useAiAssistantStore.getState().closeGuide();
     expect(useAiAssistantStore.getState().isSending).toBe(false);
-    expect(useAiAssistantStore.getState().epoch).toBe(epoch + 1);
+    expect(useAiAssistantStore.getState().epoch).toBe(epoch! + 1);
     expect(useAiAssistantStore.getState().draft).toBe('My pending question');
-    expect(useAiAssistantStore.getState().recordSuccess('My pending question', 'Late reply', 'scope', 'Label', epoch)).toBe(false);
+
+    const recorded = useAiAssistantStore.getState().recordSuccess({
+      conversationId: 'conv-1',
+      memoryMode: 'full',
+      userContent: 'My pending question',
+      epoch: epoch!,
+    });
+    expect(recorded).toBe(false);
   });
 
-  it('bounds stored conversation and prompt history while preserving unsent draft', () => {
-    const scope = buildScopeKey('general', 'en', false, 'provider-a', true);
-    useAiAssistantStore.getState().setDraft('Unsent draft');
-    for (let index = 0; index < 24; index++) {
-      const state = useAiAssistantStore.getState();
-      state.recordSuccess(`question-${index} ${'q'.repeat(1980)}`, `reply-${index} ${'r'.repeat(3980)}`, scope, 'General', state.epoch);
-    }
-    const state = useAiAssistantStore.getState();
-    expect(state.messages).toHaveLength(40);
-    expect(state.prunedNotice).toBe(true);
-    expect(state.messages.some(message => message.content.startsWith('question-0 '))).toBe(false);
-    expect(state.draft).toBe('Unsent draft');
-    const history = filterHistoryForScope(state.messages, scope);
-    expect(history.length).toBeLessThanOrEqual(8);
-    expect(history.reduce((sum, message) => sum + message.content.length, 0)).toBeLessThanOrEqual(16000);
-    expect(history.at(-1)?.content).toContain('reply-23 ');
+  it('retains requestId across retry on error and clears it on recordSuccess', () => {
+    useAiAssistantStore.getState().setDraft('Translate this word');
+    const epoch1 = useAiAssistantStore.getState().beginSend();
+    expect(epoch1).not.toBeNull();
+    const originalReqId = useAiAssistantStore.getState().currentRequestId;
+    expect(originalReqId).toMatch(/^[0-9a-f-]{36}$/i);
+
+    useAiAssistantStore.getState().recordError('Temporary network disconnection', epoch1!);
+    expect(useAiAssistantStore.getState().isSending).toBe(false);
+    expect(useAiAssistantStore.getState().error).toBe('Temporary network disconnection');
+    expect(useAiAssistantStore.getState().currentRequestId).toBe(originalReqId);
+
+    const epoch2 = useAiAssistantStore.getState().beginSend({ reuseRequestId: true });
+    expect(epoch2).not.toBeNull();
+    expect(useAiAssistantStore.getState().currentRequestId).toBe(originalReqId);
+    expect(useAiAssistantStore.getState().error).toBeNull();
+
+    const success = useAiAssistantStore.getState().recordSuccess({
+      conversationId: 'conv-retry',
+      memoryMode: 'compacted',
+      userContent: 'Translate this word',
+      epoch: epoch2!,
+    });
+    expect(success).toBe(true);
+    expect(useAiAssistantStore.getState().activeConversationId).toBe('conv-retry');
+    expect(useAiAssistantStore.getState().activeMemoryMode).toBe('compacted');
+    expect(useAiAssistantStore.getState().currentRequestId).toBeNull();
+    expect(useAiAssistantStore.getState().draft).toBe('');
   });
 
-  it('invalidates pending requests on provider changes while preserving draft and ignores repeated metadata', () => {
+  it('binds created conversation during send without disrupting active epoch or request ID', () => {
+    useAiAssistantStore.getState().setDraft('New thread query');
+    const epoch = useAiAssistantStore.getState().beginSend();
+    expect(epoch).not.toBeNull();
+    const activeReqId = useAiAssistantStore.getState().currentRequestId;
+
+    const boundStale = useAiAssistantStore
+      .getState()
+      .bindCreatedConversation('conv-late', epoch! - 1);
+    expect(boundStale).toBe(false);
+    expect(useAiAssistantStore.getState().activeConversationId).toBeNull();
+
+    const bound = useAiAssistantStore
+      .getState()
+      .bindCreatedConversation('conv-new', epoch!);
+    expect(bound).toBe(true);
+    expect(useAiAssistantStore.getState().activeConversationId).toBe('conv-new');
+    expect(useAiAssistantStore.getState().epoch).toBe(epoch);
+    expect(useAiAssistantStore.getState().currentRequestId).toBe(activeReqId);
+    expect(useAiAssistantStore.getState().isSending).toBe(true);
+  });
+
+  it('invalidates in-flight send on configuration revision change while preserving unsent draft', () => {
     const store = useAiAssistantStore.getState();
-    store.syncConfiguration('provider-a');
-    const oldEpoch = useAiAssistantStore.getState().beginSend()!;
-    store.recordSuccess('Question', 'Reply', 'old-scope', 'Lesson', oldEpoch);
-    store.setDraft('Unsent question');
-    const pendingEpoch = store.beginSend()!;
-    store.syncConfiguration('provider-a');
+    store.syncConfiguration('rev-1');
+    store.setDraft('My unsent question');
+
+    const pendingEpoch = store.beginSend();
+    expect(pendingEpoch).not.toBeNull();
+
+    store.syncConfiguration('rev-1');
     expect(useAiAssistantStore.getState().epoch).toBe(pendingEpoch);
     expect(useAiAssistantStore.getState().isSending).toBe(true);
-    store.syncConfiguration('provider-b');
-    const current = useAiAssistantStore.getState();
-    expect(current.epoch).toBe(pendingEpoch + 1);
-    expect(current.configurationRevision).toBe('provider-b');
-    expect(current.messages).toEqual([]);
-    expect(current.error).toBeNull();
-    expect(current.isSending).toBe(false);
-    expect(current.draft).toBe('Unsent question');
-    const freshEpoch = current.beginSend()!;
-    expect(store.recordSuccess('Old question', 'Old reply', 'old-scope', 'Lesson', pendingEpoch)).toBe(false);
-    expect(store.recordError('Old provider failed', pendingEpoch)).toBe(false);
-    expect(useAiAssistantStore.getState().isSending).toBe(true);
-    expect(useAiAssistantStore.getState().epoch).toBe(freshEpoch);
-    expect(useAiAssistantStore.getState().messages).toEqual([]);
+
+    store.syncConfiguration('rev-2');
+    const stateAfterSync = useAiAssistantStore.getState();
+    expect(stateAfterSync.epoch).toBe(pendingEpoch! + 1);
+    expect(stateAfterSync.configurationRevision).toBe('rev-2');
+    expect(stateAfterSync.isSending).toBe(false);
+    expect(stateAfterSync.draft).toBe('My unsent question');
+
+    const recorded = store.recordSuccess({
+      conversationId: 'conv-stale',
+      memoryMode: 'full',
+      userContent: 'My unsent question',
+      epoch: pendingEpoch!,
+    });
+    expect(recorded).toBe(false);
   });
 
-  it('discards a pending send after consent changes without losing an unsent question', () => {
-    const store = useAiAssistantStore.getState();
-    store.setIncludeProgress(true);
-    store.setDraft('Please explain');
-    const pendingEpoch = store.beginSend()!;
-    store.setIncludeProgress(false);
-    expect(useAiAssistantStore.getState().epoch).not.toBe(pendingEpoch);
-    expect(store.recordSuccess('Please explain', 'Private progress reply', 'old-scope', 'Lesson', pendingEpoch)).toBe(false);
-    expect(useAiAssistantStore.getState().draft).toBe('Please explain');
-    expect(useAiAssistantStore.getState().messages).toEqual([]);
-    expect(useAiAssistantStore.getState().isSending).toBe(false);
-    const nextEpoch = store.beginSend()!;
-    store.setIncludeContent(false);
-    expect(store.recordError('Old failure', nextEpoch)).toBe(false);
-    expect(useAiAssistantStore.getState().draft).toBe('Please explain');
-    store.setIncludeContent(true);
+  it('correctly matches and detects scope mismatches across screens, locales, and consents', () => {
+    const conversation = {
+      context: { kind: 'screen' as const, screen: 'vocabulary' as const },
+      locale: 'en' as const,
+      includeContent: true,
+      includeProgress: false,
+    };
+
+    expect(
+      isConversationScopeMatching(conversation, {
+        context: { kind: 'screen', screen: 'vocabulary' },
+        locale: 'en',
+        includeContent: true,
+        includeProgress: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      isConversationScopeMatching(conversation, {
+        context: { kind: 'screen', screen: 'grammar' },
+        locale: 'en',
+        includeContent: true,
+        includeProgress: false,
+      }),
+    ).toBe(false);
+
+    expect(
+      isConversationScopeMatching(conversation, {
+        context: { kind: 'screen', screen: 'vocabulary' },
+        locale: 'vi',
+        includeContent: true,
+        includeProgress: false,
+      }),
+    ).toBe(false);
+
+    expect(
+      isConversationScopeMatching(conversation, {
+        context: { kind: 'screen', screen: 'vocabulary' },
+        locale: 'en',
+        includeContent: false,
+        includeProgress: false,
+      }),
+    ).toBe(false);
+
+    expect(
+      isConversationScopeMatching(conversation, {
+        context: { kind: 'screen', screen: 'vocabulary' },
+        locale: 'en',
+        includeContent: true,
+        includeProgress: true,
+      }),
+    ).toBe(false);
   });
 });

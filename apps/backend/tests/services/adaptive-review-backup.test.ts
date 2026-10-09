@@ -30,14 +30,14 @@ afterEach(() => {
 });
 
 describe('adaptive review backup v6 lifecycle', () => {
-  it('exports version 6 with reviewAttempts and reviewAttemptRequests', () => {
+  it('exports version 7 with reviewAttempts and reviewAttemptRequests', () => {
     restoreReviewAttempts(db.sqlite, {
       reviewAttempts: [sampleCompletedAttempt],
       reviewAttemptRequests: [sampleCompleteRequest],
     });
 
     const backup = service.getBackup();
-    expect(backup.version).toBe(6);
+    expect(backup.version).toBe(7);
     expect(backup.data.reviewAttempts).toHaveLength(1);
     expect(backup.data.reviewAttempts[0].id).toBe(sampleCompletedAttempt.id);
     expect(backup.data.reviewAttemptRequests).toHaveLength(1);
@@ -53,7 +53,7 @@ describe('adaptive review backup v6 lifecycle', () => {
     const backup = service.getBackup();
     const preview = service.previewRestore(backup);
     expect(preview.valid).toBe(true);
-    expect(preview.version).toBe(6);
+    expect(preview.version).toBe(7);
     expect(preview.adaptiveReviewSummary.includedInBackup).toBe(true);
     expect(preview.adaptiveReviewSummary.warning).toBeNull();
     expect(preview.adaptiveReviewSummary.backupTableCounts.reviewAttempts).toBe(1);
@@ -146,7 +146,7 @@ describe('adaptive review backup v6 lifecycle', () => {
     });
 
     const currentBackup = service.getBackup();
-    const { reviewAttempts: _ra, reviewAttemptRequests: _rar, ...v5Data } = currentBackup.data;
+    const { reviewAttempts: _ra, reviewAttemptRequests: _rar, aiConversations: _ac, aiConversationTurns: _at, ...v5Data } = currentBackup.data;
     const v5Backup = {
       ...currentBackup,
       version: 5,
@@ -192,12 +192,14 @@ describe('adaptive review backup v6 lifecycle', () => {
     const initialCount = service.getBackup().data.reviewAttempts.length;
     expect(initialCount).toBe(1);
 
+    const currentBackup = service.getBackup();
+    const { aiConversations: _ac, aiConversationTurns: _at, ...v6BaseData } = currentBackup.data;
     const malformedBackup = {
       version: 6,
       application: 'Lexora',
       exportedAt: now,
       data: {
-        ...service.getBackup().data,
+        ...v6BaseData,
         reviewAttempts: [
           {
             ...sampleCompletedAttempt,

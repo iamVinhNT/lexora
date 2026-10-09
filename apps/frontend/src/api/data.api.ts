@@ -17,7 +17,7 @@ export type ImportPreview = {
 };
 export type ImportCommitResult = { importedCount: number; wordIds: string[] };
 export type ExportResult = { format: ExportFormat; scope: 'words'; content?: string; items?: unknown[]; data?: unknown };
-export type BackupPayload = { version: 1 | 2 | 3 | 4 | 5 | 6; application: 'Lexora'; exportedAt: string; data: Record<string, unknown[]> };
+export type BackupPayload = { version: 1 | 2 | 3 | 4 | 5 | 6 | 7; application: 'Lexora'; exportedAt: string; data: Record<string, unknown[]> };
 export type PracticeSummary = {
   includedInBackup: boolean;
   willOverwrite: boolean;
@@ -31,6 +31,13 @@ export type AdaptiveReviewSummary = {
   warning: string | null;
   backupTableCounts: { reviewAttempts: number; reviewAttemptRequests: number };
   existingTableCounts: { reviewAttempts: number; reviewAttemptRequests: number };
+};
+export type AiHistorySummary = {
+  includedInBackup: boolean;
+  willOverwrite: boolean;
+  warning: string | null;
+  backupTableCounts: { aiConversations: number; aiConversationTurns: number };
+  existingTableCounts: { aiConversations: number; aiConversationTurns: number };
 };
 /** Explicit calendar restore warning contract consumed by Task21. */
 export type CalendarSummary = { includedInBackup: boolean; willOverwrite: boolean; backupTaskCount: number; existingTaskCount: number; willReplacePreferences: boolean };
@@ -47,6 +54,7 @@ export type RestorePreview = {
   practiceSummary?: PracticeSummary;
   calendarSummary?: CalendarSummary;
   adaptiveReviewSummary?: AdaptiveReviewSummary;
+  aiHistorySummary?: AiHistorySummary;
 };
 export type RestoreResult = { restored: boolean };
 export type ResetResult = { reset: boolean; scope: 'progress' | 'all' };

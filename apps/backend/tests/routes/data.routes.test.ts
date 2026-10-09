@@ -557,7 +557,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
   });
 
   describe('GET /api/backup', () => {
-    it('returns v6 relational backup with grammar practice alongside existing learner tables', async () => {
+    it('returns v7 relational backup with grammar practice and AI history alongside existing learner tables', async () => {
       insertSampleWord('tenacious');
 
       const res = await app.inject({
@@ -570,7 +570,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(body.success).toBe(true);
 
       const backup = body.data;
-      expect(backup.version).toBe(6);
+      expect(backup.version).toBe(7);
       expect(backup.application).toBe('Lexora');
       expect(typeof backup.exportedAt).toBe('string');
       expect(new Date(backup.exportedAt).toISOString()).toBe(backup.exportedAt);
@@ -594,7 +594,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
         'learningSessions',
         'learningSessionItems',
       ];
-      requiredTables.push('learningAttempts', 'grammarLessonProgress', 'grammarExerciseAttempts', 'studyPreferences', 'studyTasks', 'grammarPracticeAttempts', 'grammarReviewStates', 'reviewAttempts', 'reviewAttemptRequests');
+      requiredTables.push('learningAttempts', 'grammarLessonProgress', 'grammarExerciseAttempts', 'studyPreferences', 'studyTasks', 'grammarPracticeAttempts', 'grammarReviewStates', 'reviewAttempts', 'reviewAttemptRequests', 'aiConversations', 'aiConversationTurns');
 
       for (const table of requiredTables) {
         expect(Array.isArray(data[table])).toBe(true);
@@ -616,7 +616,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       `).run('grammar-attempt', 'grammar-lesson', 'grammar-revision', '1', 'exercise-1', 'request-1', JSON.stringify(answer), 1, 'Correct', now);
 
       const backup = JSON.parse((await app.inject({ method: 'GET', url: '/api/backup' })).payload).data;
-      expect(backup.version).toBe(6);
+      expect(backup.version).toBe(7);
       expect(backup.data.grammarExerciseAttempts[0].answer).toEqual(answer);
 
       const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
@@ -731,6 +731,8 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       delete legacyBackup.data.grammarReviewStates;
       delete legacyBackup.data.grammarLessonProgress;
       delete legacyBackup.data.grammarExerciseAttempts;
+      delete legacyBackup.data.aiConversations;
+      delete legacyBackup.data.aiConversationTurns;
       delete legacyBackup.data.reviewAttempts;
       delete legacyBackup.data.reviewAttemptRequests;
       for (const row of legacyBackup.data.learningSessions) delete row.studyTaskId;
@@ -1607,7 +1609,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(fullBody.success).toBe(true);
       expect(fullBody.data.format).toBe('JSON');
       expect(fullBody.data.scope).toBe('all');
-      expect(fullBody.data.version).toBe(6);
+      expect(fullBody.data.version).toBe(7);
       expect(fullBody.data.data.words.length).toBe(1);
 
       const resCsv = await app.inject({
@@ -1636,12 +1638,12 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       expect(postRes.statusCode).toBe(200);
       const postBody = JSON.parse(postRes.payload);
       expect(postBody.success).toBe(true);
-      expect(postBody.data.version).toBe(6);
+      expect(postBody.data.version).toBe(7);
       expect(postBody.data.application).toBe('Lexora');
 
       const getRes = await app.inject({ method: 'GET', url: '/api/backup' });
       expect(getRes.statusCode).toBe(200);
-      expect(JSON.parse(getRes.payload).data.version).toBe(6);
+      expect(JSON.parse(getRes.payload).data.version).toBe(7);
     });
 
     it('POST /api/data/reset-progress and /api/reset-progress aliases require confirm: true', async () => {
@@ -2142,7 +2144,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       `).run(JSON.stringify({ type: 'choice', text: 'answer' }), now);
 
       const backup = new ImportExportService(db).getBackup();
-      expect(backup.version).toBe(6);
+      expect(backup.version).toBe(7);
       expect(backup.data.studyTasks.find((task) => task.id === 'learning-source')?.transferredToTaskId).toBe('learning-destination');
       const restoredDb = getDb(':memory:');
       const restoredApp = Fastify();
@@ -2191,8 +2193,10 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       }).run();
       insertCalendarTask('existing-calendar-task', 'REVIEW_WORDS', now);
       const exportedBackup = JSON.parse(JSON.stringify(new ImportExportService(db).getBackup()));
-      const invalidOlderBackup = { ...exportedBackup, version: 3 };
-      expect((await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup: invalidOlderBackup } })).statusCode).toBe(400);
+      const invalidOlderBackup = JSON.parse(JSON.stringify(exportedBackup));
+      invalidOlderBackup.version = 3;
+      delete invalidOlderBackup.data.aiConversations;
+      delete invalidOlderBackup.data.aiConversationTurns;
       const legacyBackup = JSON.parse(JSON.stringify(exportedBackup));
       legacyBackup.version = 3;
       delete legacyBackup.data.studyPreferences;
@@ -2201,6 +2205,8 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       delete legacyBackup.data.grammarReviewStates;
       delete legacyBackup.data.reviewAttempts;
       delete legacyBackup.data.reviewAttemptRequests;
+      delete legacyBackup.data.aiConversations;
+      delete legacyBackup.data.aiConversationTurns;
       for (const row of legacyBackup.data.learningSessions) delete row.studyTaskId;
       for (const row of legacyBackup.data.reviewLogs) delete row.studyTaskId;
       for (const row of legacyBackup.data.grammarExerciseAttempts) {
@@ -2335,7 +2341,7 @@ describe('Data Management Routes (Import / Export / Backup / Restore / Reset)', 
       db.insert(learningAttempts).values({ id: 'v2-attempt', sessionItemId: 'v2-item', requestId: 'v2-request', type: 'RECALL', attemptNumber: 2, answer: 'roundtrip', result: 'CORRECT_AFTER_HINT', performanceScore: 70, feedbackCodes: null, source: 'LOCAL', createdAt: now }).run();
       db.insert(reviewLogs).values({ id: 'v2-log', wordId: 'word-roundtrip', reviewType: 'RECALL', rating: 'GOOD', correct: true, performanceScore: 70, createdAt: now }).run();
       const backup = new ImportExportService(db).getBackup();
-      expect(backup.version).toBe(6);
+      expect(backup.version).toBe(7);
       expect(backup.data.learningAttempts).toHaveLength(1);
       const preview = await app.inject({ method: 'POST', url: '/api/restore/preview', payload: { backup } });
       const restore = await app.inject({ method: 'POST', url: '/api/restore', payload: { backup, confirm: true, previewToken: JSON.parse(preview.payload).data.previewToken } });

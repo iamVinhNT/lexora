@@ -2,7 +2,7 @@
  * @file ai-assistant-context.ts
  * @description Bounded server-owned menu data, without answer keys, secrets or unconsented progress.
  */
-import type { AiAssistantChatRequest } from '../schemas/ai-assistant.schema.js';
+import type { AiAssistantChatRequest } from '../schemas/ai-conversation.schema.js';
 import { civilDateAt } from '../domain/study/calendar-date.js';
 import { AppError, type VocabularyService } from './vocabulary.service.js';
 import type { ContextService } from './context.service.js';

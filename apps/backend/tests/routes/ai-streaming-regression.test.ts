@@ -13,7 +13,7 @@ let app: FastifyInstance;
 let providerServer: Server;
 let providerPort: number;
 let configRevision: string;
-
+let conversationId: string;
 type ProviderHandler = (reqBody: Record<string, unknown>, res: ServerResponse) => void | Promise<void>;
 let currentHandler: ProviderHandler;
 
@@ -93,6 +93,19 @@ beforeEach(async () => {
   configRevision = typeof settingsData === 'object' && settingsData !== null && 'revision' in settingsData && typeof settingsData.revision === 'string'
     ? settingsData.revision
     : '';
+
+  const convRes = await app.inject({
+    method: 'POST',
+    url: '/api/ai/conversations',
+    payload: {
+      context: { kind: 'general' },
+      locale: 'en',
+      includeContent: true,
+      includeProgress: false,
+      configRevision,
+    },
+  });
+  conversationId = convRes.json().data.id;
 });
 
 afterEach(async () => {
@@ -105,6 +118,9 @@ function postChat(overrides: Record<string, unknown> = {}) {
     method: 'POST',
     url: '/api/ai/chat',
     payload: {
+      conversationId,
+      requestId: crypto.randomUUID(),
+      expectedConversationRevision: 1,
       message: 'Hello assistant',
       locale: 'en',
       context: { kind: 'general' },
@@ -278,14 +294,31 @@ describe('AI Streaming Protocol & Boundary Regressions', () => {
       const fastRevision = typeof fastData === 'object' && fastData !== null && 'revision' in fastData && typeof fastData.revision === 'string'
         ? fastData.revision
         : '';
+      const fastConvRes = await fastTimeoutApp.inject({
+        method: 'POST',
+        url: '/api/ai/conversations',
+        payload: {
+          context: { kind: 'general' },
+          locale: 'en',
+          includeContent: true,
+          includeProgress: false,
+          configRevision: fastRevision,
+        },
+      });
+      const fastConvId = fastConvRes.json().data.id;
 
       const response = await fastTimeoutApp.inject({
         method: 'POST',
         url: '/api/ai/chat',
         payload: {
+          conversationId: fastConvId,
+          requestId: crypto.randomUUID(),
+          expectedConversationRevision: 1,
           message: 'Hurry up',
           locale: 'en',
           context: { kind: 'general' },
+          includeContent: true,
+          includeProgress: false,
           configRevision: fastRevision,
         },
       });

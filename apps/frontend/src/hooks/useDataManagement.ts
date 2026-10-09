@@ -2,7 +2,7 @@
  * @file useDataManagement.ts
  * @description Data-management mutations and cache invalidation boundaries.
  */
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { commitImport, exportVocabulary, getBackup, previewImport, previewRestore, resetAll, resetProgress, restoreBackup, type BackupPayload, type ExportFormat, type ExportResult, type ImportCommitResult, type ImportFormat, type ImportPreview, type ResetResult, type RestorePreview, type RestoreResult } from '../api/data.api';
 import { analyticsKeys } from './useAnalytics';
 import { contextKeys } from './useContexts';
@@ -12,9 +12,15 @@ import { wordKeys } from './useVocabulary';
 import { grammarKeys } from './useGrammar';
 import { studyKeys } from './useStudyCalendar';
 import { grammarPracticeKeys } from './useGrammarPractice';
+import { aiHistoryKeys } from './useAiHistory';
+import { useAiAssistantStore } from '../stores/ai-assistant.store';
 export const dataKeys = { all: ['data-management'] as const };
 
-function invalidateDataCaches(queryClient: ReturnType<typeof useQueryClient>) {
+function invalidateDataCaches(queryClient: QueryClient, options?: { resetAi?: boolean }) {
+  if (options?.resetAi) {
+    queryClient.removeQueries({ queryKey: aiHistoryKeys.all });
+    useAiAssistantStore.getState().resetActiveConversation();
+  }
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: wordKeys.all }),
     queryClient.invalidateQueries({ queryKey: contextKeys.all }),
@@ -55,7 +61,7 @@ export function useRestoreBackup() {
   const queryClient = useQueryClient();
   return useMutation<RestoreResult, Error, { backup: BackupPayload; previewToken: string }>({
     mutationFn: async ({ backup, previewToken }: { backup: BackupPayload; previewToken: string }) => assertRestoreSuccess(await restoreBackup(backup, previewToken)),
-    onSuccess: () => invalidateDataCaches(queryClient),
+    onSuccess: () => invalidateDataCaches(queryClient, { resetAi: true }),
   });
 }
 
@@ -63,7 +69,7 @@ export function useResetProgress() {
   const queryClient = useQueryClient();
   return useMutation<ResetResult, Error, void>({
     mutationFn: async () => assertResetSuccess(await resetProgress(), 'progress'),
-    onSuccess: () => invalidateDataCaches(queryClient),
+    onSuccess: () => invalidateDataCaches(queryClient, { resetAi: true }),
   });
 }
 
@@ -71,7 +77,7 @@ export function useResetAll() {
   const queryClient = useQueryClient();
   return useMutation<ResetResult, Error, void>({
     mutationFn: async () => assertResetSuccess(await resetAll(), 'all'),
-    onSuccess: () => invalidateDataCaches(queryClient),
+    onSuccess: () => invalidateDataCaches(queryClient, { resetAi: true }),
   });
 }
 

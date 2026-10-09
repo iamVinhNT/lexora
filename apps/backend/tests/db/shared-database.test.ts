@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/db/client.js';
+import { createAiConversationTables } from '../../src/db/ai-conversation-tables.js';
 import { prepareSharedDatabase, sharedDatabasePath } from '../../src/db/shared-database.js';
 
 const roots: string[] = [];
@@ -16,6 +17,36 @@ afterEach(() => {
 });
 
 describe('shared local database', () => {
+  it('preserves secondary AI conversations and raw replies during first-run consolidation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'lexora-shared-ai-')); roots.push(root);
+    const home = join(root, 'home'), backendRoot = join(root, 'backend');
+    const primaryPath = join(home, '.config', '@lexora', 'desktop', 'data', 'lexora.db');
+    const secondaryPath = join(backendRoot, 'data', 'lexora.db');
+    for (const path of [primaryPath, secondaryPath]) mkdirSync(dirname(path), { recursive: true });
+    getDb(primaryPath).sqlite.close();
+    const secondary = getDb(secondaryPath);
+    createAiConversationTables(secondary.sqlite);
+    secondary.sqlite.prepare(`
+      INSERT INTO ai_conversations (id,title,context_screen,locale,include_content,include_progress,base_url,model,generation_token,created_at,updated_at)
+      VALUES ('thread','Explain reliable','vocabulary','en',1,0,'http://127.0.0.1:9999/v1','fixture','generation','2026-10-09T00:00:00Z','2026-10-09T00:00:00Z')
+    `).run();
+    secondary.sqlite.prepare(`
+      INSERT INTO ai_conversation_turns (id,conversation_id,request_id,request_fingerprint,sequence,user_content,assistant_reply,status,created_at,updated_at)
+      VALUES ('turn','thread','intent','fingerprint',1,'Explain reliable','Able to be trusted.','COMPLETED','2026-10-09T00:00:00Z','2026-10-09T00:00:00Z')
+    `).run();
+    secondary.sqlite.close();
+    await prepareSharedDatabase(sharedDatabasePath(home), home, backendRoot);
+    const merged = getDb(sharedDatabasePath(home));
+    try {
+      expect(merged.sqlite.prepare('SELECT title, include_progress FROM ai_conversations').all()).toEqual([
+        { title: 'Explain reliable', include_progress: 0 },
+      ]);
+      expect(merged.sqlite.prepare('SELECT user_content, assistant_reply, status FROM ai_conversation_turns').all()).toEqual([
+        { user_content: 'Explain reliable', assistant_reply: 'Able to be trusted.', status: 'COMPLETED' },
+      ]);
+      expect(merged.sqlite.pragma('foreign_key_check')).toEqual([]);
+    } finally { merged.sqlite.close(); }
+  });
   it('preserves output-only grammar practice from a secondary database without inventing review state', async () => {
     const root = mkdtempSync(join(tmpdir(), 'lexora-shared-practice-')); roots.push(root);
     const home = join(root, 'home'), backendRoot = join(root, 'backend');

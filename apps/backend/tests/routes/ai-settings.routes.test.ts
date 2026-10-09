@@ -32,6 +32,32 @@ async function persistent() {
   directories.push(root);
   return { dbPath: join(root, 'test.db'), aiSettings: { env: {}, keyPath: join(root, 'security', 'master.key') } };
 }
+async function createChatPayload(app: FastifyInstance, configRevision: string, overrides: Record<string, unknown> = {}) {
+  const convRes = await app.inject({
+    method: 'POST',
+    url: '/api/ai/conversations',
+    payload: {
+      context: { kind: 'general' },
+      locale: 'en',
+      includeContent: true,
+      includeProgress: false,
+      configRevision,
+    },
+  });
+  const convId = convRes.json().data.id;
+  return {
+    conversationId: convId,
+    requestId: crypto.randomUUID(),
+    expectedConversationRevision: 1,
+    message: 'Explain.',
+    locale: 'en',
+    context: { kind: 'general' },
+    includeContent: true,
+    includeProgress: false,
+    configRevision,
+    ...overrides,
+  };
+}
 function parseSseData<T = Record<string, unknown>>(body: string, eventName: string): T | null {
   for (const frame of body.split('\n\n')) {
     if (frame.startsWith(`event: ${eventName}\n`)) {
@@ -76,16 +102,16 @@ describe('encrypted AI settings', () => {
     const app = await start({ aiAssistant: { generate } });
     const saved = (await save(app)).json().data;
     expect((await save(app, { ...bundle, apiKey: undefined, baseURL: 'https://other.example/v1' }, saved.revision)).json().error.code).toBe('AI_API_KEY_REQUIRED');
+    const chatPayload = await createChatPayload(app, saved.revision);
     const changed = await save(app, { baseURL: bundle.baseURL, models: bundle.models, activeModel: 'model-two' }, saved.revision);
     expect(changed.statusCode).toBe(200);
     expect((await save(app, bundle, saved.revision)).statusCode).toBe(409);
-    const request = { message: 'Explain.', locale: 'en', context: { kind: 'general' }, includeProgress: false };
-    const stale = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: { ...request, configRevision: saved.revision } });
+    const stale = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: chatPayload });
     expect(stale.statusCode).toBe(409);
     expect(stale.json().error.code).toBe('AI_CONFIG_CHANGED');
     expect(generate).not.toHaveBeenCalled();
     const revision = changed.json().data.revision;
-    const current = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: { ...request, configRevision: revision } });
+    const current = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: { ...chatPayload, configRevision: revision, requestId: crypto.randomUUID(), allowProviderChange: true } });
     expect(current.statusCode).toBe(200);
     expect(current.headers['content-type']).toContain('text/event-stream');
     expect(parseSseData<{ data: { configRevision: string } }>(current.body, 'done')?.data.configRevision).toBe(revision);
@@ -120,10 +146,10 @@ describe('encrypted AI settings', () => {
     const options = await persistent();
     const app = await start({ ...options, aiAssistant: { generate: async () => ({ reply: 'Must not run.' }) } });
     const saved = (await save(app)).json().data;
+    const chatPayload = await createChatPayload(app, saved.revision);
     app.db.sqlite.prepare('UPDATE ai_settings SET active_model = ?').run('model-two');
     expect((await metadata(app)).isConfigured).toBe(false);
-    const chat = { message: 'Explain.', locale: 'en', context: { kind: 'general' }, includeProgress: false, configRevision: saved.revision };
-    expect((await app.inject({ method: 'POST', url: '/api/ai/chat', payload: chat })).json().error.code).toBe('AI_SETTINGS_UNAVAILABLE');
+    expect((await app.inject({ method: 'POST', url: '/api/ai/chat', payload: chatPayload })).json().error.code).toBe('AI_SETTINGS_UNAVAILABLE');
     expect((await save(app, { baseURL: bundle.baseURL, models: bundle.models, activeModel: 'model-two' })).statusCode).toBe(503);
     expect((await save(app)).statusCode).toBe(200);
     await unlink(options.aiSettings.keyPath);
@@ -159,9 +185,8 @@ describe('encrypted AI settings', () => {
     const generate = vi.fn(() => { began(); return new Promise(resolve => { finish = resolve; }); });
     const app = await start({ aiAssistant: { generate } });
     const saved = (await save(app)).json().data;
-    const pending = app.inject({ method: 'POST', url: '/api/ai/chat', payload: {
-      message: 'Explain.', locale: 'en', context: { kind: 'general' }, includeProgress: false, configRevision: saved.revision,
-    } });
+    const chatPayload = await createChatPayload(app, saved.revision);
+    const pending = app.inject({ method: 'POST', url: '/api/ai/chat', payload: chatPayload });
     await started;
     const changed = await save(app, { baseURL: bundle.baseURL, models: bundle.models, activeModel: 'model-two' }, saved.revision);
     expect(changed.statusCode).toBe(200);
@@ -225,11 +250,10 @@ describe('encrypted AI settings', () => {
       ['active_model', 'model-two'], ['api_key_ciphertext', 'AAAA'], ['api_key_nonce', 'AAAA'], ['api_key_tag', 'AAAA'], ['crypto_version', 2],
     ] as const) {
       const saved = (await save(app)).json().data;
+      const chatPayload = await createChatPayload(app, saved.revision);
       app.db.sqlite.prepare('UPDATE ai_settings SET ' + column + ' = ?').run(value);
       expect((await metadata(app)).isConfigured).toBe(false);
-      const response = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: {
-        message: 'Explain.', locale: 'en', context: { kind: 'general' }, includeProgress: false, configRevision: saved.revision,
-      } });
+      const response = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: chatPayload });
       expect(response.statusCode).toBe(503);
       expect(response.json().error.code).toBe('AI_SETTINGS_UNAVAILABLE');
       expect(response.body).not.toContain(secret);

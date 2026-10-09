@@ -15,6 +15,7 @@ const TABLES = [
   'review_logs', 'learning_sessions', 'learning_session_items', 'learning_attempts',
   'grammar_lesson_progress', 'grammar_exercise_attempts',
   'grammar_review_states', 'grammar_practice_attempts',
+  'ai_conversations', 'ai_conversation_turns',
 ] as const;
 
 export function sharedDatabasePath(home = homedir()): string {

@@ -124,6 +124,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     const reviewService = new ReviewService(new ReviewRepository(db));
     const analyticsService = new AnalyticsService(analyticsRepository);
     const aiAssistant = new AiAssistantService({
+      sqlite: db.sqlite,
       vocabularyService,
       contextService,
       grammarService,
@@ -178,6 +179,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       });
     });
     app.addHook('onClose', async () => {
+      aiAssistant.close();
       if (db.sqlite.open) db.sqlite.close();
     });
 

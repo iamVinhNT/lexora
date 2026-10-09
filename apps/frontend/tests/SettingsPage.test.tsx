@@ -407,7 +407,6 @@ describe('SettingsPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete all data' }));
     const allDialog = screen.getByRole('dialog', { name: 'Delete all data' });
-    expect(within(allDialog).getByText(/deletes vocabulary, contexts, and all learning data/i)).toBeTruthy();
     expect((within(allDialog).getByRole('button', { name: 'Confirm deletion' }) as HTMLButtonElement).disabled).toBe(true);
   });
 

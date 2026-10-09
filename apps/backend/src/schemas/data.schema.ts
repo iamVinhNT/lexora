@@ -9,6 +9,7 @@ import { normalizeWord } from '../domain/text/normalization.js';
 import { grammarPracticeAttemptRowSchema, grammarReviewStateRowSchema, validateGrammarPracticeRelations } from './grammar-practice-backup.schema.js';
 import { reviewAttemptRowSchema, reviewAttemptRequestRowSchema } from './review-attempt.schema.js';
 import { validateReviewAttemptRelations } from './review-attempt-backup.schema.js';
+import { aiConversationRowSchema, aiConversationTurnRowSchema, validateAiHistoryRelations } from './ai-history-backup.schema.js';
 
 const timestampSchema = z.string().datetime({ offset: true }).transform((value) => new Date(value).toISOString());
 const nonNegativeIntegerSchema = z.number().int().nonnegative();
@@ -324,6 +325,8 @@ type BackupDataShape = {
   grammarExerciseAttempts?: Array<z.infer<typeof grammarExerciseAttemptRowSchema> & { studyTaskId?: string | null; completedLesson?: boolean }>;
   studyPreferences?: z.infer<typeof studyPreferencesRowSchema>[];
   studyTasks?: z.infer<typeof studyTaskRowSchema>[];
+  aiConversations?: z.infer<typeof aiConversationRowSchema>[];
+  aiConversationTurns?: z.infer<typeof aiConversationTurnRowSchema>[];
 };
 
 const finiteIntegerSchema = z.number().finite().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -656,6 +659,23 @@ export const backupV6DataSchema = z.object({
   validateReviewAttemptRelations(data, ctx);
 });
 
+export const backupV7DataSchema = z.object({
+  ...backupTables, ...backupV4Tables,
+  learningAttempts: z.array(learningAttemptRowSchema),
+  grammarLessonProgress: z.array(grammarLessonProgressRowSchema),
+  grammarPracticeAttempts: z.array(grammarPracticeAttemptRowSchema),
+  grammarReviewStates: z.array(grammarReviewStateRowSchema),
+  reviewAttempts: z.array(reviewAttemptRowSchema),
+  reviewAttemptRequests: z.array(reviewAttemptRequestRowSchema),
+  aiConversations: z.array(aiConversationRowSchema),
+  aiConversationTurns: z.array(aiConversationTurnRowSchema),
+}).strict().superRefine((data, ctx) => {
+  validateBackupRelations(data, ctx);
+  validateGrammarPracticeRelations(data, ctx);
+  validateReviewAttemptRelations(data, ctx);
+  validateAiHistoryRelations(data, ctx);
+});
+
 
 export const backupV1DataSchema = z.object(backupTables).strict().superRefine((data, ctx) => {
   validateBackupRelations({ ...data, learningAttempts: [] }, ctx);
@@ -672,11 +692,11 @@ export const backupV3Schema = z.object({ version: z.literal(3), ...backupEnvelop
 export const backupV4Schema = z.object({ version: z.literal(4), ...backupEnvelope, data: backupV4DataSchema }).strict();
 export const backupV5Schema = z.object({ version: z.literal(5), ...backupEnvelope, data: backupV5DataSchema }).strict();
 export const backupV6Schema = z.object({ version: z.literal(6), ...backupEnvelope, data: backupV6DataSchema }).strict();
-export const backupSchema = z.union([backupV1Schema, backupV2Schema, backupV3Schema, backupV4Schema, backupV5Schema, backupV6Schema]);
+export const backupV7Schema = z.object({ version: z.literal(7), ...backupEnvelope, data: backupV7DataSchema }).strict();
+export const backupSchema = z.union([backupV1Schema, backupV2Schema, backupV3Schema, backupV4Schema, backupV5Schema, backupV6Schema, backupV7Schema]);
 
-export type BackupData = z.infer<typeof backupV6DataSchema>;
-export type BackupPayload = z.infer<typeof backupV6Schema>;
-
+export type BackupData = z.infer<typeof backupV7DataSchema>;
+export type BackupPayload = z.infer<typeof backupV7Schema>;
 const restoreEnvelope = z.object({ confirm: z.literal(true), previewToken: z.string().min(1) }).strict();
 
 export const restoreSchema = z.union([
@@ -686,6 +706,7 @@ export const restoreSchema = z.union([
   z.object({ backup: backupV4Schema, ...restoreEnvelope.shape }).strict(),
   z.object({ backup: backupV5Schema, ...restoreEnvelope.shape }).strict(),
   z.object({ backup: backupV6Schema, ...restoreEnvelope.shape }).strict(),
+  z.object({ backup: backupV7Schema, ...restoreEnvelope.shape }).strict(),
   backupV1Schema.extend(restoreEnvelope.shape).strict().transform((val) => {
     const { confirm, previewToken, ...backup } = val;
     return { backup, confirm: true as const, previewToken };
@@ -707,6 +728,10 @@ export const restoreSchema = z.union([
     return { backup, confirm: true as const, previewToken };
   }),
   backupV6Schema.extend(restoreEnvelope.shape).strict().transform((val) => {
+    const { confirm, previewToken, ...backup } = val;
+    return { backup, confirm: true as const, previewToken };
+  }),
+  backupV7Schema.extend(restoreEnvelope.shape).strict().transform((val) => {
     const { confirm, previewToken, ...backup } = val;
     return { backup, confirm: true as const, previewToken };
   }),

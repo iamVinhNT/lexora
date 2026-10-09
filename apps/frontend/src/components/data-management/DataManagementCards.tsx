@@ -124,6 +124,7 @@ export function ExportCard({ onExport, onBackup, exportPending, backupPending, e
   const { t: tCommon } = useTranslation('common');
   return <Card className="min-w-0 space-y-5 p-4 sm:p-5">
     <CardHeading icon={<Download aria-hidden="true" size={20} />} title={t('exportBackup')} description={t('exportDescription')} />
+    <p className="text-sm text-muted">{t('backupPrivacyNotice')}</p>
     <div className="flex flex-col gap-3 sm:flex-row">
        <Button type="button" variant="secondary" onClick={onExport} disabled={exportPending}>{exportPending ? t('exporting') : tCommon('actions.exportVocabulary')}</Button>
        <Button type="button" variant="secondary" onClick={onBackup} disabled={backupPending}>{backupPending ? t('preparingBackup') : tCommon('actions.downloadFullBackup')}</Button>
@@ -166,6 +167,14 @@ export function RestoreCard({ onFile, desktopFiles, onSelect, preview, loading, 
         {!preview.calendarSummary.includedInBackup
           ? ` ${tCalendar('backup.calendarAbsent')}`
           : (preview.calendarSummary.willOverwrite ? ` ${tCalendar('backup.calendarIncluded', { tasks: formatNumber(preview.calendarSummary.backupTaskCount) })}` : '')}
+      </p>}
+      {preview.aiHistorySummary && <p className="text-sm text-foreground" role={!preview.aiHistorySummary.includedInBackup ? 'alert' : undefined}>
+        {preview.aiHistorySummary.includedInBackup
+          ? t('aiHistoryBackup', { conversations: formatNumber(preview.aiHistorySummary.backupTableCounts.aiConversations), turns: formatNumber(preview.aiHistorySummary.backupTableCounts.aiConversationTurns) })
+          : t('aiHistoryAbsent')}
+        {preview.aiHistorySummary.includedInBackup && preview.aiHistorySummary.willOverwrite && preview.aiHistorySummary.existingTableCounts.aiConversations > 0
+          ? ` ${t('aiHistoryOverwrite', { conversations: formatNumber(preview.aiHistorySummary.existingTableCounts.aiConversations), turns: formatNumber(preview.aiHistorySummary.existingTableCounts.aiConversationTurns) })}`
+          : ''}
       </p>}
       <Button type="button" variant="danger" onClick={onOpen}>{t('openRestore')}</Button>
     </div>}

@@ -13,7 +13,7 @@ let db:AppDatabase;
 let service:ImportExportService;
 beforeEach(()=>{db=getDb(':memory:');service=new ImportExportService(db);});
 afterEach(()=>db.sqlite.close());
-function backupWithOutput(){ const backup=service.getBackup(); const {reviewAttempts: _ra, reviewAttemptRequests: _rar, ...v5Base} = backup.data; return {...backup,version:5,data:{...v5Base,grammarPracticeAttempts:[output],grammarReviewStates:[]}}; }
+function backupWithOutput(){ const backup=service.getBackup(); const {reviewAttempts: _ra, reviewAttemptRequests: _rar, aiConversations: _ac, aiConversationTurns: _act, ...v5Base} = backup.data; return {...backup,version:5,data:{...v5Base,grammarPracticeAttempts:[output],grammarReviewStates:[]}}; }
 function restore(backup:unknown){const preview=service.previewRestore(backup);service.restoreBackup({backup,confirm:true,previewToken:preview.previewToken});}
 describe('grammar practice backup',()=>{
  it('preserves long authored feedback rather than applying learner-input limits to server evidence',()=>{
@@ -33,7 +33,7 @@ describe('grammar practice backup',()=>{
  });
  it('warns before v4 restore discards current practice but keeps the v4 calendar contract',()=>{
    restore(backupWithOutput());
-  const now=service.getBackup(); const {grammarPracticeAttempts:_,grammarReviewStates:__,reviewAttempts:___,reviewAttemptRequests:____,...v4data}=now.data;
+  const now=service.getBackup(); const {grammarPracticeAttempts:_,grammarReviewStates:__,reviewAttempts:___,reviewAttemptRequests:____,aiConversations:_____,aiConversationTurns:______,...v4data}=now.data;
    const v4={...now,version:4,data:v4data};
    const preview=service.previewRestore(v4);
    expect(preview.practiceSummary.includedInBackup).toBe(false);

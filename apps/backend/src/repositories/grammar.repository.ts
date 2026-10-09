@@ -156,6 +156,14 @@ export class GrammarRepository {
       completed_at, created_at, updated_at FROM grammar_lesson_progress WHERE lesson_id = ?`).get(lessonId) as GrammarProgressRow | undefined;
     return mapProgress(row);
   }
+
+  findProgressByLessonIds(lessonIds: readonly string[]): GrammarLessonProgress[] {
+    if (lessonIds.length === 0) return [];
+    const rows = this.sqlite.prepare(`SELECT lesson_id, revision_id, revision, last_position, is_complete,
+      completed_at, created_at, updated_at FROM grammar_lesson_progress
+      WHERE lesson_id IN (${lessonIds.map(() => '?').join(',')})`).all(...lessonIds) as GrammarProgressRow[];
+    return rows.map(row => mapProgress(row)!);
+  }
   findSubmittedExerciseIds(lessonId: string, revisionId: string): string[] {
     const rows = this.sqlite.prepare(`SELECT DISTINCT exercise_id FROM grammar_exercise_attempts
       WHERE lesson_id = ? AND revision_id = ? ORDER BY exercise_id`).all(lessonId, revisionId) as Array<{ exercise_id: string }>;
