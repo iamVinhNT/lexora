@@ -50,7 +50,8 @@ export function WordFormDialog({ word, onClose }: Props) {
     request.then(onClose).catch(() => undefined);
   };
 
-  return <Dialog title={word ? t('editTitle', { word: word.word }) : t('addTitle')} onClose={onClose} wide><form onSubmit={submit} className="min-w-0 space-y-5" noValidate>
+  return <Dialog title={word ? t('editTitle', { word: word.word }) : t('addTitle')} onClose={onClose} wide fixedContent><form onSubmit={submit} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" noValidate>
+    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7">
     <div className="grid gap-4 sm:grid-cols-2">
       <Field
         label={t('fields.word')}
@@ -78,7 +79,11 @@ export function WordFormDialog({ word, onClose }: Props) {
       <div><label htmlFor="difficulty" className="text-sm font-semibold text-foreground">{t('fields.difficulty')}</label><Select value={form.difficulty || noDifficultyValue} onValueChange={(value) => setField('difficulty', value === noDifficultyValue ? '' : value)}><SelectTrigger id="difficulty" aria-label={t('fields.difficulty')} className={controlClass}><SelectValue /></SelectTrigger><SelectContent><SelectItem value={noDifficultyValue}>{t('chooseCefr')}</SelectItem>{['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((level) => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent></Select></div>
     </div>
     <TextAreaField label={t('fields.tags')} hint={tCommon('hints.commaSeparated')} value={form.tags} onChange={(value) => setField('tags', value)} /><TextAreaField label={t('fields.collocations')} hint={tCommon('hints.onePhrasePerLine')} value={form.collocations} onChange={(value) => setField('collocations', value)} /><TextAreaField label={t('fields.examples')} hint={tCommon('hints.oneSentencePerLine')} value={form.examples} onChange={(value) => setField('examples', value)} />
-     {mutation.error && <p role="alert" className="text-sm text-danger">{getLocalizedErrorMessage(mutation.error, tCommon)}</p>}<div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onClose}>{t('cancel')}</Button><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? t('saving') : t('save')}</Button></div>
+    </div>
+    <div className="shrink-0 space-y-3 border-t border-border bg-surface px-4 py-3 sm:px-7">
+      {mutation.error && <p role="alert" className="text-sm text-danger">{getLocalizedErrorMessage(mutation.error, tCommon)}</p>}
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onClose}>{t('cancel')}</Button><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? t('saving') : t('save')}</Button></div>
+    </div>
   </form></Dialog>;
 }
 
