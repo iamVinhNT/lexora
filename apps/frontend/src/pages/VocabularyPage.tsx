@@ -17,7 +17,6 @@ import { WordFormDialog } from '../components/vocabulary/WordFormDialog';
 import { useWords } from '../hooks/useVocabulary';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { Word } from '../api/vocabulary.api';
-import { useAiAssistantStore } from '../stores/ai-assistant.store';
 
 const totalLimit = 20;
 
@@ -52,16 +51,6 @@ export function VocabularyPage() {
   const clearDeleted = () => { setSelectedWordId(null); setDetailWord(null); };
   const editSelected = () => setEditingWord(isDesktop ? selectedWord : detailWord);
 
-  const registerAiContext = useAiAssistantStore((state) => state.registerContext);
-  const activeWordForAi = isDesktop ? selectedWord : detailWord;
-
-  useEffect(() => {
-    if (!activeWordForAi?.id) return;
-    return registerAiContext({
-      kind: 'word',
-      wordId: activeWordForAi.id,
-    }, activeWordForAi.word);
-  }, [activeWordForAi?.id, activeWordForAi?.word, registerAiContext]);
   return <div data-testid="vocabulary-page" className="flex min-h-0 flex-col gap-4 lg:h-full lg:gap-4 lg:[&>header>div>p]:hidden">
     <PageHeader title={t('title')} subtitle={t('subtitle')} action={<Button type="button" onClick={() => setFormOpen(true)} className="min-h-11 min-w-11 gap-2 px-3"><Plus aria-hidden="true" size={17} /><span>{t('addWord')}</span></Button>} />
     <VocabularyToolbar search={search} difficulty={difficulty} status={status} tag={tag} onSearch={(value) => resetPage(setSearch, value)} onDifficulty={(value) => resetPage(setDifficulty, value)} onStatus={(value) => resetPage(setStatus, value)} onTag={(value) => resetPage(setTag, value)} />

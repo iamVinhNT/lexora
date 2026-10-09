@@ -126,7 +126,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       contextService,
       grammarService,
       sessionService,
-      reviewService,
+      studyService,
       analyticsService,
       aiAssistant: { ...options.aiAssistant, getConfig: options.aiAssistant?.getConfig ?? (options.aiAssistant?.generate ? () => settings.resolveForGenerator() : getConfig) },
       env: options.aiAssistant?.env ?? process.env,

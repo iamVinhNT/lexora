@@ -1,13 +1,12 @@
 /**
  * @file ai-assistant.store.ts
- * @description Session state for Lexi, scoped history, and configuration/reset race guards.
+ * @description Session state for Lexi, menu-scoped history, and configuration/reset race guards.
  */
 import { create } from 'zustand';
 
 import type {
   AiChatContext,
   AiChatMessage,
-  AiChatScreen,
 } from '../api/ai.api';
 
 export const MAX_STORED_MESSAGES = 40;
@@ -29,16 +28,6 @@ export function getContextDescriptorKey(context: AiChatContext): string {
       return 'general';
     case 'screen':
       return `screen:${context.screen}`;
-    case 'grammar':
-      return `grammar:${context.lessonId}:${context.revisionId}`;
-    case 'word':
-      return `word:${context.wordId}`;
-    case 'context':
-      return `context:${context.contextId}`;
-    case 'learning':
-      return `learning:${context.sessionId}:${context.wordId}:${context.step}`;
-    case 'review':
-      return `review:${context.wordId}`;
   }
 }
 
@@ -73,15 +62,11 @@ export function filterHistoryForScope(
   }));
 }
 
+
 type AiAssistantState = {
   isOpen: boolean;
-  isHidden: boolean;
   configurationRevision: string | null;
-  activeContext: AiChatContext | null;
-  overrideContext: AiChatContext | null;
   includeContent: boolean;
-  activeContextLabel: string | null;
-  overrideContextLabel: string | null;
   includeProgress: boolean;
   draft: string;
   messages: StoredChatMessage[];
@@ -91,18 +76,15 @@ type AiAssistantState = {
   prunedNotice: boolean;
   epoch: number;
 
-  openGuide: (contextOverride?: AiChatContext, label?: string) => void;
+  openGuide: () => void;
   closeGuide: () => void;
-  hideGuide: () => void;
-  showGuide: () => void;
   syncConfiguration: (revision: string) => void;
-  registerContext: (context: AiChatContext, label?: string) => () => void;
-  clearOverrideContext: () => void;
   setIncludeContent: (include: boolean) => void;
   setIncludeProgress: (include: boolean) => void;
   setDraft: (draft: string) => void;
   setError: (error: string | null) => void;
   beginSend: () => number | null;
+  abortSend: () => void;
   recordSuccess: (
     userContent: string,
     assistantReply: string,
@@ -122,14 +104,9 @@ function nextMessageId() {
 
 export const useAiAssistantStore = create<AiAssistantState>()((set, get) => ({
   isOpen: false,
-  isHidden: false,
   configurationRevision: null,
-  activeContext: null,
-  overrideContext: null,
   includeContent: true,
   includeProgress: false,
-  activeContextLabel: null,
-  overrideContextLabel: null,
   draft: '',
   messages: [],
   isSending: false,
@@ -138,18 +115,19 @@ export const useAiAssistantStore = create<AiAssistantState>()((set, get) => ({
   prunedNotice: false,
   epoch: 0,
 
-  openGuide: (contextOverride, label) => set({
-    isOpen: true,
-    isHidden: false,
-    ...(contextOverride ? { overrideContext: contextOverride, overrideContextLabel: label ?? null } : {}),
-  }),
+  openGuide: () => set({ isOpen: true }),
 
-  closeGuide: () => set({ isOpen: false }),
-  hideGuide: () => set({ isHidden: true, isOpen: false }),
-  showGuide: () => set({ isHidden: false }),
+  closeGuide: () =>
+    set((state) => ({
+      isOpen: false,
+      isSending: false,
+      epoch: state.isSending ? state.epoch + 1 : state.epoch,
+      error: state.isSending ? null : state.error,
+    })),
+
   syncConfiguration: (revision) => {
     if (get().configurationRevision === revision) return;
-    set(state => ({
+    set((state) => ({
       configurationRevision: revision,
       epoch: state.epoch + 1,
       messages: [],
@@ -160,24 +138,28 @@ export const useAiAssistantStore = create<AiAssistantState>()((set, get) => ({
     }));
   },
 
-
-  registerContext: (context, label) => {
-    set({ activeContext: context, activeContextLabel: label ?? null, overrideContext: null, overrideContextLabel: null });
-    return () => {
-      if (get().activeContext === context) {
-        set({ activeContext: null, activeContextLabel: null });
-      }
-    };
-  },
-
-  clearOverrideContext: () => set({ overrideContext: null, overrideContextLabel: null }),
-
   setIncludeContent: (includeContent) => {
-    if (get().includeContent !== includeContent) set(state => ({ includeContent, epoch: state.epoch + 1, isSending: false, error: null, errorScopeKey: null }));
+    if (get().includeContent !== includeContent) {
+      set((state) => ({
+        includeContent,
+        epoch: state.epoch + 1,
+        isSending: false,
+        error: null,
+        errorScopeKey: null,
+      }));
+    }
   },
 
   setIncludeProgress: (includeProgress) => {
-    if (get().includeProgress !== includeProgress) set(state => ({ includeProgress, epoch: state.epoch + 1, isSending: false, error: null, errorScopeKey: null }));
+    if (get().includeProgress !== includeProgress) {
+      set((state) => ({
+        includeProgress,
+        epoch: state.epoch + 1,
+        isSending: false,
+        error: null,
+        errorScopeKey: null,
+      }));
+    }
   },
 
   setDraft: (draft) => set({ draft }),
@@ -189,6 +171,13 @@ export const useAiAssistantStore = create<AiAssistantState>()((set, get) => ({
     const epoch = get().epoch;
     set({ isSending: true, error: null, errorScopeKey: null });
     return epoch;
+  },
+
+  abortSend: () => {
+    set((state) => ({
+      isSending: false,
+      epoch: state.epoch + 1,
+    }));
   },
 
   recordSuccess: (userContent, assistantReply, scopeKey, contextLabel, epoch) => {
@@ -256,17 +245,3 @@ export const useAiAssistantStore = create<AiAssistantState>()((set, get) => ({
       epoch: state.epoch + 1,
     })),
 }));
-
-export function getEffectiveContext(
-  state: {
-    activeContext: AiChatContext | null;
-    overrideContext: AiChatContext | null;
-    includeContent: boolean;
-  },
-  fallbackScreen: AiChatScreen,
-): AiChatContext {
-  if (!state.includeContent) {
-    return { kind: 'screen', screen: fallbackScreen };
-  }
-  return state.overrideContext ?? state.activeContext ?? { kind: 'screen', screen: fallbackScreen };
-}

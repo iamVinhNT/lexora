@@ -9,7 +9,6 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 
 import type { GrammarAnswerSubmission, GrammarExerciseKind } from '../api/grammar.api';
 import { useGrammarLesson, useSubmitGrammarAnswer } from '../hooks/useGrammar';
-import { useAiAssistantStore } from '../stores/ai-assistant.store';
 import { useStudyTask } from '../hooks/useStudyCalendar';
 import { getLocalizedErrorMessage } from '../i18n/presentation';
 import { GrammarLessonContent } from '../components/grammar/GrammarLessonContent';
@@ -37,7 +36,6 @@ function GrammarLessonView({ lessonId, studyTaskId }: { lessonId: string; studyT
   const taskQuery = useStudyTask(studyTaskId ?? '');
   const submitMutation = useSubmitGrammarAnswer(lessonId);
   const pendingSubmission = useRef<GrammarAnswerSubmission | null>(null);
-  const registerAiContext = useAiAssistantStore((state) => state.registerContext);
   const [viewingAttempt, setViewingAttempt] = useState<GrammarAnswerSubmission | null>(null);
   const [viewingFeedback, setViewingFeedback] = useState<{ isCorrect: boolean; feedback: string } | null>(null);
   const [practiceIndex, setPracticeIndex] = useState<number | null>(null);
@@ -46,14 +44,6 @@ function GrammarLessonView({ lessonId, studyTaskId }: { lessonId: string; studyT
   const lesson = lessonData?.lesson;
   const exercises = lesson?.exercises ?? [];
 
-  useEffect(() => {
-    if (!lesson?.id || !lesson?.revisionId) return;
-    return registerAiContext({
-      kind: 'grammar',
-      lessonId: lesson.id,
-      revisionId: lesson.revisionId,
-    }, lesson.title);
-  }, [lesson?.id, lesson?.revisionId, lesson?.title, registerAiContext]);
   const taskLoading = Boolean(studyTaskId && taskQuery.isPending);
   const taskMismatch = Boolean(studyTaskId && lesson && taskQuery.data && (
     taskQuery.data.kind !== 'GRAMMAR'

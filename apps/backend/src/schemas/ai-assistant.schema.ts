@@ -17,15 +17,6 @@ export const aiAssistantScreenEnum = z.enum([
 ]);
 export type AiAssistantScreen = z.infer<typeof aiAssistantScreenEnum>;
 
-export const aiAssistantLearningStepEnum = z.enum([
-  'CONTEXT',
-  'UNDERSTAND',
-  'RECALL',
-  'OUTPUT',
-  'ASSESS',
-]);
-export type AiAssistantLearningStep = z.infer<typeof aiAssistantLearningStepEnum>;
-
 export const aiAssistantContextSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('general'),
@@ -33,29 +24,6 @@ export const aiAssistantContextSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('screen'),
     screen: aiAssistantScreenEnum,
-  }).strict(),
-  z.object({
-    kind: z.literal('grammar'),
-    lessonId: z.string().trim().min(1),
-    revisionId: z.string().trim().min(1),
-  }).strict(),
-  z.object({
-    kind: z.literal('word'),
-    wordId: z.string().trim().min(1),
-  }).strict(),
-  z.object({
-    kind: z.literal('context'),
-    contextId: z.string().trim().min(1),
-  }).strict(),
-  z.object({
-    kind: z.literal('learning'),
-    sessionId: z.string().trim().min(1),
-    wordId: z.string().trim().min(1),
-    step: aiAssistantLearningStepEnum,
-  }).strict(),
-  z.object({
-    kind: z.literal('review'),
-    wordId: z.string().trim().min(1),
   }).strict(),
 ]);
 export type AiAssistantContextDescriptor = z.infer<typeof aiAssistantContextSchema>;
@@ -71,7 +39,8 @@ export const aiAssistantChatRequestSchema = z.object({
   message: z.string().trim().min(1).max(2000),
   locale: z.enum(['vi', 'en']),
   context: aiAssistantContextSchema,
-  includeProgress: z.boolean(),
+  includeContent: z.boolean().default(true),
+  includeProgress: z.boolean().default(false),
   history: z
     .array(aiAssistantHistoryItemSchema)
     .max(8)
@@ -98,3 +67,47 @@ export const aiAssistantChatResponseSchema = z.object({
   }).strict(),
 }).strict();
 export type AiAssistantChatResponse = z.infer<typeof aiAssistantChatResponseSchema>;
+
+export interface AiAssistantSseMeta {
+  success: true;
+  data: {
+    configRevision: string;
+    context: {
+      kind: string;
+      label: string;
+    };
+  };
+}
+
+export interface AiAssistantSseDelta {
+  success: true;
+  data: {
+    text: string;
+  };
+}
+
+export interface AiAssistantSseDone {
+  success: true;
+  data: {
+    reply: string;
+    configRevision: string;
+    context: {
+      kind: string;
+      label: string;
+    };
+  };
+}
+
+export interface AiAssistantSseError {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+  };
+}
+
+export type AiAssistantSseEvent =
+  | { event: 'meta'; data: AiAssistantSseMeta }
+  | { event: 'delta'; data: AiAssistantSseDelta }
+  | { event: 'done'; data: AiAssistantSseDone }
+  | { event: 'error'; data: AiAssistantSseError };

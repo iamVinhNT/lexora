@@ -70,7 +70,20 @@ export const aiRoutes: FastifyPluginAsync<AiRouteOptions> = async (fastify, opts
     }
     calls += 1;
 
-    const data = await service.chat(input);
-    return reply.send({ success: true, data });
+    const controller = new AbortController();
+    request.raw.on('close', () => {
+      if (!request.raw.complete) {
+        controller.abort();
+      }
+    });
+
+    const stream = await service.chatStream(input, { signal: controller.signal });
+
+    return reply
+      .type('text/event-stream')
+      .header('Cache-Control', 'no-cache, no-transform')
+      .header('Connection', 'keep-alive')
+      .header('X-Accel-Buffering', 'no')
+      .send(stream);
   });
 };

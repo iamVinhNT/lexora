@@ -1,88 +1,94 @@
 /**
  * @file ai-assistant-context.ts
- * @description Resolves server-owned, allowlisted assistant context without exercise answers.
+ * @description Bounded server-owned menu data, without answer keys, secrets or unconsented progress.
  */
 import type { AiAssistantChatRequest } from '../schemas/ai-assistant.schema.js';
-import { GrammarCurriculumChangedConflictError, GrammarLessonUnavailableError } from '../grammar/course-read-model.js';
-import { AppError, ConflictError, NotFoundError } from './vocabulary.service.js';
-import type { VocabularyService } from './vocabulary.service.js';
+import { civilDateAt } from '../domain/study/calendar-date.js';
+import { AppError, type VocabularyService } from './vocabulary.service.js';
 import type { ContextService } from './context.service.js';
 import type { GrammarService } from './grammar.service.js';
 import type { SessionService } from './session.service.js';
-import type { ReviewService } from './review.service.js';
+import type { StudyService } from './study.service.js';
+import type { AnalyticsService } from './analytics.service.js';
 
 export interface AiAssistantContextServices {
   vocabularyService?: VocabularyService;
   contextService?: ContextService;
   grammarService?: GrammarService;
   sessionService?: SessionService;
-  reviewService?: ReviewService;
+  studyService?: StudyService;
+  analyticsService?: AnalyticsService;
 }
-export type AssistantResolvedContext = { kind: string; label: string; data: Record<string, unknown> };
+export type AssistantResolvedContext = { kind: 'general' | 'screen'; label: string; data: Record<string, unknown> };
 const SCREEN_NAMES = {
   vi: { overview: 'Tổng quan', learn: 'Học từ vựng', review: 'Ôn tập', vocabulary: 'Kho từ vựng', calendar: 'Lịch học tập', grammar: 'Ngữ pháp', contexts: 'Ngữ cảnh', statistics: 'Thống kê', settings: 'Cài đặt' },
   en: { overview: 'Overview', learn: 'Learn', review: 'Review', vocabulary: 'Vocabulary', calendar: 'Calendar', grammar: 'Grammar', contexts: 'Contexts', statistics: 'Statistics', settings: 'Settings' },
 };
-function required<T>(value: T | undefined): T {
-  if (!value) throw new AppError(500, 'INTERNAL_ERROR', 'Assistant context service unavailable');
-  return value;
-}
-interface AssistantWord {
-  word: string; definition: string; translation: string | null; phonetic: string | null; partOfSpeech: string | null;
-  examples: Array<{ sentence: string; translation: string | null }>;
-}
-function vocabularyData(word: AssistantWord) {
-  return {
-    word: word.word, definition: word.definition, translation: word.translation,
-    phonetic: word.phonetic, partOfSpeech: word.partOfSpeech,
-    examples: word.examples.slice(0, 5).map((example: { sentence: string; translation: string | null }) => ({ sentence: example.sentence, translation: example.translation })),
-  };
+function required<T>(service: T | undefined): T {
+  if (!service) throw new AppError(500, 'INTERNAL_ERROR', 'Assistant context service unavailable');
+  return service;
 }
 
 export function resolveAssistantContext(services: AiAssistantContextServices, input: AiAssistantChatRequest): AssistantResolvedContext {
-  const { context, locale } = input;
-  const vi = locale === 'vi';
-  switch (context.kind) {
-    case 'general': return { kind: context.kind, label: vi ? 'Trợ lý chung' : 'General assistant', data: {} };
-    case 'screen': return { kind: context.kind, label: SCREEN_NAMES[locale][context.screen], data: { screen: context.screen } };
+  const { context, locale, includeContent, includeProgress } = input;
+  if (context.kind === 'general') return { kind: 'general', label: locale === 'vi' ? 'Trợ lý chung' : 'General assistant', data: {} };
+  const { screen } = context;
+  const result: AssistantResolvedContext = { kind: 'screen', label: SCREEN_NAMES[locale][screen], data: { screen } };
+  if (!includeContent) return { ...result, data: { screen, contentIncluded: false } };
+  switch (screen) {
+    case 'vocabulary': {
+      const list = required(services.vocabularyService).listWords({ page: 1, limit: 30 });
+      const words = list.items.map(item => ({
+        word: item.word.slice(0, 128), definition: item.definition.slice(0, 500),
+        translation: item.translation?.slice(0, 200) ?? null, partOfSpeech: item.partOfSpeech?.slice(0, 80) ?? null,
+      }));
+      result.data = { screen, total: list.total, supplied: words.length, truncated: list.total > words.length,
+        textTruncated: list.items.some(item => item.word.length > 128 || item.definition.length > 500 || (item.translation?.length ?? 0) > 200 || (item.partOfSpeech?.length ?? 0) > 80), words };
+      break;
+    }
+    case 'contexts': {
+      const list = required(services.contextService).listContexts({ page: 1, limit: 15 });
+      const contexts = list.items.map(item => ({ title: item.title.slice(0, 160), content: item.content.slice(0, 250) }));
+      result.data = { screen, total: list.total, supplied: contexts.length, truncated: list.total > contexts.length,
+        textTruncated: list.items.some(item => item.title.length > 160 || item.content.length > 250), contexts };
+      break;
+    }
     case 'grammar': {
-      let lesson;
-      try { lesson = required(services.grammarService).getLesson(context.lessonId); }
-      catch (error) {
-        if (error instanceof GrammarLessonUnavailableError) throw new NotFoundError('Grammar lesson unavailable');
-        if (error instanceof GrammarCurriculumChangedConflictError) throw new ConflictError('Curriculum changed', { reason: 'CURRICULUM_CHANGED' });
-        throw error;
+      const course = required(services.grammarService).getCourse();
+      const stages = course.stages.map(stage => ({ level: stage.level, title: stage.title, lessonCount: stage.lessons.length,
+        lessons: stage.lessons.slice(0, 5).map(lesson => ({ title: lesson.title, objective: lesson.objective })) }));
+      const totalLessons = course.stages.reduce((sum, stage) => sum + stage.lessons.length, 0);
+      const suppliedLessons = stages.reduce((sum, stage) => sum + stage.lessons.length, 0);
+      result.data = { screen, totalStages: stages.length, totalLessons, suppliedLessons, truncated: suppliedLessons < totalLessons, stages };
+      break;
+    }
+    case 'calendar': {
+      const study = required(services.studyService);
+      const preferences = study.getPreferences();
+      result.data = { screen, preferences: preferences ? { timeZone: preferences.timeZone, studyDays: preferences.studyDays,
+        learningTarget: preferences.learningTarget, reviewTarget: preferences.reviewTarget, grammarTarget: preferences.grammarTarget } : null };
+      if (includeProgress) {
+        const now = new Date().toISOString();
+        const today = civilDateAt(now, preferences?.timeZone ?? 'UTC');
+        const calendar = study.getCalendar({ from: today, to: today }, now);
+        const tasks = calendar.days[0]?.tasks ?? [];
+        result.data.calendar = { date: today, total: tasks.length, supplied: Math.min(tasks.length, 30), truncated: tasks.length > 30,
+          todayTasks: tasks.slice(0, 30).map(task => ({ kind: task.kind, targetCount: task.targetCount, isComplete: task.isComplete })) };
       }
-      if (lesson.revisionId !== context.revisionId) throw new ConflictError('Grammar revision changed', { reason: 'CURRICULUM_CHANGED' });
-      return { kind: context.kind, label: lesson.title, data: {
-        title: lesson.title, objective: lesson.objective, explanation: lesson.explanation,
-        examples: lesson.examples, contrasts: lesson.contrasts, summary: lesson.summary,
-      } };
+      break;
     }
-    case 'word': {
-      const word = required(services.vocabularyService).getWordById(context.wordId);
-      return { kind: context.kind, label: word.word, data: vocabularyData(word) };
+    case 'learn': {
+      const active = required(services.sessionService).findActiveSession();
+      result.data = { screen, hasActiveSession: Boolean(active), ...(active ? { mode: active.mode, step: active.cursor.step } : {}) };
+      if (includeProgress && active) result.data.totalWords = active.totalWords;
+      break;
     }
-    case 'context': {
-      const selected = required(services.contextService).getContextById(context.contextId);
-      return { kind: context.kind, label: selected.title, data: { title: selected.title, content: selected.content } };
-    }
-    case 'learning': {
-      const session = required(services.sessionService).getSessionById(context.sessionId);
-      if (session.status !== 'IN_PROGRESS' || session.cursor.wordId !== context.wordId || session.cursor.step !== context.step) {
-        throw new ConflictError('Learning cursor changed', { reason: 'CURSOR_MISMATCH' });
-      }
-      const word = required(services.vocabularyService).getWordById(context.wordId);
-      if (context.step === 'RECALL') return {
-        kind: context.kind, label: vi ? 'Học từ: Ôn nhớ' : 'Learning: Recall',
-        data: { step: context.step, definition: word.definition, translation: word.translation },
-      };
-      return { kind: context.kind, label: `${word.word} · ${context.step}`, data: { step: context.step, ...vocabularyData(word) } };
-    }
-    case 'review': {
-      const word = required(services.vocabularyService).getWordById(context.wordId);
-      if (!required(services.reviewService).isWordDue(context.wordId)) throw new ConflictError('Word is not due for review', { reason: 'WORD_NOT_DUE' });
-      return { kind: context.kind, label: vi ? 'Ôn tập từ vựng' : 'Vocabulary review', data: { definition: word.definition, translation: word.translation } };
-    }
+    case 'review':
+      if (includeProgress) result.data.totalDue = required(services.analyticsService).getDashboardStatistics().dueCount;
+      break;
+    case 'statistics':
+    case 'overview':
+    case 'settings': break;
   }
+  return result;
 }

@@ -27,18 +27,29 @@ describe('assistant conversation boundaries', () => {
     expect(useAiAssistantStore.getState().isSending).toBe(true);
   });
 
-  it('excludes previously shared progress and another learning step from next prompt history', () => {
+  it('excludes previously shared progress and another screen menu from next prompt history', () => {
     const state = useAiAssistantStore.getState();
-    const understand = getContextDescriptorKey({ kind: 'learning', sessionId: 'session', wordId: 'word', step: 'UNDERSTAND' });
-    const recall = getContextDescriptorKey({ kind: 'learning', sessionId: 'session', wordId: 'word', step: 'RECALL' });
-    const privateScope = buildScopeKey(understand, 'en', true, 'provider-a', true);
-    state.recordSuccess('How is my progress?', 'Private progress and target spelling', privateScope, 'Understand', state.epoch);
+    const learnScreen = getContextDescriptorKey({ kind: 'screen', screen: 'learn' });
+    const reviewScreen = getContextDescriptorKey({ kind: 'screen', screen: 'review' });
+    const privateScope = buildScopeKey(learnScreen, 'en', true, 'provider-a', true);
+    state.recordSuccess('How is my progress?', 'Private progress and target spelling', privateScope, 'Learn', state.epoch);
     const messages = useAiAssistantStore.getState().messages;
-    expect(filterHistoryForScope(messages, buildScopeKey(understand, 'en', false, 'provider-a', true))).toEqual([]);
-    expect(filterHistoryForScope(messages, buildScopeKey(recall, 'en', true, 'provider-a', true))).toEqual([]);
-    expect(filterHistoryForScope(messages, buildScopeKey(understand, 'vi', true, 'provider-a', true))).toEqual([]);
-    expect(filterHistoryForScope(messages, buildScopeKey(understand, 'en', true, 'provider-b', true))).toEqual([]);
-    expect(filterHistoryForScope(messages, buildScopeKey(understand, 'en', true, 'provider-a', false))).toEqual([]);
+    expect(filterHistoryForScope(messages, buildScopeKey(learnScreen, 'en', false, 'provider-a', true))).toEqual([]);
+    expect(filterHistoryForScope(messages, buildScopeKey(reviewScreen, 'en', true, 'provider-a', true))).toEqual([]);
+    expect(filterHistoryForScope(messages, buildScopeKey(learnScreen, 'vi', true, 'provider-a', true))).toEqual([]);
+    expect(filterHistoryForScope(messages, buildScopeKey(learnScreen, 'en', true, 'provider-b', true))).toEqual([]);
+    expect(filterHistoryForScope(messages, buildScopeKey(learnScreen, 'en', true, 'provider-a', false))).toEqual([]);
+  });
+
+  it('aborts sending and increments epoch on close or explicit abort without clearing draft', () => {
+    useAiAssistantStore.getState().setDraft('My pending question');
+    const epoch = useAiAssistantStore.getState().beginSend()!;
+    expect(useAiAssistantStore.getState().isSending).toBe(true);
+    useAiAssistantStore.getState().closeGuide();
+    expect(useAiAssistantStore.getState().isSending).toBe(false);
+    expect(useAiAssistantStore.getState().epoch).toBe(epoch + 1);
+    expect(useAiAssistantStore.getState().draft).toBe('My pending question');
+    expect(useAiAssistantStore.getState().recordSuccess('My pending question', 'Late reply', 'scope', 'Label', epoch)).toBe(false);
   });
 
   it('bounds stored conversation and prompt history while preserving unsent draft', () => {

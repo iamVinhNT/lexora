@@ -24,7 +24,7 @@ export function WordDetailDialog({ word, onClose, onEdit, onDeleted, confirmOnOp
   if (confirming) return <DeleteWordDialog word={activeWord} onClose={confirmOnOpen ? onClose : () => setConfirming(false)} onDeleted={onDeleted} mutation={deleteMutation} />;
   const handleAskAssistant = () => {
     onClose();
-    useAiAssistantStore.getState().openGuide({ kind: 'word', wordId: activeWord.id }, activeWord.word);
+    useAiAssistantStore.getState().openGuide();
   };
   return <Dialog title={activeWord.word} onClose={onClose} wide fixedContent><WordDetailContent word={activeWord} onEdit={onEdit} onDelete={() => setConfirming(true)} onAskAssistant={handleAskAssistant} fixedActions hideHeading /></Dialog>;
 }

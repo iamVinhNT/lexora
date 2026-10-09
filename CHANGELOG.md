@@ -6,7 +6,7 @@
 ## [Unreleased]
 
 ### Added
-- Lexi, an original procedural WebGL3D robot with a compact speech bubble, replaces the floating popchat and transcript UI. Rendering is lazy-loaded, motion respects reduced-motion/visibility, and GPU resources are disposed when hidden.
+- Lexi, an original lazy-loaded procedural WebGL3D robot, opens a resizable, nonmodal chat window. Opening chat unmounts the robot and releases GPU resources; closing restores the robot.
 - Context-aware, read-only multi-turn chat with opt-in progress snapshots, session-only history, and recoverable provider errors.
 - Settings supports one OpenAI-compatible provider, multiple model names and one active model; API_KEY is AES-256-GCM encrypted in SQLite with a protected key file outside learner backups.
 - `pnpm run desktop:local` builds and launches the local Electron app through the existing desktop development flow, without generating installers.
@@ -17,13 +17,16 @@
 ### Fixed
 - Keep the desktop vocabulary layout within the browser or Electron viewport; only the word list and detail content scroll, with filters, pagination and actions remaining visible.
 - Conversational AI accepts ordinary text replies from OpenAI-compatible providers without requiring JSON-schema response formatting; blank, reasoning-only and oversized replies remain rejected.
-- Compact the 3D guide while its mobile bubble is open so replies and input remain readable on short screens.
+- Keep chat input and header visible on short mobile screens while conversation content scrolls independently.
 - Remove the 3D robot's outer frame, background panel and hover fill while preserving its keyboard focus indicator.
 - Desktop release smoke checks use separate AppImage/Debian profiles and in-memory databases, and report startup logs on failure. Manual package verification builds the requested immutable version tag.
 - Isolate the real Electron IPC test profile and avoid a top-level readiness await that prevented Electron startup.
 - Keep grammar context translations readable on the primary-subtle surface and stabilize cold lazy calendar navigation verification without replacing the real page.
 
 ### Changed
+- AI Assistant streams replies over SSE with cancellation, bounded output, validated completion, and recoverable mid-stream errors that retain drafts.
+- Assistant context follows the current menu and saved collections rather than the selected word, lesson, or context. Content and progress have separate sharing controls; bounded samples disclose omitted data.
+- Resize chat with pointer dragging, arrow keys, or preset sizes. Dragging uses animation-frame DOM updates and commits React state only on release. Remove the separate show/hide Lexi feature.
 - Chat, study planning, and output grading share one backend AI configuration; the former grammar tutor endpoint and bottom-of-lesson form are removed.
 - Saved AI settings apply immediately to assistant, planner and output grading. Configuration revisions reject stale requests and prevent conversation history crossing provider/model changes.
 - Backup v5 preserves grammar output and review snapshots; restoring v1–v4 warns before replacing current practice data.

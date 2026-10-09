@@ -12,7 +12,6 @@ import { MobileTopBar } from './MobileTopBar';
 import { Sidebar } from './Sidebar';
 import { SkipLink } from '../ui/SkipLink';
 import { AiCharacterGuide } from '../ai/AiCharacterGuide';
-import { useAiAssistantStore } from '../../stores/ai-assistant.store';
 
 export function AppShell() {
   const location = useLocation();
@@ -21,9 +20,6 @@ export function AppShell() {
   const appBackgroundRef = useRef<HTMLDivElement>(null);
   const isSidebarOpen = useUiStore((state) => state.isSidebarOpen);
   const isMoreOpen = useUiStore((state) => state.isMoreOpen);
-  useEffect(() => {
-    useAiAssistantStore.getState().clearOverrideContext();
-  }, [location.pathname]);
 
   useEffect(() => {
     const background = appBackgroundRef.current;

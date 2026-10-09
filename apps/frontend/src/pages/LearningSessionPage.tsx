@@ -14,7 +14,6 @@ import { SessionStartForm } from '../components/learning/SessionStartForm';
 import { SessionSummary } from '../components/learning/SessionSummary';
 import { getLocalizedErrorMessage } from '../i18n/presentation';
 import { useStudyTask } from '../hooks/useStudyCalendar';
-import { useAiAssistantStore } from '../stores/ai-assistant.store';
 
 export function LearningSessionPage() {
   const { t } = useTranslation('learning');
@@ -45,22 +44,6 @@ export function LearningSessionPage() {
   const taskMismatch = Boolean(activeSession && requestedTaskId && activeSession.studyTaskId !== requestedTaskId);
   const handleAbandon = () => { if (activeSession) { abandonMutation.mutate(activeSession.id); setSessionId(null); } };
 
-  const registerAiContext = useAiAssistantStore((state) => state.registerContext);
-  const currentCursorItem = safeActiveSession?.cursor?.itemId
-    ? safeActiveSession.items.find((candidate) => candidate.id === safeActiveSession.cursor?.itemId)
-    : undefined;
-  const currentCursorStep = safeActiveSession?.cursor?.step;
-  const currentSessionId = safeActiveSession?.id;
-
-  useEffect(() => {
-    if (!currentSessionId || !currentCursorItem?.wordId || !currentCursorStep) return;
-    return registerAiContext({
-      kind: 'learning',
-      sessionId: currentSessionId,
-      wordId: currentCursorItem.wordId,
-      step: currentCursorStep,
-    });
-  }, [currentSessionId, currentCursorItem?.wordId, currentCursorStep, registerAiContext]);
   function handleStart(payload: Parameters<typeof startMutation.mutate>[0]) {
     startMutation.mutate(payload, { onSuccess: (session) => setSessionId(session.id) });
   }

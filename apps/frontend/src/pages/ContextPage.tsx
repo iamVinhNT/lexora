@@ -16,7 +16,6 @@ import { useContexts } from '../hooks/useContexts';
 import { useWords } from '../hooks/useVocabulary';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { CONTEXT_SOURCE_TYPES, type Context } from '../api/context.api';
-import { useAiAssistantStore } from '../stores/ai-assistant.store';
 import { formatNumber } from '../i18n/formatters';
 
 const controlClass = 'min-h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary';
@@ -30,14 +29,6 @@ export function ContextPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [selected, setSelected] = useState<Context | null>(null);
   const [editing, setEditing] = useState<Context | null>(null);
-  const registerAiContext = useAiAssistantStore((state) => state.registerContext);
-  useEffect(() => {
-    if (!selected?.id) return;
-    return registerAiContext({
-      kind: 'context',
-      contextId: selected.id,
-    }, selected.title);
-  }, [selected?.id, selected?.title, registerAiContext]);
   const debouncedSearch = useDebouncedValue(search);
   const contextsQuery = useContexts({ search: debouncedSearch, sourceType: sourceType as '' | (typeof CONTEXT_SOURCE_TYPES)[number], page, limit: 20 });
   const wordsQuery = useWords({ page: 1, limit: 100 }, formOpen || Boolean(selected) || Boolean(editing));

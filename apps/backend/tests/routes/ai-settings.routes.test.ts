@@ -32,6 +32,15 @@ async function persistent() {
   directories.push(root);
   return { dbPath: join(root, 'test.db'), aiSettings: { env: {}, keyPath: join(root, 'security', 'master.key') } };
 }
+function parseSseData<T = Record<string, unknown>>(body: string, eventName: string): T | null {
+  for (const frame of body.split('\n\n')) {
+    if (frame.startsWith(`event: ${eventName}\n`)) {
+      const dataLine = frame.split('\n').find((l) => l.startsWith('data: '));
+      if (dataLine) return JSON.parse(dataLine.slice(6)) as T;
+    }
+  }
+  return null;
+}
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(apps.splice(0).map(app => app.close()));
@@ -78,7 +87,8 @@ describe('encrypted AI settings', () => {
     const revision = changed.json().data.revision;
     const current = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: { ...request, configRevision: revision } });
     expect(current.statusCode).toBe(200);
-    expect(current.json().data.configRevision).toBe(revision);
+    expect(current.headers['content-type']).toContain('text/event-stream');
+    expect(parseSseData<{ data: { configRevision: string } }>(current.body, 'done')?.data.configRevision).toBe(revision);
     expect(JSON.stringify(generate.mock.calls)).not.toContain(secret);
   });
 
@@ -158,7 +168,8 @@ describe('encrypted AI settings', () => {
     finish({ reply: 'Response started before change.' });
     const response = await pending;
     expect(response.statusCode).toBe(200);
-    expect(response.json().data.configRevision).toBe(saved.revision);
+    expect(response.headers['content-type']).toContain('text/event-stream');
+    expect(parseSseData<{ data: { configRevision: string } }>(response.body, 'done')?.data.configRevision).toBe(saved.revision);
     expect(generate).toHaveBeenCalledTimes(1);
   });
 

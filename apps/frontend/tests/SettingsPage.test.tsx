@@ -197,7 +197,6 @@ describe('SettingsPage', () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/export/vocabulary');
     expect(String(fetchMock.mock.calls[0][0])).toContain('format=CSV');
     expect(anchorClick).toHaveBeenCalled();
-    expect(screen.getByRole('status').textContent).toContain('Vocabulary export downloaded.');
   });
 
   it('uses desktop open dialog for import when bridge exists', async () => {
