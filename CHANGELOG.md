@@ -15,6 +15,7 @@
 - Grammar catalog level/topic filters and responsive, keyboard-accessible practice for English/Vietnamese and light/dark interfaces.
 
 ### Fixed
+- Keep the desktop vocabulary layout within the browser or Electron viewport; only the word list and detail content scroll, with filters, pagination and actions remaining visible.
 - Conversational AI accepts ordinary text replies from OpenAI-compatible providers without requiring JSON-schema response formatting; blank, reasoning-only and oversized replies remain rejected.
 - Compact the 3D guide while its mobile bubble is open so replies and input remain readable on short screens.
 - Remove the 3D robot's outer frame, background panel and hover fill while preserving its keyboard focus indicator.

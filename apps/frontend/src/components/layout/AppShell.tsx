@@ -90,7 +90,9 @@ export function AppShell() {
           <main
             ref={mainRef}
             id="main-content"
-            className="mx-auto min-h-[calc(100dvh-4rem)] min-w-0 max-w-[1400px] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-6 sm:px-6 md:min-h-dvh md:pb-24 md:pt-8 lg:px-8 lg:pt-10 xl:px-10 xl:pt-12"
+            className={`mx-auto min-h-[calc(100dvh-4rem)] min-w-0 max-w-[1400px] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-6 sm:px-6 md:min-h-dvh md:pb-24 md:pt-8 lg:px-8 lg:pt-10 xl:px-10 xl:pt-12 ${
+              location.pathname === '/words' ? 'lg:h-dvh lg:min-h-0 lg:overflow-hidden lg:pb-6' : ''
+            }`}
           >
             <Outlet />
           </main>
