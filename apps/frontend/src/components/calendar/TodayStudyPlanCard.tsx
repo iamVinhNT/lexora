@@ -2,7 +2,7 @@
  * @file TodayStudyPlanCard.tsx
  * @description Server-backed today plan summary independent from vocabulary dashboard data.
  */
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, RotateCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
@@ -48,8 +48,8 @@ function TodayStudyPlanContent({ timeZone }: { timeZone: string }) {
         </Link>
       </div>
       {calendar.isLoading && <Card role="status" aria-busy="true" className="p-5 text-sm text-muted">{t('loading', { defaultValue: 'Loading…' })}</Card>}
-      {calendar.isError && !calendar.data && <Card role="alert" className="space-y-4 p-5"><p>{t('errors.load')}</p><Button type="button" variant="secondary" onClick={() => void calendar.refetch()}>{t('actions.retry')}</Button></Card>}
-      {calendar.isError && calendar.data && <Card role="status" className="flex flex-wrap items-center justify-between gap-3 border-border p-5 text-sm text-muted"><span>{t('warnings.stale')}</span><Button type="button" variant="secondary" onClick={() => void calendar.refetch()}>{t('actions.reload')}</Button></Card>}
+      {calendar.isError && !calendar.data && <Card role="alert" className="space-y-4 p-5"><p>{t('errors.load')}</p><Button type="button" variant="secondary" onClick={() => void calendar.refetch()} icon={RotateCw} iconOnly>{t('actions.retry')}</Button></Card>}
+      {calendar.isError && calendar.data && <Card role="status" className="flex flex-wrap items-center justify-between gap-3 border-border p-5 text-sm text-muted"><span>{t('warnings.stale')}</span><Button type="button" variant="secondary" onClick={() => void calendar.refetch()} icon={RotateCw} iconOnly>{t('actions.reload')}</Button></Card>}
       {!calendar.isLoading && !calendar.isError && !day?.tasks.length && !(calendar.data?.backlogCount ?? 0) && <Card className="space-y-3 p-5"><p className="font-semibold text-foreground">{t('noPlan')}</p><p className="text-sm text-muted">{t('day.noPlan')}</p></Card>}
       {day && (day.tasks.length > 0 || (calendar.data?.backlogCount ?? 0) > 0) && (
         <Card className="space-y-4 p-4 sm:p-5">

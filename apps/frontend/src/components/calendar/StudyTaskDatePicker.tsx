@@ -23,8 +23,7 @@ export function StudyTaskDatePicker({ id, value, onChange }: Props) {
   return (
     <Popover modal open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button id={id} type="button" variant="secondary" aria-label={`${t('forms.scheduledDate')}: ${dateLabel}`} className="w-full !justify-start border border-border !bg-background text-left !font-normal hover:!bg-secondary">
-          <CalendarDays aria-hidden="true" className="h-4 w-4 shrink-0" />
+        <Button id={id} type="button" variant="secondary" aria-label={`${t('forms.scheduledDate')}: ${dateLabel}`} className="w-full !justify-start border border-border !bg-background text-left !font-normal hover:!bg-secondary" icon={CalendarDays}>
           <span className="min-w-0 truncate">{dateLabel}</span>
         </Button>
       </PopoverTrigger>

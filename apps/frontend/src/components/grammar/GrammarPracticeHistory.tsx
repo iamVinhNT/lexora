@@ -2,7 +2,7 @@
  * @file GrammarPracticeHistory.tsx
  * @description Practice and review history log with badges for spaced review and self-rated output.
  */
-import { Clock, FileText, RotateCcw } from 'lucide-react';
+import { Clock, FileText, RotateCcw, RotateCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatDate } from '../../i18n/formatters';
 
@@ -34,7 +34,7 @@ export function GrammarPracticeHistory({
     return (
       <Card className="space-y-3 p-4 sm:p-5">
         <p role="alert" className="text-sm text-foreground">{t('historyLoadError')}</p>
-        <Button type="button" variant="secondary" onClick={() => void historyQuery.refetch()}>{t('retry')}</Button>
+        <Button type="button" variant="secondary" onClick={() => void historyQuery.refetch()} icon={RotateCw} iconOnly>{t('retry')}</Button>
       </Card>
     );
   }
@@ -42,7 +42,7 @@ export function GrammarPracticeHistory({
     return (
       <Card className="space-y-3 p-4 sm:p-5">
         <p role="alert" className="text-sm text-foreground">{t('historyLoadError')}</p>
-        <Button type="button" variant="secondary" onClick={() => void historyQuery.refetch()}>{t('retry')}</Button>
+        <Button type="button" variant="secondary" onClick={() => void historyQuery.refetch()} icon={RotateCw} iconOnly>{t('retry')}</Button>
       </Card>
     );
   }

@@ -3,7 +3,7 @@
  * @description Resizable menu-scoped chat window coordinating send orchestration, history, and scroll anchoring.
  */
 import { useEffect, useMemo, useRef, type FormEvent } from 'react';
-import { Clock, Maximize2, RotateCcw, X } from 'lucide-react';
+import { Clock, Maximize2, RotateCcw, RotateCw, Settings, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import type { AiChatLocale, AiChatScreen } from '../../api/ai.api';
@@ -188,10 +188,10 @@ export function AiChatWindow({
             {contextLabel}{currentActiveModel ? ` · ${currentActiveModel}` : ''}
           </p>
         </div>
-        <Button variant="ghost" onClick={() => { cancelRequest(); state.setView(state.view === 'history' ? 'chat' : 'history'); }} aria-label={t('historyButton')} title={t('historyButton')} className="min-h-11 min-w-11 px-2"><Clock size={16} aria-hidden="true" /></Button>
-        <Button variant="ghost" onClick={cyclePreset} aria-label={t('resizeToggle')} title={t('resizeToggle')} className="hidden min-h-11 min-w-11 px-2 md:inline-flex"><Maximize2 size={16} aria-hidden="true" /></Button>
-        <Button variant="ghost" onClick={() => { cancelRequest(); state.resetActiveConversation(); }} aria-label={t('newConversation')} title={t('newConversation')} className="min-h-11 min-w-11 px-2"><RotateCcw size={16} aria-hidden="true" /></Button>
-        <Button variant="ghost" onClick={close} aria-label={t('closeAssistant')} className="min-h-11 min-w-11 px-2"><X size={18} aria-hidden="true" /></Button>
+        <Button variant="ghost" onClick={() => { cancelRequest(); state.setView(state.view === 'history' ? 'chat' : 'history'); }} aria-label={t('historyButton')} title={t('historyButton')} className="min-h-11 min-w-11 px-2" icon={Clock} iconOnly />
+        <Button variant="ghost" onClick={cyclePreset} aria-label={t('resizeToggle')} title={t('resizeToggle')} className="hidden min-h-11 min-w-11 px-2 md:inline-flex" icon={Maximize2} iconOnly />
+        <Button variant="ghost" onClick={() => { cancelRequest(); state.resetActiveConversation(); }} aria-label={t('newConversation')} title={t('newConversation')} className="min-h-11 min-w-11 px-2" icon={RotateCcw} iconOnly />
+        <Button variant="ghost" onClick={close} aria-label={t('closeAssistant')} className="min-h-11 min-w-11 px-2" icon={X} iconOnly />
       </div>
 
       {state.view === 'history' ? (
@@ -247,7 +247,7 @@ export function AiChatWindow({
             {turnsQuery.isError && (
               <div role="alert" className="text-sm text-danger">
                 <p>{t('errorHistory')}</p>
-                <Button variant="ghost" onClick={() => void turnsQuery.refetch()}>{t('retry')}</Button>
+                <Button variant="ghost" onClick={() => void turnsQuery.refetch()} icon={RotateCw} iconOnly>{t('retry')}</Button>
               </div>
             )}
             {state.error && <p role="alert" className="text-sm text-danger">{state.error}</p>}
@@ -255,7 +255,7 @@ export function AiChatWindow({
             {(unavailable || Boolean(settingsError)) && (
               <div className="space-y-1 text-sm">
                 <p>{t('notConfigured')}</p>
-                <Link to="/settings" onClick={close} className="inline-flex min-h-11 items-center font-semibold text-primary underline">{t('openSettings')}</Link>
+                <Link to="/settings" onClick={close} className="inline-flex min-h-11 items-center gap-1.5 font-semibold text-primary underline"><Settings size={16} aria-hidden="true" className="shrink-0" />{t('openSettings')}</Link>
               </div>
             )}
           </div>

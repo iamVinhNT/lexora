@@ -3,7 +3,7 @@
  * @description Study calendar page with week/month views, period navigation, and day details.
  */
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { CalendarCheck, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, Plus, RotateCcw, RotateCw, Sparkles, Wand2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { StudyTaskView } from '../api/study.api';
@@ -155,42 +155,46 @@ export function CalendarPage() {
         }
         action={
           <div className="grid w-full min-w-0 grid-cols-2 items-stretch gap-2 sm:flex sm:w-auto sm:items-center">
-            <Button type="button" variant="secondary" onClick={() => setShowPlanPreview(true)}>
+            <Button type="button" variant="secondary" onClick={() => setShowPlanPreview(true)} icon={Wand2}>
               {t('generate')}
             </Button>
-            <Button type="button" variant="secondary" onClick={() => setShowAiPlanPreview(true)}>
+            <Button type="button" variant="secondary" onClick={() => setShowAiPlanPreview(true)} icon={Sparkles}>
               {t('generateAi')}
             </Button>
-            <Button type="button" onClick={openCreateTask}>
+            <Button type="button" onClick={openCreateTask} icon={Plus}>
               {t('actions.create')}
             </Button>
             <div className="inline-flex rounded-lg border border-border bg-secondary p-1" role="group">
               <button
                 type="button"
+                title={t('week')}
                 onClick={() => handleToggleView('week')}
                 aria-pressed={view === 'week'}
-                className={`min-h-11 rounded-md px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                className={`inline-flex min-h-11 min-w-11 items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   view === 'week'
                     ? 'bg-surface text-foreground shadow-sm'
                     : 'text-muted hover:text-foreground'
                 }`}
               >
-                {t('week')}
+                <CalendarRange size={16} aria-hidden="true" />
+                <span>{t('week')}</span>
               </button>
               <button
                 type="button"
+                title={t('month')}
                 onClick={() => handleToggleView('month')}
                 aria-pressed={view === 'month'}
-                className={`min-h-11 rounded-md px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                className={`inline-flex min-h-11 min-w-11 items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   view === 'month'
                     ? 'bg-surface text-foreground shadow-sm'
                     : 'text-muted hover:text-foreground'
                 }`}
               >
-                {t('month')}
+                <CalendarDays size={16} aria-hidden="true" />
+                <span>{t('month')}</span>
               </button>
             </div>
-            <Button type="button" variant="secondary" onClick={handleToday}>
+            <Button type="button" variant="secondary" onClick={handleToday} icon={CalendarCheck}>
               {t('today')}
             </Button>
           </div>
@@ -206,8 +210,9 @@ export function CalendarPage() {
               aria-label={t('actions.previous')}
               onClick={handlePrevious}
               className="min-h-11 min-w-11 shrink-0 px-2.5 py-1"
+              icon={ChevronLeft}
+              iconOnly
             >
-              <ChevronLeft size={16} aria-hidden="true" />
             </Button>
             <span className="min-w-0 break-words font-semibold">{periodLabel}</span>
             <Button
@@ -216,8 +221,9 @@ export function CalendarPage() {
               aria-label={t('actions.next')}
               onClick={handleNext}
               className="min-h-11 min-w-11 shrink-0 px-2.5 py-1"
+              icon={ChevronRight}
+              iconOnly
             >
-              <ChevronRight size={16} aria-hidden="true" />
             </Button>
           </div>
 
@@ -236,10 +242,11 @@ export function CalendarPage() {
                 <button
                   type="button"
                   onClick={() => void calendarQuery.refetch()}
-                  className="min-h-11 shrink-0 rounded-lg px-2 underline hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  title={t('actions.reload')}
+                  className="min-h-11 min-w-11 shrink-0 rounded-lg px-2 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
-                  <RotateCcw size={12} className="inline mr-1" aria-hidden="true" />
-                  {t('actions.reload')}
+                  <RotateCcw size={16} className="mx-auto" aria-hidden="true" />
+                  <span className="sr-only">{t('actions.reload')}</span>
                 </button>
               </span>
             )}
@@ -258,7 +265,7 @@ export function CalendarPage() {
         <div role="alert" className="space-y-4 rounded-2xl border border-border bg-secondary p-6 text-foreground">
           <h2 className="text-xl font-semibold text-danger">{t('errors.load')}</h2>
           <p className="text-sm text-muted">{t('errors.keepSelection')}</p>
-          <Button type="button" variant="secondary" onClick={() => void calendarQuery.refetch()}>
+          <Button type="button" variant="secondary" onClick={() => void calendarQuery.refetch()} icon={RotateCw} iconOnly>
             {t('actions.retry')}
           </Button>
         </div>

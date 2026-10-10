@@ -12,6 +12,7 @@ import { isTimeZone } from '../../utils/calendar-date';
 import { useStudyPreferences, useStudyPreferencesMutation } from '../../hooks/useStudyCalendar';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+import { Check, Globe, RotateCw, Save, X } from 'lucide-react';
 
 const controlClass = 'mt-2 min-h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary';
 const weekdayDates = ['2026-09-28T12:00:00.000Z', '2026-09-29T12:00:00.000Z', '2026-09-30T12:00:00.000Z', '2026-10-01T12:00:00.000Z', '2026-10-02T12:00:00.000Z', '2026-10-03T12:00:00.000Z', '2026-10-04T12:00:00.000Z'];
@@ -82,7 +83,7 @@ export function StudyPreferencesForm({ loadOnMount = true }: { loadOnMount?: boo
   };
 
   if (preferences.isLoading && !preferences.data) return <Card role="status" aria-busy="true" className="p-5 text-sm text-muted">{tCommon('status.loading')}</Card>;
-  if (preferences.isError && !preferences.data && !dirty) return <Card role="alert" className="space-y-3 p-5"><p>{t('errors.preferences')}</p><Button type="button" variant="secondary" onClick={() => void preferences.refetch()}>{t('actions.retry')}</Button></Card>;
+  if (preferences.isError && !preferences.data && !dirty) return <Card role="alert" className="space-y-3 p-5"><p>{t('errors.preferences')}</p><Button type="button" variant="secondary" onClick={() => void preferences.refetch()} icon={RotateCw} iconOnly>{t('actions.retry')}</Button></Card>;
 
   return (
     <Card className="min-w-0 p-4 sm:p-6">
@@ -93,12 +94,12 @@ export function StudyPreferencesForm({ loadOnMount = true }: { loadOnMount?: boo
         </div>
         {Boolean(error) && <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{String(error instanceof ApiError && error.code === 'CONFLICT' ? t('forms.conflict') : getLocalizedErrorMessage(error, tCommon))}</p>}
         {saved && <p role="status" className="text-sm text-muted">{t('forms.saved')}</p>}
-        {confirmZoneChange && <div role="alert" className="min-w-0 rounded-lg border border-primary/40 bg-primary-subtle p-3 text-sm text-foreground"><p>{t('timeZoneWarning')}</p><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="secondary" onClick={() => { setForm(fromPreferences(preferences.data)); setDirty(false); setSaved(false); setConfirmZoneChange(false); }}>{tCommon('actions.cancel')}</Button><Button type="button" onClick={() => void save()}>{tCommon('actions.confirm')}</Button></div></div>}
+        {confirmZoneChange && <div role="alert" className="min-w-0 rounded-lg border border-primary/40 bg-primary-subtle p-3 text-sm text-foreground"><p>{t('timeZoneWarning')}</p><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="secondary" onClick={() => { setForm(fromPreferences(preferences.data)); setDirty(false); setSaved(false); setConfirmZoneChange(false); }} icon={X} iconOnly>{tCommon('actions.cancel')}</Button><Button type="button" onClick={() => void save()} icon={Check}>{tCommon('actions.confirm')}</Button></div></div>}
         <label htmlFor="study-time-zone" className="block text-sm font-medium text-foreground">{t('forms.timeZone')}
           <input id="study-time-zone" className={controlClass} value={form.timeZone} onChange={(event) => setField('timeZone', event.target.value)} aria-describedby="study-time-zone-help" required />
         </label>
         <p id="study-time-zone-help" className="text-sm text-muted">{t('forms.timeZoneHelp')}</p>
-        {detectedTimeZone !== form.timeZone && <Button type="button" variant="ghost" onClick={() => setField('timeZone', detectedTimeZone)}>{t('forms.suggestTimeZone', { timeZone: detectedTimeZone })}</Button>}
+        {detectedTimeZone !== form.timeZone && <Button type="button" variant="ghost" onClick={() => setField('timeZone', detectedTimeZone)} icon={Globe}>{t('forms.suggestTimeZone', { timeZone: detectedTimeZone })}</Button>}
         <div className="grid min-w-0 gap-4 sm:grid-cols-3">
           <NumberField label={t('forms.learnTarget')} value={form.learningTarget} onChange={(value) => setField('learningTarget', value)} />
           <NumberField label={t('forms.reviewTarget')} value={form.reviewTarget} onChange={(value) => setField('reviewTarget', value)} />
@@ -114,7 +115,7 @@ export function StudyPreferencesForm({ loadOnMount = true }: { loadOnMount?: boo
           </div>
         </fieldset>
         <div className="flex justify-end border-t border-border pt-4">
-          <Button type="submit" disabled={mutation.isPending || !validForm}>{mutation.isPending ? t('actions.saving') : tCommon('actions.save')}</Button>
+          <Button type="submit" disabled={mutation.isPending || !validForm} icon={Save}>{mutation.isPending ? t('actions.saving') : tCommon('actions.save')}</Button>
         </div>
       </form>
     </Card>

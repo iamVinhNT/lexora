@@ -14,6 +14,7 @@ import { isCivilDate } from '../../utils/calendar-date';
 import { useStudyCalendar, useStudyTaskMutations } from '../../hooks/useStudyCalendar';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { Check, Play, X } from 'lucide-react';
 
 type Props = { task: StudyTaskView; onClose: () => void };
 const controlClass = 'mt-2 min-h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary';
@@ -69,7 +70,7 @@ export function StudyMoveDialog({ task, onClose }: Props) {
       <form className="min-w-0 space-y-5" onSubmit={move} noValidate>
         <p className="text-sm text-foreground">{t('forms.moveProgress', { completed: formatNumber(task.completedCount), target: formatNumber(task.targetCount), remaining: formatNumber(remaining), unit })}</p>
         <p className="text-sm text-muted">{t('forms.moveDueUnaffected')}</p>
-        {activeSession && <div role="alert" className="space-y-2 rounded-lg border border-border bg-secondary p-3 text-sm text-muted"><p>{t('forms.activeSession')}</p><Link className="font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" to={task.kind === 'LEARN_WORDS' ? `/learn?taskId=${encodeURIComponent(task.id)}` : task.kind === 'REVIEW_WORDS' ? `/review?taskId=${encodeURIComponent(task.id)}` : task.lessonId ? `/grammar/${encodeURIComponent(task.lessonId)}?taskId=${encodeURIComponent(task.id)}` : '/calendar'}>{t('actions.resume')}</Link></div>}
+        {activeSession && <div role="alert" className="space-y-2 rounded-lg border border-border bg-secondary p-3 text-sm text-muted"><p>{t('forms.activeSession')}</p><Link className="inline-flex items-center gap-1.5 font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" to={task.kind === 'LEARN_WORDS' ? `/learn?taskId=${encodeURIComponent(task.id)}` : task.kind === 'REVIEW_WORDS' ? `/review?taskId=${encodeURIComponent(task.id)}` : task.lessonId ? `/grammar/${encodeURIComponent(task.lessonId)}?taskId=${encodeURIComponent(task.id)}` : '/calendar'}><Play size={14} aria-hidden="true" className="shrink-0" />{t('actions.resume')}</Link></div>}
         {Boolean(error) && <div role="alert" className="space-y-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger"><p>{String(errorMessage)}</p><p>{t('forms.notSaved')}</p></div>}
         {success && <p role="status" className="rounded-lg border border-primary/30 bg-primary-subtle p-3 text-sm text-foreground">{t('forms.moveSuccess')}</p>}
         <label className="block text-sm font-medium text-foreground">{t('forms.moveDate')}
@@ -77,8 +78,8 @@ export function StudyMoveDialog({ task, onClose }: Props) {
         </label>
         {destinationCalendar.isFetching && <p role="status" className="text-sm text-muted">{tCommon('status.loading')}</p>}
         <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={mutation.isPending}>{tCommon('actions.cancel')}</Button>
-          <Button type="submit" disabled={mutation.isPending || destinationCalendar.isFetching || activeSession || remaining <= 0 || !validDestinationDate}>{mutation.isPending ? t('actions.saving') : t('actions.confirm')}</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={mutation.isPending} icon={X} iconOnly>{tCommon('actions.cancel')}</Button>
+          <Button type="submit" disabled={mutation.isPending || destinationCalendar.isFetching || activeSession || remaining <= 0 || !validDestinationDate} icon={Check}>{mutation.isPending ? t('actions.saving') : t('actions.confirm')}</Button>
         </div>
       </form>
     </Dialog>

@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, ArrowRight, X } from 'lucide-react';
+import { AlertCircle, ArrowRight, LogOut, RotateCw } from 'lucide-react';
 
 import type { ReviewAttemptView, ReviewRating } from '../../api/review.api';
 import { formatIntervalPreview } from '../../i18n/formatters';
@@ -94,8 +94,8 @@ export function ReviewAssessStage({
           title={t('abandon')}
           className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 px-2.5 text-xs text-muted transition-colors hover:text-foreground"
         >
-          <X className="h-4 w-4 md:hidden" aria-hidden="true" />
-          <span className="hidden md:inline">{t('abandon')}</span>
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only">{t('abandon')}</span>
         </button>
       </div>
 
@@ -153,7 +153,7 @@ export function ReviewAssessStage({
             <AlertCircle className="h-4 w-4 shrink-0 text-red-500" aria-hidden="true" />
             <span>{getLocalizedErrorMessage(error, tCommon)}</span>
           </div>
-          <Button type="button" variant="secondary" onClick={onRetry} disabled={isPending}>
+          <Button type="button" variant="secondary" onClick={onRetry} disabled={isPending} icon={RotateCw} iconOnly>
             {t('retry')}
           </Button>
         </div>

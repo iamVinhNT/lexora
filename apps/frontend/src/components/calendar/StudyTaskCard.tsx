@@ -2,7 +2,7 @@
  * @file StudyTaskCard.tsx
  * @description Task item card with task progress, status badges, and action CTAs.
  */
-import { AlertCircle, ArrowRight, Play, RotateCcw } from 'lucide-react';
+import { AlertCircle, ArrowRight, Ban, MoveRight, Pencil, Play, RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
@@ -121,17 +121,16 @@ export function StudyTaskCard({ task, activeSession, onEdit, onMove, onCancel }:
         {!task.cancelledAt && !task.transferredAt && !task.isComplete && (
           <>
             {task.isUnavailable ? (
-              <Button type="button" variant="secondary" disabled aria-disabled="true" className="opacity-50">
-                <Play size={15} aria-hidden="true" />
+              <Button type="button" variant="secondary" disabled aria-disabled="true" className="opacity-50" icon={Play}>
                 {t('actions.start')}
               </Button>
             ) : isGrammar && !task.lessonId ? (
               onEdit ? (
-                <Button type="button" variant="secondary" onClick={() => onEdit(task)}>
+                <Button type="button" variant="secondary" onClick={() => onEdit(task)} icon={Pencil} iconOnly>
                   {t('actions.edit')}
                 </Button>
               ) : (
-                <Button type="button" variant="secondary" disabled aria-disabled="true" className="opacity-50">
+                <Button type="button" variant="secondary" disabled aria-disabled="true" className="opacity-50" icon={Play}>
                   {t('actions.start')}
                 </Button>
               )
@@ -157,19 +156,19 @@ export function StudyTaskCard({ task, activeSession, onEdit, onMove, onCancel }:
         )}
 
         {onEdit && !task.cancelledAt && (
-          <Button type="button" variant="secondary" onClick={() => onEdit(task)}>
+          <Button type="button" variant="secondary" onClick={() => onEdit(task)} icon={Pencil} iconOnly>
             {t('actions.edit')}
           </Button>
         )}
 
         {onMove && !task.cancelledAt && !task.isComplete && (
-          <Button type="button" variant="secondary" onClick={() => onMove(task)}>
+          <Button type="button" variant="secondary" onClick={() => onMove(task)} icon={MoveRight} iconOnly>
             {t('actions.move')}
           </Button>
         )}
 
         {onCancel && !task.cancelledAt && !task.isComplete && (
-          <Button type="button" variant="danger" onClick={() => onCancel(task)}>
+          <Button type="button" variant="danger" onClick={() => onCancel(task)} icon={Ban} iconOnly>
             {t('actions.cancel')}
           </Button>
         )}

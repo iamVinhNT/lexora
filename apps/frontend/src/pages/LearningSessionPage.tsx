@@ -14,6 +14,7 @@ import { SessionStartForm } from '../components/learning/SessionStartForm';
 import { SessionSummary } from '../components/learning/SessionSummary';
 import { getLocalizedErrorMessage } from '../i18n/presentation';
 import { useStudyTask } from '../hooks/useStudyCalendar';
+import { Calendar, CheckCircle2, RotateCw } from 'lucide-react';
 
 export function LearningSessionPage() {
   const { t } = useTranslation('learning');
@@ -128,6 +129,7 @@ export function LearningSessionPage() {
                 to={`/calendar?date=${encodeURIComponent(calendarTask.scheduledDate)}`}
                 className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-4 py-2 font-semibold text-foreground hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary w-full sm:w-auto text-center"
               >
+                <Calendar size={16} aria-hidden="true" className="mr-2 shrink-0" />
                 {tCalendar('navigation.openCalendar')}
               </Link>
             </div>
@@ -206,6 +208,7 @@ function ActiveSession({
           onClick={() => void onComplete(session.id)}
           className="min-h-11 w-full sm:w-auto inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
         >
+          <CheckCircle2 size={16} aria-hidden="true" className="mr-2" />
           {tCommon('actions.completeSession')}
         </button>
       </div>
@@ -270,8 +273,9 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return (
     <div role="alert" className="mx-auto max-w-xl space-y-4 rounded-2xl border border-red-300 bg-red-50 p-4 sm:p-6 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
       <p>{message}</p>
-      <button type="button" onClick={onRetry} className="min-h-11 w-full sm:w-auto rounded-lg border border-current px-4 py-2 text-sm font-semibold">
-        {t('retry')}
+      <button type="button" onClick={onRetry} title={t('retry')} className="min-h-11 min-w-11 w-full sm:w-auto rounded-lg border border-current px-4 py-2 text-sm font-semibold">
+        <RotateCw size={16} aria-hidden="true" className="mx-auto" />
+        <span className="sr-only">{t('retry')}</span>
       </button>
     </div>
   );

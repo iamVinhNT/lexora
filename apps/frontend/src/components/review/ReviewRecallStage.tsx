@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, HelpCircle, X } from 'lucide-react';
+import { AlertCircle, Check, HelpCircle, LogOut, RotateCw } from 'lucide-react';
 
 import type { ReviewAttemptView } from '../../api/review.api';
 import { getReviewDraft, setReviewDraft } from '../../hooks/useAdaptiveReview';
@@ -78,8 +78,8 @@ export function ReviewRecallStage({
           title={t('abandon')}
           className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 px-2.5 text-xs text-muted transition-colors hover:text-foreground"
         >
-          <X className="h-4 w-4 md:hidden" aria-hidden="true" />
-          <span className="hidden md:inline">{t('abandon')}</span>
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only">{t('abandon')}</span>
         </button>
       </div>
 
@@ -114,6 +114,8 @@ export function ReviewRecallStage({
               variant="secondary"
               onClick={onRetry}
               disabled={isPending}
+              icon={RotateCw}
+              iconOnly
             >
               {t('retry')}
             </Button>
@@ -152,8 +154,8 @@ export function ReviewRecallStage({
             onClick={handleDontRemember}
             disabled={isPending}
             className="min-h-11 min-w-0 px-2 text-muted hover:text-foreground"
+            icon={HelpCircle}
           >
-            <HelpCircle className="hidden h-4 w-4 sm:block" aria-hidden="true" />
             {t('dontRemember')}
           </Button>
 
@@ -161,6 +163,7 @@ export function ReviewRecallStage({
             type="submit"
             disabled={isPending || !answer.trim()}
             className="min-h-11 min-w-0 whitespace-normal px-2 font-semibold sm:px-6"
+            icon={Check}
           >
             {isPending ? t('checking') : t('check')}
           </Button>

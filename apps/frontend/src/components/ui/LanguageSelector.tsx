@@ -32,12 +32,12 @@ export function LanguageSelector({
       variant={variant}
       aria-label={label}
       title={label}
+      icon={Languages}
       onClick={() => void toggleLocale()}
       className={`min-h-11 min-w-11 ${
         compact ? 'w-11 px-1 gap-1' : 'px-3 py-2 gap-2'
       } ${className}`}
     >
-      <Languages aria-hidden="true" size={18} className="shrink-0" />
       {compact ? (
         <span className="text-[11px] font-bold uppercase tracking-tight leading-none">
           {locale}

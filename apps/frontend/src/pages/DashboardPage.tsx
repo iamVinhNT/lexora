@@ -2,7 +2,7 @@
  * @file DashboardPage.tsx
  * @description Localized server-backed overview with truthful learning states.
  */
-import { ArrowRight, RotateCcw } from 'lucide-react';
+import { ArrowRight, RotateCcw, RotateCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
@@ -75,5 +75,5 @@ function ErrorState({ error, onRetry }: { error: unknown; onRetry: () => void })
   const { t } = useTranslation('dashboard');
   const { t: tCommon } = useTranslation('common');
   const message = getLocalizedErrorMessage(error, tCommon);
-  return <div role="alert" className="space-y-4 rounded-2xl border border-border bg-secondary p-6 text-foreground"><p>{message}</p><Button type="button" variant="secondary" aria-label={t('retry')} onClick={onRetry}>{t('retry')}</Button></div>;
+  return <div role="alert" className="space-y-4 rounded-2xl border border-border bg-secondary p-6 text-foreground"><p>{message}</p><Button type="button" variant="secondary" aria-label={t('retry')} onClick={onRetry} icon={RotateCw} iconOnly>{t('retry')}</Button></div>;
 }

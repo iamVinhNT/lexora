@@ -185,6 +185,7 @@ export function AiCharacterGuide() {
       type="button"
       onClick={handleOpen}
       aria-label={t('openAssistant')}
+      title={t('openAssistant')}
       className={`${position} flex ${size} items-center justify-center rounded-2xl bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
     >
       <LexiCharacter pose={pose} />

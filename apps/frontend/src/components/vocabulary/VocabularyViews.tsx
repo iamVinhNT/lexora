@@ -43,8 +43,9 @@ export function VocabularyViews({ isLoading, error, words, onRetry, onDetails }:
             aria-label={t(labelKey)}
             onClick={() => setViewMode(value)}
             className="min-w-11 px-3"
+            icon={Icon}
+            iconOnly
           >
-            <Icon aria-hidden="true" size={17} />
           </Button>
         ))}
       </div>
@@ -74,7 +75,7 @@ function CardView({ isLoading, error, words, onRetry, onDetails }: ResultViewPro
                   <h2 className="truncate text-lg font-semibold text-foreground">{word.word}</h2>
                   <p className="mt-1 break-words text-xs text-muted">{[word.partOfSpeech, word.difficulty].filter(Boolean).join(' · ')}</p>
                 </div>
-                <Button type="button" variant="ghost" aria-label={t('detailsFor', { word: word.word })} className="min-h-11 min-w-11 shrink-0 px-3" onClick={() => onDetails(word)}><Eye aria-hidden="true" size={18} /></Button>
+                <Button type="button" variant="ghost" aria-label={t('detailsFor', { word: word.word })} className="min-h-11 min-w-11 shrink-0 px-3" onClick={() => onDetails(word)} icon={Eye} iconOnly />
               </div>
               <p className="mt-2 text-sm leading-6 text-foreground">{word.definition}</p>
             </div>
@@ -117,7 +118,7 @@ function TableView({ isLoading, error, words, onRetry, onDetails }: ResultViewPr
                 <td className="max-w-[18rem] px-4 py-4 text-muted">{word.definition}</td>
                 <td className="px-4 py-4 text-muted">{word.partOfSpeech || '—'}</td>
                 <td className="px-4 py-4 text-muted">{word.difficulty || '—'}</td>
-                <td className="px-4 py-4"><Button type="button" variant="secondary" aria-label={t('detailsFor', { word: word.word })} className="min-w-11 px-3" onClick={() => onDetails(word)}><Eye aria-hidden="true" size={18} /></Button></td>
+                <td className="px-4 py-4"><Button type="button" variant="secondary" aria-label={t('detailsFor', { word: word.word })} className="min-w-11 px-3" onClick={() => onDetails(word)} icon={Eye} iconOnly /></td>
               </tr>
             ))}
           </tbody>

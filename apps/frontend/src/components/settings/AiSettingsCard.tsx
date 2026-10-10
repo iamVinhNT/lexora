@@ -14,6 +14,7 @@ import { Card } from '../ui/Card';
 import { Dialog } from '../ui/Dialog';
 import { Input } from '../ui/Input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
+import { Check, Plus, RotateCw, Save, Trash2, X } from 'lucide-react';
 
 function canonicalEndpoint(value: string): string | null {
   try {
@@ -136,7 +137,7 @@ export function AiSettingsCard() {
       </div>
       {!baseline ? <div className="space-y-3">
         {settings.isError ? <p role="alert" className="text-sm text-danger">{t('ai.loadError')}</p> : <p role="status" aria-busy="true" className="text-sm text-muted">{t('ai.loading')}</p>}
-        {settings.isError && <Button type="button" variant="secondary" disabled={working} onClick={() => void reload()}>{t('ai.reload')}</Button>}
+        {settings.isError && <Button type="button" variant="secondary" disabled={working} onClick={() => void reload()} icon={RotateCw} iconOnly>{t('ai.reload')}</Button>}
       </div> : <form onSubmit={submit} noValidate className="space-y-4" aria-busy={working}>
         <p className="text-sm text-muted">{t(baseline.source === 'saved' ? 'ai.sourceSaved' : 'ai.sourceEnvironment')}</p>
         {(error || changedElsewhere) && <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{changedElsewhere ? t('ai.conflict') : error && t(`ai.${error}`)}</p>}
@@ -159,13 +160,13 @@ export function AiSettingsCard() {
             <label htmlFor="ai-model-name" className="block text-sm font-medium text-foreground">AI_MODEL</label>
             <div className="flex min-w-0 flex-wrap gap-2">
               <Input id="ai-model-name" className="flex-1 basis-40" value={newModel} onChange={event => { edit(); setNewModel(event.target.value); }} maxLength={200} aria-describedby="ai-model-help" autoComplete="off" spellCheck={false} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); if (canAddModel) { setDraft({ ...draft, models: [...draft.models, modelName], activeModel: draft.activeModel || modelName }); setNewModel(''); } } }} />
-              <Button type="button" variant="secondary" disabled={!canAddModel} onClick={() => { edit(); setDraft({ ...draft, models: [...draft.models, modelName], activeModel: draft.activeModel || modelName }); setNewModel(''); }}>{t('ai.addModel')}</Button>
+              <Button type="button" variant="secondary" disabled={!canAddModel} onClick={() => { edit(); setDraft({ ...draft, models: [...draft.models, modelName], activeModel: draft.activeModel || modelName }); setNewModel(''); }} icon={Plus}>{t('ai.addModel')}</Button>
             </div>
             <p id="ai-model-help" className="text-sm text-muted">{t('ai.modelsHelp')}</p>
             <ul className="space-y-2">
               {draft.models.map(model => <li key={model} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-border px-3">
                 <span className="min-w-0 break-all text-sm text-foreground">{model}</span>
-                <Button type="button" variant="ghost" className="min-w-11 shrink-0 px-2" aria-label={t('ai.removeModel', { model })} onClick={() => { edit(); const models = draft.models.filter(item => item !== model); setDraft({ ...draft, models, activeModel: draft.activeModel === model ? models[0] ?? '' : draft.activeModel }); }}>{t('ai.remove')}</Button>
+                <Button type="button" variant="ghost" className="min-w-11 shrink-0 px-2" aria-label={t('ai.removeModel', { model })} onClick={() => { edit(); const models = draft.models.filter(item => item !== model); setDraft({ ...draft, models, activeModel: draft.activeModel === model ? models[0] ?? '' : draft.activeModel }); }} icon={Trash2} iconOnly>{t('ai.remove')}</Button>
               </li>)}
             </ul>
           </div>
@@ -178,9 +179,9 @@ export function AiSettingsCard() {
           </div>
         </fieldset>
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={!valid || working || changedElsewhere || error === 'conflict'}>{t(working ? 'ai.working' : 'ai.save')}</Button>
-          <Button type="button" variant="secondary" disabled={working} onClick={() => dirty ? setConfirmation('reload') : void reload()}>{t('ai.reload')}</Button>
-          {baseline.source === 'saved' && <Button type="button" variant="ghost" disabled={working || changedElsewhere || error === 'conflict'} onClick={() => setConfirmation('delete')}>{t('ai.delete')}</Button>}
+          <Button type="submit" disabled={!valid || working || changedElsewhere || error === 'conflict'} icon={Save}>{t(working ? 'ai.working' : 'ai.save')}</Button>
+          <Button type="button" variant="secondary" disabled={working} onClick={() => dirty ? setConfirmation('reload') : void reload()} icon={RotateCw} iconOnly>{t('ai.reload')}</Button>
+          {baseline.source === 'saved' && <Button type="button" variant="ghost" disabled={working || changedElsewhere || error === 'conflict'} onClick={() => setConfirmation('delete')} icon={Trash2} iconOnly>{t('ai.delete')}</Button>}
         </div>
       </form>}
       <details className="text-sm text-muted">
@@ -194,8 +195,8 @@ export function AiSettingsCard() {
       <div className="space-y-4">
         <p className="text-sm text-foreground">{t(`ai.${confirmation}Description`)}</p>
         <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="secondary" disabled={working} onClick={() => setConfirmation(null)}>{tCommon('actions.cancel')}</Button>
-          <Button type="button" variant={confirmation === 'delete' ? 'danger' : 'primary'} disabled={working} onClick={() => void (confirmation === 'delete' ? remove() : confirmation === 'replace' ? save() : reload())}>{t(working ? 'ai.working' : `ai.${confirmation}Confirm`)}</Button>
+          <Button type="button" variant="secondary" disabled={working} onClick={() => setConfirmation(null)} icon={X} iconOnly>{tCommon('actions.cancel')}</Button>
+          <Button type="button" variant={confirmation === 'delete' ? 'danger' : 'primary'} disabled={working} onClick={() => void (confirmation === 'delete' ? remove() : confirmation === 'replace' ? save() : reload())} icon={confirmation === 'delete' ? Trash2 : confirmation === 'reload' ? RotateCw : Check}>{t(working ? 'ai.working' : `ai.${confirmation}Confirm`)}</Button>
         </div>
       </div>
     </Dialog>}

@@ -19,6 +19,7 @@ import { ReviewQueueStatus } from './ReviewQueueStatus';
 import { ReviewRecallStage } from './ReviewRecallStage';
 import { ReviewSessionSummary } from './ReviewSessionSummary';
 import { ReviewStartCard } from './ReviewStartCard';
+import { Calendar, RotateCw } from 'lucide-react';
 
 export function AdaptiveReviewWorkspace() {
   const { t } = useTranslation('review');
@@ -127,6 +128,8 @@ export function AdaptiveReviewWorkspace() {
             variant="secondary"
             onClick={() => void retryLastAction()}
             className="min-h-11"
+            icon={RotateCw}
+            iconOnly
           >
             {t('retry')}
           </Button>
@@ -144,7 +147,8 @@ export function AdaptiveReviewWorkspace() {
                   className="mx-auto w-full max-w-3xl rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs sm:text-sm text-foreground flex items-center justify-between gap-2"
                 >
                   <span>{t('taskMismatchNotice')}</span>
-                  <Link to="/calendar" className="text-primary font-medium hover:underline text-xs shrink-0">
+                  <Link to="/calendar" className="inline-flex items-center gap-1.5 text-primary font-medium hover:underline text-xs shrink-0">
+                    <Calendar size={14} aria-hidden="true" className="shrink-0" />
                     {tCalendar('title')}
                   </Link>
                 </div>
@@ -255,6 +259,8 @@ export function AdaptiveReviewWorkspace() {
                 variant="secondary"
                 onClick={() => void studyTask.refetch()}
                 className="min-h-11"
+                icon={RotateCw}
+                iconOnly
               >
                 {t('retry')}
               </Button>

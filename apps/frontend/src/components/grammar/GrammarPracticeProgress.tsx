@@ -10,6 +10,7 @@ import type { GrammarPracticeProgressLesson } from '../../api/grammar-practice.a
 import { useGrammarPracticeProgress } from '../../hooks/useGrammarPractice';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+import { RotateCw } from 'lucide-react';
 
 export function GrammarPracticeProgress({ lessonId, revisionId }: { lessonId: string; revisionId: string }) {
   const { t } = useTranslation('grammar');
@@ -21,7 +22,7 @@ export function GrammarPracticeProgress({ lessonId, revisionId }: { lessonId: st
     return (
       <Card className="space-y-3 p-4">
         <p role="alert" className="text-sm text-foreground">{t('practiceProgressError')}</p>
-        <Button type="button" variant="secondary" onClick={() => void progress.refetch()}>{t('retry')}</Button>
+        <Button type="button" variant="secondary" onClick={() => void progress.refetch()} icon={RotateCw} iconOnly>{t('retry')}</Button>
       </Card>
     );
   }
@@ -29,7 +30,7 @@ export function GrammarPracticeProgress({ lessonId, revisionId }: { lessonId: st
     return (
       <Card className="space-y-3 p-4 sm:p-5">
         <p role="alert" className="text-sm text-foreground">{t('practiceProgressError')}</p>
-        <Button type="button" variant="secondary" onClick={() => void progress.refetch()}>{t('retry')}</Button>
+        <Button type="button" variant="secondary" onClick={() => void progress.refetch()} icon={RotateCw} iconOnly>{t('retry')}</Button>
       </Card>
     );
   }

@@ -5,6 +5,7 @@
 import { useTranslation } from 'react-i18next';
 import type { AiTurn } from '../../api/ai-history.api';
 import { Button } from '../ui/Button';
+import { History, Lightbulb } from 'lucide-react';
 
 interface AiChatTranscriptProps {
   turns: AiTurn[];
@@ -53,6 +54,7 @@ export function AiChatTranscript({
             disabled={isLoadingOlderTurns}
             onClick={onLoadOlderTurns}
             className="min-h-11 w-full text-xs"
+            icon={History}
           >
             {isLoadingOlderTurns ? t('loadingOlder') : t('loadOlder')}
           </Button>
@@ -67,6 +69,7 @@ export function AiChatTranscript({
             disabled={!canSendTipQuestion}
             onClick={onSendTipQuestion}
             className="min-h-11 w-full whitespace-normal text-left text-xs"
+            icon={Lightbulb}
           >
             {t('tipQuestion')}
           </Button>

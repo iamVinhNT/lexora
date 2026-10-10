@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 import type { AssessmentRating, LearningCursor, LearningSessionItem, SessionStep, SubmitStepPayload } from '../../api/session.api';
 import { LearningStepper } from './LearningStepper';
+import { Check } from 'lucide-react';
 
 type LearningStepViewProps = {
   item: LearningSessionItem;
@@ -343,6 +344,7 @@ function SubmitButton({ isPending, disabled, label, pendingLabel }: { isPending:
       disabled={isPending || disabled}
       className="min-h-11 w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-primary px-6 py-2.5 text-sm sm:text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
+      <Check size={16} aria-hidden="true" className="mr-2 shrink-0" />
       {isPending ? pendingLabel ?? t('saving') : label}
     </button>
   );

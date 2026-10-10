@@ -3,7 +3,7 @@
  * @description Published grammar stages with resume links and a truthful unpublished state.
  */
 import { useState } from 'react';
-import { ArrowRight, CheckCircle2, Circle, GraduationCap } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Circle, GraduationCap, RotateCw, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
@@ -82,7 +82,7 @@ export function GrammarPage() {
       } />
 
       {course.isLoading && <p role="status" aria-busy="true" className="rounded-xl border border-border bg-surface p-5 text-sm text-muted">{t('loading')}</p>}
-      {course.isError && <div role="alert" className="space-y-4 rounded-xl border border-border bg-secondary p-5"><p className="text-sm text-foreground">{getLocalizedErrorMessage(course.error, tCommon)}</p><Button type="button" variant="secondary" onClick={() => void course.refetch()}>{t('retry')}</Button></div>}
+      {course.isError && <div role="alert" className="space-y-4 rounded-xl border border-border bg-secondary p-5"><p className="text-sm text-foreground">{getLocalizedErrorMessage(course.error, tCommon)}</p><Button type="button" variant="secondary" onClick={() => void course.refetch()} icon={RotateCw} iconOnly>{t('retry')}</Button></div>}
       {data && !hasLessons && <Card><EmptyState title={t('unpublishedTitle')} description={t('unpublishedDescription')} /></Card>}
       {data && hasLessons && <>
         <GrammarDueQueue />
@@ -148,6 +148,7 @@ export function GrammarPage() {
                 setLevel('all');
                 setTopic('all');
               }}
+              icon={X}
             >
               {t('clearFilters')}
             </Button>

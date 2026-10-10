@@ -300,6 +300,11 @@ The frontend is not yet scaffolded but follows these prescribed patterns:
 
 ## Agent Rules (Always Active)
 
+Frontend actions follow the icon-first rule in `.agents/rules/icon-first-ui.md`.
+Use icon-only for familiar actions; keep icon + text for CTAs and ambiguous actions.
+Icon-only controls need an accessible name, a title tooltip, and a 44 × 44px target.
+Preserve content-selection labels, behavior, and translation keys.
+
 Rules in `.agents/rules/` are enforced on every code change:
 
 | Rule                    | File                               | Trigger      | Summary                                              |

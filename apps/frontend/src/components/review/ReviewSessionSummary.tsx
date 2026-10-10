@@ -5,7 +5,7 @@
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, AlertTriangle, XCircle, ArrowRight } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, ArrowRight, Home, Calendar } from 'lucide-react';
 
 import type { CompleteReviewResult } from '../../api/review.api';
 import type { StudyTaskView } from '../../api/study.api';
@@ -61,12 +61,14 @@ export function ReviewSessionSummary({
             to="/"
             className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary w-full sm:w-auto text-center"
           >
+            <Home size={16} aria-hidden="true" className="mr-2 shrink-0" />
             {t('returnOverview')}
           </Link>
           <Link
             to="/calendar"
             className="inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary w-full sm:w-auto text-center"
           >
+            <Calendar size={16} aria-hidden="true" className="mr-2 shrink-0" />
             {tCalendar('title')}
           </Link>
         </div>
@@ -167,6 +169,7 @@ export function ReviewSessionSummary({
           to="/"
           className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary w-full sm:w-auto text-center"
         >
+          <Home size={16} aria-hidden="true" className="mr-2 shrink-0" />
           {t('returnOverview')}
         </Link>
         <Link

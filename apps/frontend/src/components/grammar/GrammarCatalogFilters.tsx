@@ -100,8 +100,8 @@ export function GrammarCatalogFilters({
             variant="ghost"
             onClick={onClear}
             className="h-11 px-3 text-xs sm:text-sm text-muted hover:text-foreground"
+            icon={X}
           >
-            <X aria-hidden="true" size={16} className="mr-1" />
             {t('clearFilters')}
           </Button>
         )}

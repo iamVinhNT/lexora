@@ -2,7 +2,7 @@
  * @file GrammarReviewFeedback.tsx
  * @description Review grading, schedule, and continue action.
  */
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { SubmitGrammarReviewResponse } from '../../api/grammar-practice.api';
@@ -27,7 +27,7 @@ export function GrammarReviewFeedback({
       </div>
       {result.attempt.feedback && <p className="whitespace-pre-line leading-relaxed">{result.attempt.feedback}</p>}
       <p className="text-xs text-muted">{result.attempt.rating === 'GOOD' ? t('reviewSavedGood') : t('reviewSavedAgain')}</p>
-      <Button type="button" onClick={onContinue} className="min-h-11 w-full sm:w-auto">
+      <Button type="button" onClick={onContinue} className="min-h-11 w-full sm:w-auto" icon={ArrowRight}>
         {hasNext ? t('nextReviewItem') : t('finishReview')}
       </Button>
     </div>

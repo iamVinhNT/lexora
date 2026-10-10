@@ -3,7 +3,7 @@
  * @description Free-form writing output practice with self-assessment rubric (0-2) and revealed model answers.
  */
 import { useRef, useState, type FormEvent } from 'react';
-import { Check, PenTool } from 'lucide-react';
+import { Check, PenTool, Save } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { SubmitGrammarOutputInput, SubmitGrammarOutputResponse } from '../../api/grammar-practice.api';
@@ -232,6 +232,7 @@ export function GrammarOutputPractice({
                   currentDraft.text.length > 2000
                 }
                 className="min-h-11 w-full sm:w-auto"
+                icon={Save}
               >
                 {submitOutput.isPending ? t('savingOutput') : t('saveSelfAssessment')}
               </Button>

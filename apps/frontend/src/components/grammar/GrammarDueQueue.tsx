@@ -3,7 +3,7 @@
  * @description Spaced repetition review queue with server-graded transfer items and SM-2 feedback.
  */
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, Flag, Play, RotateCw, Send } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type {
@@ -129,7 +129,7 @@ export function GrammarDueQueue() {
     return (
       <Card className="space-y-3 p-4 sm:p-5">
         <p role="alert" className="text-sm text-foreground">{t('dueLoadError')}</p>
-        <Button type="button" variant="secondary" onClick={() => void dueQuery.refetch()}>{t('retry')}</Button>
+        <Button type="button" variant="secondary" onClick={() => void dueQuery.refetch()} icon={RotateCw} iconOnly>{t('retry')}</Button>
       </Card>
     );
   }
@@ -137,7 +137,7 @@ export function GrammarDueQueue() {
     return (
       <Card className="space-y-3 p-4 sm:p-5">
         <p role="alert" className="text-sm text-foreground">{t('dueLoadError')}</p>
-        <Button type="button" variant="secondary" onClick={() => void dueQuery.refetch()}>{t('retry')}</Button>
+        <Button type="button" variant="secondary" onClick={() => void dueQuery.refetch()} icon={RotateCw} iconOnly>{t('retry')}</Button>
       </Card>
     );
   }
@@ -169,6 +169,7 @@ export function GrammarDueQueue() {
           type="button"
           onClick={startSession}
           className="min-h-11 w-full shrink-0 sm:w-auto"
+          icon={Play}
         >
           {t('startReview')}
         </Button>
@@ -198,6 +199,7 @@ export function GrammarDueQueue() {
           onClick={closeSession}
           disabled={submitReview.isPending}
           className="text-xs"
+          icon={Flag}
         >
           {t('finishReview')}
         </Button>
@@ -265,6 +267,7 @@ export function GrammarDueQueue() {
                 type="submit"
                 disabled={submitReview.isPending || !answer.trim()}
                 className="min-h-11 w-full sm:w-auto"
+                icon={Send}
               >
                 {submitReview.isPending ? t('submittingReview') : t('submitAnswer')}
               </Button>

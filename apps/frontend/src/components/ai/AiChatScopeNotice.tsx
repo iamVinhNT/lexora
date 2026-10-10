@@ -9,6 +9,7 @@ import type { AiConversation } from '../../api/ai-history.api';
 import { useAiAssistantStore } from '../../stores/ai-assistant.store';
 import { Button } from '../ui/Button';
 import { primaryNavigation } from '../layout/navigation';
+import { ArrowRight, Languages, ShieldCheck } from 'lucide-react';
 
 interface AiChatScopeNoticeProps {
   activeConversation?: AiConversation;
@@ -53,6 +54,7 @@ export function AiChatScopeNotice({
                   to={scopePath}
                   className="inline-flex min-h-11 items-center rounded-lg bg-surface px-2.5 py-1.5 font-semibold text-primary underline"
                 >
+                  <ArrowRight size={14} aria-hidden="true" className="mr-1.5 shrink-0" />
                   {t('goToScopeScreen', {
                     screen: t(`screens.${activeConversation.context.screen}`),
                   })}
@@ -64,6 +66,7 @@ export function AiChatScopeNotice({
                 onClick={() => void i18n.changeLanguage(activeConversation.locale)}
                 className="inline-flex min-h-11 items-center rounded-lg bg-surface px-2.5 py-1.5 font-semibold text-primary underline"
               >
+                <Languages size={14} aria-hidden="true" className="mr-1.5" />
                 {t('switchLanguage', {
                   locale: activeConversation.locale.toUpperCase(),
                 })}
@@ -75,6 +78,7 @@ export function AiChatScopeNotice({
                 onClick={onConsentMatch}
                 className="inline-flex min-h-11 items-center rounded-lg bg-surface px-2.5 py-1.5 font-semibold text-primary underline"
               >
+                <ShieldCheck size={14} aria-hidden="true" className="mr-1.5" />
                 {t('scopeMismatchConsent')}
               </button>
             )}
@@ -94,6 +98,7 @@ export function AiChatScopeNotice({
             onClick={onAllowProviderChange}
             className="min-h-11 w-full text-xs"
             disabled={!currentProvider}
+            icon={ShieldCheck}
           >
             {t('allowProviderChangeConfirm')}
           </Button>

@@ -3,7 +3,7 @@
  * @description Stateless localized cards for import, export, restore, and destructive data actions.
  */
 import type { ReactNode } from 'react';
-import { Download, FileUp, ShieldAlert } from 'lucide-react';
+import { ArchiveRestore, DatabaseBackup, Download, FileUp, RotateCcw, ShieldAlert, Trash2, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { ImportFormat, ImportPreview, RestorePreview } from '../../api/data.api';
@@ -89,7 +89,7 @@ export function ImportCard({ format, onFormatChange, importName, onFile, desktop
         <div>
           <label htmlFor="import-file" className="text-sm font-semibold text-foreground">{t('importFile')}</label>
           {desktopFiles ? (
-            <Button id="import-file" type="button" variant="secondary" className="mt-2" onClick={onSelect}>{t('importFile')}</Button>
+            <Button id="import-file" type="button" variant="secondary" className="mt-2" onClick={onSelect} icon={FileUp}>{t('importFile')}</Button>
           ) : (
             <input id="import-file" type="file" accept=".txt,.csv,.json" onChange={(event) => onFile(event.target.files?.[0])} className={`${inputClass} mt-2 min-w-0 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2`} />
           )}
@@ -109,7 +109,7 @@ export function ImportCard({ format, onFormatChange, importName, onFile, desktop
           <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
           {t('reviewedValid')}
         </label>
-        <Button type="button" onClick={onCommit} disabled={!confirmed || preview.validCount === 0 || pending}>{pending ? tCommon('status.loading') : importButtonLabel}</Button>
+        <Button type="button" onClick={onCommit} disabled={!confirmed || preview.validCount === 0 || pending} icon={Upload}>{pending ? tCommon('status.loading') : importButtonLabel}</Button>
         {preview.validCount === 0 && <p className="text-sm text-muted">{t('noValidItems')}</p>}
       </div>}
       {error && <p role="alert" className="text-sm text-foreground">{error}</p>}
@@ -126,8 +126,8 @@ export function ExportCard({ onExport, onBackup, exportPending, backupPending, e
     <CardHeading icon={<Download aria-hidden="true" size={20} />} title={t('exportBackup')} description={t('exportDescription')} />
     <p className="text-sm text-muted">{t('backupPrivacyNotice')}</p>
     <div className="flex flex-col gap-3 sm:flex-row">
-       <Button type="button" variant="secondary" onClick={onExport} disabled={exportPending}>{exportPending ? t('exporting') : tCommon('actions.exportVocabulary')}</Button>
-       <Button type="button" variant="secondary" onClick={onBackup} disabled={backupPending}>{backupPending ? t('preparingBackup') : tCommon('actions.downloadFullBackup')}</Button>
+       <Button type="button" variant="secondary" onClick={onExport} disabled={exportPending} icon={Download}>{exportPending ? t('exporting') : tCommon('actions.exportVocabulary')}</Button>
+       <Button type="button" variant="secondary" onClick={onBackup} disabled={backupPending} icon={DatabaseBackup}>{backupPending ? t('preparingBackup') : tCommon('actions.downloadFullBackup')}</Button>
      </div>
      {error && <ErrorMessage error={error} />}
   </Card>;
@@ -143,7 +143,7 @@ export function RestoreCard({ onFile, desktopFiles, onSelect, preview, loading, 
     <CardHeading icon={<FileUp aria-hidden="true" size={20} />} title={t('restore')} description={t('restoreDescription')} />
     <label htmlFor="restore-file" className="text-sm font-semibold text-foreground">{t('restoreFile')}</label>
     {desktopFiles ? (
-      <Button id="restore-file" type="button" variant="secondary" onClick={onSelect}>{t('restoreFile')}</Button>
+      <Button id="restore-file" type="button" variant="secondary" onClick={onSelect} icon={FileUp}>{t('restoreFile')}</Button>
     ) : (
       <input id="restore-file" type="file" accept=".json,application/json" onChange={(event) => onFile(event.target.files?.[0])} className={`${inputClass} min-w-0 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2`} />
     )}
@@ -176,7 +176,7 @@ export function RestoreCard({ onFile, desktopFiles, onSelect, preview, loading, 
           ? ` ${t('aiHistoryOverwrite', { conversations: formatNumber(preview.aiHistorySummary.existingTableCounts.aiConversations), turns: formatNumber(preview.aiHistorySummary.existingTableCounts.aiConversationTurns) })}`
           : ''}
       </p>}
-      <Button type="button" variant="danger" onClick={onOpen}>{t('openRestore')}</Button>
+      <Button type="button" variant="danger" onClick={onOpen} icon={ArchiveRestore}>{t('openRestore')}</Button>
     </div>}
   </Card>;
 }
@@ -187,8 +187,8 @@ export function DangerCard({ onProgress, onAll }: { onProgress: () => void; onAl
   return <Card className="min-w-0 space-y-5 border-danger p-4 sm:p-5">
     <CardHeading icon={<ShieldAlert aria-hidden="true" className="text-danger" size={20} />} title={t('dangerZone')} description={t('dangerDescription')} />
     <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-      <div><p className="font-semibold text-foreground">{t('resetProgress')}</p><p className="mt-1 text-sm text-muted">{t('resetDescription')} {tCalendar('backup.resetProgressDescription')}</p><Button type="button" variant="danger" className="mt-4" onClick={onProgress}>{t('resetProgress')}</Button></div>
-      <div><p className="font-semibold text-foreground">{t('deleteAll')}</p><p className="mt-1 text-sm text-muted">{t('deleteAllDescription')} {tCalendar('backup.resetAllDescription')}</p><Button type="button" variant="danger" className="mt-4" onClick={onAll}>{t('deleteAll')}</Button></div>
+      <div><p className="font-semibold text-foreground">{t('resetProgress')}</p><p className="mt-1 text-sm text-muted">{t('resetDescription')} {tCalendar('backup.resetProgressDescription')}</p><Button type="button" variant="danger" className="mt-4" onClick={onProgress} icon={RotateCcw}>{t('resetProgress')}</Button></div>
+      <div><p className="font-semibold text-foreground">{t('deleteAll')}</p><p className="mt-1 text-sm text-muted">{t('deleteAllDescription')} {tCalendar('backup.resetAllDescription')}</p><Button type="button" variant="danger" className="mt-4" onClick={onAll} icon={Trash2}>{t('deleteAll')}</Button></div>
     </div>
   </Card>;
 }

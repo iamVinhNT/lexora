@@ -2,7 +2,7 @@
  * @file VocabularyMasterPane.tsx
  * @description Accessible desktop vocabulary result list with keyboard selection and pagination.
  */
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { Word } from '../../api/vocabulary.api';
@@ -31,13 +31,13 @@ export function VocabularyMasterPane({ words, activeWordId, isLoading, error, pa
   return <Card data-testid="vocabulary-master-pane" className="flex min-h-0 flex-col overflow-hidden">
     <div role={!isLoading && !error && words.length > 0 ? 'listbox' : undefined} aria-label={!isLoading && !error && words.length > 0 ? t('title') : undefined} data-testid="vocabulary-results" className="min-h-0 flex-1 overflow-y-auto">
       {isLoading && <p className="p-5 text-sm text-muted">{t('loading')}</p>}
-      {error && <div className="space-y-4 p-5"><p role="alert" className="text-sm text-foreground">{getLocalizedErrorMessage(error, tCommon)}</p><Button type="button" variant="secondary" onClick={onRetry}>{t('retry')}</Button></div>}
+      {error && <div className="space-y-4 p-5"><p role="alert" className="text-sm text-foreground">{getLocalizedErrorMessage(error, tCommon)}</p><Button type="button" variant="secondary" onClick={onRetry} icon={RotateCw} iconOnly>{t('retry')}</Button></div>}
       {!isLoading && !error && words.length === 0 && <EmptyState title={t('noMatch')} description={t('noMatchDescription')} />}
       {!isLoading && !error && words.map((word, index) => <MasterRow key={word.id} word={word} index={index} selected={word.id === activeWordId} words={words} onSelect={onSelect} />)}
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border p-0.5 pl-4">
       <span className="text-sm font-semibold text-foreground">{t('resultCount', { count: total })}</span>
-      {total > 0 && <nav aria-label={t('pagination')} className="flex items-center gap-1"><Button type="button" variant="secondary" aria-label={tCommon('actions.previous')} className="min-w-11 px-2" disabled={page <= 1} onClick={() => onPage(page - 1)}><ChevronLeft aria-hidden="true" size={18} /></Button><Button type="button" variant="secondary" className="min-h-10 cursor-default px-3 text-xs font-semibold" tabIndex={-1}>{tCommon('pagination.pageOf', { page, totalPages })}</Button><Button type="button" variant="secondary" aria-label={tCommon('actions.next')} className="min-w-11 px-2" disabled={page >= totalPages} onClick={() => onPage(page + 1)}><ChevronRight aria-hidden="true" size={18} /></Button></nav>}
+      {total > 0 && <nav aria-label={t('pagination')} className="flex items-center gap-1"><Button type="button" variant="secondary" aria-label={tCommon('actions.previous')} className="min-w-11 px-2" disabled={page <= 1} onClick={() => onPage(page - 1)} icon={ChevronLeft} iconOnly /><span className="px-3 text-xs font-semibold">{tCommon('pagination.pageOf', { page, totalPages })}</span><Button type="button" variant="secondary" aria-label={tCommon('actions.next')} className="min-w-11 px-2" disabled={page >= totalPages} onClick={() => onPage(page + 1)} icon={ChevronRight} iconOnly /></nav>}
     </div>
   </Card>;
 }

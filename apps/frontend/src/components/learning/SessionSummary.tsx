@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 import type { LearningSession } from '../../api/session.api';
 import { formatNumber } from '../../i18n/formatters';
+import { ArrowRight, Home } from 'lucide-react';
 
 export function SessionSummary({
   session,
@@ -87,6 +88,7 @@ export function SessionSummary({
           to="/"
           className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-5 py-2.5 text-sm font-semibold text-foreground shadow-xs transition hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary w-full sm:w-auto text-center"
         >
+          <Home size={16} aria-hidden="true" className="mr-2 shrink-0" />
           {tCommon('actions.returnOverview')}
         </Link>
         <button
@@ -95,6 +97,7 @@ export function SessionSummary({
           className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary w-full sm:w-auto text-center"
         >
           {tCommon('actions.startNextSession')}
+          <ArrowRight size={16} aria-hidden="true" className="ml-2" />
         </button>
       </div>
     </section>

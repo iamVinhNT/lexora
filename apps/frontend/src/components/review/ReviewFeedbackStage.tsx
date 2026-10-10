@@ -4,15 +4,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle2,
-  PenTool,
-  Volume2,
-  XCircle,
-  X,
-} from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, LogOut, PenTool, RotateCw, Volume2, XCircle } from 'lucide-react';
 import type { ReviewAttemptView } from '../../api/review.api';
 import { getLocalizedErrorMessage } from '../../i18n/presentation';
 import { speakEnglishWord } from '../vocabulary/speech';
@@ -87,8 +79,8 @@ export function ReviewFeedbackStage({
           title={t('abandon')}
           className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 px-2.5 text-xs text-muted transition-colors hover:text-foreground"
         >
-          <X className="h-4 w-4 md:hidden" aria-hidden="true" />
-          <span className="hidden md:inline">{t('abandon')}</span>
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only">{t('abandon')}</span>
         </button>
       </div>
 
@@ -131,9 +123,10 @@ export function ReviewFeedbackStage({
               variant="ghost"
               onClick={() => speakEnglishWord(targetWord)}
               aria-label={t('pronounce')}
-              className="min-h-10 min-w-10 shrink-0 rounded-full"
+              className="min-h-11 min-w-11 shrink-0 rounded-full"
+              icon={Volume2}
+              iconOnly
             >
-              <Volume2 className="h-5 w-5" aria-hidden="true" />
             </Button>
           )}
         </div>
@@ -204,7 +197,7 @@ export function ReviewFeedbackStage({
           className="mt-4 flex items-center justify-between rounded-xl border border-border bg-secondary p-3.5 text-xs sm:text-sm text-foreground"
         >
           <span>{getLocalizedErrorMessage(error, tCommon)}</span>
-          <Button type="button" variant="secondary" onClick={onRetry} disabled={isPending}>
+          <Button type="button" variant="secondary" onClick={onRetry} disabled={isPending} icon={RotateCw} iconOnly>
             {t('retry')}
           </Button>
         </div>
@@ -219,8 +212,8 @@ export function ReviewFeedbackStage({
             onClick={() => onContinue(true)}
             disabled={isPending}
             className="min-h-11 whitespace-normal px-2 text-muted hover:text-foreground sm:px-4"
+            icon={PenTool}
           >
-            <PenTool className="mr-1.5 hidden h-4 w-4 sm:block" aria-hidden="true" />
             {t('practiceSentence')}
           </Button>
         )}
@@ -230,9 +223,9 @@ export function ReviewFeedbackStage({
           onClick={() => onContinue(attempt.needsOutput ? true : false)}
           disabled={isPending}
           className="min-h-11 whitespace-normal px-2 font-semibold sm:px-6"
+          icon={ArrowRight}
         >
           <span>{attempt.needsOutput ? t('practiceSentence') : t('continueToAssess')}</span>
-          <ArrowRight className="ml-1.5 hidden h-4 w-4 sm:block" aria-hidden="true" />
         </Button>
       </div>
     </Card>

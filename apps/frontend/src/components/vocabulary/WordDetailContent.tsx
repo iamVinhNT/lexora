@@ -36,8 +36,9 @@ export function WordDetailContent({ word, onEdit, onDelete, onAskAssistant, fixe
             aria-label={t('speakWord', { word: word.word })}
             className="min-h-11 min-w-11 px-3"
             onClick={() => speakEnglishWord(word.word)}
+            icon={Volume2}
+            iconOnly
           >
-            <Volume2 aria-hidden="true" size={20} />
           </Button>
         </div>
         <p className="mt-2 break-words text-lg text-foreground">{word.definition}</p>
@@ -66,13 +67,12 @@ export function WordDetailContent({ word, onEdit, onDelete, onAskAssistant, fixe
       </div>
       <div className={`${fixedActions ? 'shrink-0 border-t border-border bg-surface p-3 pt-4 sm:px-7' : ''} flex flex-row justify-end gap-3`}>
         {onAskAssistant && (
-          <Button type="button" variant="secondary" aria-label={tAssistant('askAssistant')} className="min-h-11 px-3 gap-1.5" onClick={onAskAssistant}>
-            <Sparkles aria-hidden="true" size={17} />
+          <Button type="button" variant="secondary" aria-label={tAssistant('askAssistant')} className="min-h-11 px-3 gap-1.5" onClick={onAskAssistant} icon={Sparkles}>
             <span className="text-xs font-medium">{tAssistant('askAssistant')}</span>
           </Button>
         )}
-        <Button type="button" variant="secondary" aria-label={tCommon('actions.editWord')} className="min-h-11 min-w-11 px-3" onClick={onEdit}><Pencil aria-hidden="true" size={18} /></Button>
-        <Button type="button" variant="ghost" aria-label={`${tCommon('actions.deleteWord')} ${word.word}`} className="min-h-11 min-w-11 px-3" onClick={onDelete}><Trash2 aria-hidden="true" size={18} /></Button>
+        <Button type="button" variant="secondary" aria-label={tCommon('actions.editWord')} className="min-h-11 min-w-11 px-3" onClick={onEdit} icon={Pencil} iconOnly />
+        <Button type="button" variant="ghost" aria-label={`${tCommon('actions.deleteWord')} ${word.word}`} className="min-h-11 min-w-11 px-3" onClick={onDelete} icon={Trash2} iconOnly />
       </div>
     </div>
   );

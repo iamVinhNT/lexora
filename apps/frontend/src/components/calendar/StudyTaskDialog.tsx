@@ -19,6 +19,7 @@ import { Input } from '../ui/Input';
 import { Label } from '../ui/Label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
 import { StudyTaskDatePicker } from './StudyTaskDatePicker';
+import { Ban, Save, X } from 'lucide-react';
 
 type Props = { task?: StudyTaskView | null; date: CivilDate; onClose: () => void };
 type FormState = { scheduledDate: string; kind: StudyTaskInput['kind']; mode: 'new_words' | 'context' | 'topic' | 'weak_words'; contextId: string; topicId: string; lessonId: string; revisionId: string; revision: string; target: string };
@@ -188,9 +189,9 @@ export function StudyTaskDialog({ task, date, onClose }: Props) {
             <Input id={`${formId}-target`} type="number" min={1} step={1} inputMode="numeric" value={form.kind === 'GRAMMAR' ? '1' : form.target} onChange={(event) => setField('target', event.target.value)} disabled={form.kind === 'GRAMMAR'} required />
           </div>
           <DialogFooter>
-            {task && <Button type="button" variant="danger" onClick={() => void cancelTask()} disabled={isPending || activeSession}>{t('actions.cancel')}</Button>}
-            <Button type="button" variant="secondary" onClick={onClose} disabled={isPending}>{tCommon('actions.cancel')}</Button>
-            <Button type="submit" disabled={isPending || activeSession || !validDate || !validTarget || !validParams}>{isPending ? t('actions.saving') : t('actions.save')}</Button>
+            {task && <Button type="button" variant="danger" onClick={() => void cancelTask()} disabled={isPending || activeSession} icon={Ban} iconOnly>{t('actions.cancel')}</Button>}
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isPending} icon={X} iconOnly>{tCommon('actions.cancel')}</Button>
+            <Button type="submit" disabled={isPending || activeSession || !validDate || !validTarget || !validParams} icon={Save}>{isPending ? t('actions.saving') : t('actions.save')}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

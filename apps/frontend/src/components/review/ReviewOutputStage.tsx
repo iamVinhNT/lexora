@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, Check, Sparkles, X } from 'lucide-react';
+import { AlertCircle, Check, CheckCheck, LogOut, RotateCw, Sparkles } from 'lucide-react';
 
 import type { AiSettingsMetadata } from '../../api/ai-settings.api';
 import type { ReviewAttemptView } from '../../api/review.api';
@@ -91,8 +91,8 @@ export function ReviewOutputStage({
           title={t('abandon')}
           className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 px-2.5 text-xs text-muted transition-colors hover:text-foreground"
         >
-          <X className="h-4 w-4 md:hidden" aria-hidden="true" />
-          <span className="hidden md:inline">{t('abandon')}</span>
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only">{t('abandon')}</span>
         </button>
       </div>
 
@@ -134,6 +134,8 @@ export function ReviewOutputStage({
               variant="secondary"
               onClick={onRetry}
               disabled={isPending}
+              icon={RotateCw}
+              iconOnly
             >
               {t('retry')}
             </Button>
@@ -214,8 +216,8 @@ export function ReviewOutputStage({
             onClick={handleAiGrading}
             disabled={!trimmed || isPending}
             className="min-h-11 whitespace-normal px-2 font-semibold sm:px-4"
+            icon={Sparkles}
           >
-            <Sparkles className="mr-1.5 hidden h-4 w-4 text-primary sm:block" aria-hidden="true" />
             <span>{isPending ? t('gradingWithAi') : t('gradeWithAi')}</span>
           </Button>
         )}
@@ -227,6 +229,7 @@ export function ReviewOutputStage({
           onClick={handleSelfCheck}
           disabled={!trimmed || !containsWord || !checkMeaning || !checkGrammar || isPending}
           className="min-h-11 whitespace-normal px-2 font-semibold sm:px-6"
+          icon={CheckCheck}
         >
           {t('selfCheck')}
         </Button>

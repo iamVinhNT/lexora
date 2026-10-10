@@ -11,6 +11,7 @@ import { useAiStudyPlanPreview, useStudyTaskMutations } from '../../hooks/useStu
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
+import { RotateCw, Save, X } from 'lucide-react';
 
 type Props = { onClose: () => void };
 type DraftTask = StudyTaskInput & { selected: boolean };
@@ -127,7 +128,7 @@ export function AiStudyPlanPreviewDialog({ onClose }: Props) {
         <p className="text-sm text-muted">{t('forms.aiPreviewDescription')}</p>
         <p className="rounded-lg border border-border bg-secondary p-3 text-xs text-muted">{t('forms.aiPrivacyNotice')}</p>
         {loading && <p role="status" aria-busy="true" className="rounded-lg border border-border bg-secondary p-4 text-sm text-muted">{tCommon('status.loading')}</p>}
-        {Boolean(error) && <div role="alert" className="space-y-3 rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger"><p>{String(getLocalizedErrorMessage(error, tCommon))}</p><Button type="button" variant="secondary" onClick={generatePreview}>{t('actions.retry')}</Button></div>}
+        {Boolean(error) && <div role="alert" className="space-y-3 rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger"><p>{String(getLocalizedErrorMessage(error, tCommon))}</p><Button type="button" variant="secondary" onClick={generatePreview} icon={RotateCw} iconOnly>{t('actions.retry')}</Button></div>}
         {preview && tasks.length === 0 && savedCount === 0 && <p role="status" className="rounded-lg border border-border bg-secondary p-4 text-sm text-muted">{t('forms.aiEmptyPreview')}</p>}
         {preview && savedCount > 0 && Object.keys(itemErrors).length === 0 && <p role="status" className="rounded-lg border border-primary/30 bg-primary-subtle p-4 text-sm text-foreground">{t('forms.saved')}</p>}
         {Object.keys(itemErrors).length > 0 && <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">{t('warnings.partialSave')}</p>}
@@ -210,8 +211,8 @@ export function AiStudyPlanPreviewDialog({ onClose }: Props) {
         </div>}
         {tasks.some((task) => task.selected) && preview && !valid && <p role="alert" className="text-sm text-danger">{t('forms.aiInvalidSelection')}</p>}
         <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={isSaving}>{tCommon('actions.cancel')}</Button>
-          <Button type="button" onClick={() => void saveSelected()} disabled={isSaving || !valid}>{isSaving ? t('actions.saving') : t('forms.saveSelected')}</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={isSaving} icon={X} iconOnly>{tCommon('actions.cancel')}</Button>
+          <Button type="button" onClick={() => void saveSelected()} disabled={isSaving || !valid} icon={Save}>{isSaving ? t('actions.saving') : t('forms.saveSelected')}</Button>
         </div>
       </div>
     </Dialog>

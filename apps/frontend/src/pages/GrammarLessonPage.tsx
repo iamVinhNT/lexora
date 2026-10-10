@@ -3,7 +3,7 @@
  * @description Offline-capable lesson reading with server-backed exercise feedback and tutor.
  */
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, RotateCcw, RotateCw, Send } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 
@@ -118,7 +118,7 @@ function GrammarLessonView({ lessonId, studyTaskId }: { lessonId: string; studyT
     <div className="mx-auto max-w-4xl space-y-4">
       <Link to="/grammar" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-muted hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ArrowLeft aria-hidden="true" size={17} />{t('backToCourse')}</Link>
       {lessonQuery.isLoading && <p role="status" aria-busy="true" className="rounded-xl border border-border bg-surface p-5 text-sm text-muted">{t('loadingLesson')}</p>}
-      {lessonQuery.isError && <div role="alert" className="space-y-4 rounded-xl border border-border bg-secondary p-5"><p className="text-sm text-foreground">{getLocalizedErrorMessage(lessonQuery.error, tCommon)}</p><Button type="button" variant="secondary" onClick={() => void lessonQuery.refetch()}>{t('retry')}</Button></div>}
+      {lessonQuery.isError && <div role="alert" className="space-y-4 rounded-xl border border-border bg-secondary p-5"><p className="text-sm text-foreground">{getLocalizedErrorMessage(lessonQuery.error, tCommon)}</p><Button type="button" variant="secondary" onClick={() => void lessonQuery.refetch()} icon={RotateCw} iconOnly>{t('retry')}</Button></div>}
       {lesson && <>
         <header className="space-y-3">
           <h1 tabIndex={-1} className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground focus:outline-none">{lesson.title}</h1>
@@ -154,7 +154,7 @@ function GrammarLessonView({ lessonId, studyTaskId }: { lessonId: string; studyT
           {submitMutation.isError && <p role="alert" className="rounded-xl border border-border bg-secondary p-4 text-sm text-foreground">{getLocalizedErrorMessage(submitMutation.error, tCommon)}</p>}
           {!isComplete && exercise && <ExerciseCard key={exercise.id} exercise={exercise} focusOnMount={focusExerciseAfterContinue} disabled={submitMutation.isPending || taskLoading || Boolean(taskIssue)} blocked={Boolean(taskIssue)} hasError={submitMutation.isError} result={currentResult ?? undefined} onAnswerChange={answerChanged} onContinue={continueAfterFeedback} onSubmit={submitAnswer} />}
           {submitMutation.isPending && <p role="status" className="text-sm text-muted">{t('submitting')}</p>}
-          {showCompletion && <Card className="flex flex-col sm:flex-row items-start gap-3 border-primary/30 bg-primary-subtle p-4 sm:p-5"><CheckCircle2 aria-hidden="true" className="mt-0.5 shrink-0 text-primary" size={20} /><div className="w-full"><h3 className="font-semibold text-foreground">{t('lessonComplete')}</h3><p className="mt-1 text-sm text-muted">{t('answerSaved')}</p><div className="mt-4 flex flex-col sm:flex-row gap-2.5 sm:gap-3 w-full sm:w-auto"><Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => { submitMutation.reset(); setPracticeIndex(0); }}>{t('practiceAgain')}</Button>{lessonData?.nextLessonId && <Link to={`/grammar/${encodeURIComponent(lessonData.nextLessonId)}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary w-full sm:w-auto text-center">{t('nextLesson')}<ArrowRight aria-hidden="true" size={17} /></Link>}</div></div></Card>}
+          {showCompletion && <Card className="flex flex-col sm:flex-row items-start gap-3 border-primary/30 bg-primary-subtle p-4 sm:p-5"><CheckCircle2 aria-hidden="true" className="mt-0.5 shrink-0 text-primary" size={20} /><div className="w-full"><h3 className="font-semibold text-foreground">{t('lessonComplete')}</h3><p className="mt-1 text-sm text-muted">{t('answerSaved')}</p><div className="mt-4 flex flex-col sm:flex-row gap-2.5 sm:gap-3 w-full sm:w-auto"><Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => { submitMutation.reset(); setPracticeIndex(0); }} icon={RotateCcw}>{t('practiceAgain')}</Button>{lessonData?.nextLessonId && <Link to={`/grammar/${encodeURIComponent(lessonData.nextLessonId)}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary w-full sm:w-auto text-center">{t('nextLesson')}<ArrowRight aria-hidden="true" size={17} /></Link>}</div></div></Card>}
         </section>}
         {!exercises.length && <Card><p className="p-5 text-sm text-muted">{t('noExercises')}</p></Card>}
         {lesson.outputPrompts.length > 0 && (
@@ -233,13 +233,13 @@ function ExerciseCard({
           <span>{option.text}</span>
         </label>)}
       </fieldset> : <div className="space-y-2"><label htmlFor={`grammar-answer-${exercise.id}`} className="text-sm font-medium text-foreground">{t('answerText')}</label><textarea id={`grammar-answer-${exercise.id}`} value={answer} onChange={(event) => changeAnswer(event.target.value)} disabled={disabled || hasResult} required rows={3} placeholder={t('answerPlaceholder')} className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-base text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-70" /></div>}
-      {!hasResult && <Button type="submit" disabled={disabled || !answer.trim()} className="w-full sm:w-auto min-h-11">{hasError ? t('retryAnswer') : blocked ? t('submitAnswer') : disabled ? t('submitting') : t('submitAnswer')}</Button>}
+      {!hasResult && <Button type="submit" disabled={disabled || !answer.trim()} className="w-full sm:w-auto min-h-11" icon={hasError ? RotateCw : Send}>{hasError ? t('retryAnswer') : blocked ? t('submitAnswer') : disabled ? t('submitting') : t('submitAnswer')}</Button>}
     </form>
     {result && <div role="status" aria-live="polite" className={`space-y-2 rounded-xl border p-3 text-sm ${result.isCorrect ? 'border-primary/30 bg-primary-subtle text-foreground' : 'border-border bg-secondary text-foreground'}`}>
       <p className="font-semibold">{result.isCorrect ? t('correct') : t('incorrect')}</p>
       <p className="whitespace-pre-line leading-6">{result.feedback}</p>
       <p className="text-muted">{t('answerSaved')}</p>
-      <Button type="button" onClick={onContinue} className="w-full sm:w-auto min-h-11">{t('continueLesson')}</Button>
+      <Button type="button" onClick={onContinue} className="w-full sm:w-auto min-h-11" icon={ArrowRight}>{t('continueLesson')}</Button>
     </div>}
   </Card>;
 }

@@ -15,6 +15,7 @@ import type { StudyTaskView } from '../../api/study.api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
 import { formatDate, formatNumber } from '../../i18n/formatters';
 import { getLocalizedEnumLabel } from '../../i18n/presentation';
+import { Play, RotateCw } from 'lucide-react';
 
 type Props = {
   isPending: boolean;
@@ -153,9 +154,11 @@ export function SessionStartForm({
         <button
           type="button"
           onClick={onRetryOptions}
-          className="min-h-11 rounded-lg border border-current px-4 py-2 text-sm font-semibold"
+          title={t('retryOptions')}
+          className="min-h-11 min-w-11 rounded-lg border border-current px-4 py-2 text-sm font-semibold"
         >
-          {t('retryOptions')}
+          <RotateCw size={16} aria-hidden="true" className="mx-auto" />
+          <span className="sr-only">{t('retryOptions')}</span>
         </button>
       </div>
     );
@@ -394,6 +397,7 @@ export function SessionStartForm({
         disabled={taskStartDisabled}
         className="min-h-12 w-full rounded-xl bg-primary px-4 py-3 text-sm sm:text-base font-semibold text-primary-foreground shadow-sm transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
       >
+        <Play size={16} aria-hidden="true" className="mr-2 inline" />
         {isPending ? t('starting') : t('start')}
       </button>
     </form>

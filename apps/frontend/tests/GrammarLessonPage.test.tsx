@@ -97,7 +97,10 @@ describe('GrammarLessonPage', () => {
     const option = await screen.findByLabelText('walks');
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
     fireEvent.click(option);
-    fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
+    const submitButton = screen.getByRole('button', { name: 'Check answer' });
+    expect(submitButton.querySelector('.sr-only')).toBeNull();
+    expect(submitButton.querySelector('svg.lucide-send')).toBeTruthy();
+    fireEvent.click(submitButton);
 
     expect(await screen.findByText('Correct: use walks with she.')).toBeTruthy();
     expect(screen.getByText('Correct')).toBeTruthy();

@@ -12,6 +12,7 @@ import { useAiAssistantStore } from '../../stores/ai-assistant.store';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { WordDetailContent } from './WordDetailContent';
+import { Trash2, X } from 'lucide-react';
 
 type DetailProps = { word: Word; onClose: () => void; onEdit: () => void; onDeleted: () => void; confirmOnOpen?: boolean };
 
@@ -34,5 +35,5 @@ function DeleteWordDialog({ word, onClose, onDeleted, mutation }: { word: Word; 
   const { t: tCommon } = useTranslation('common');
   const confirm = () => mutation.mutateAsync(word.id).then(onDeleted).catch(() => undefined);
   const error = mutation.error;
-  return <Dialog title={t('deleteTitle')} onClose={onClose}><div className="space-y-5"><p className="text-sm leading-6 text-muted">{t('deleteDescription', { word: word.word })}</p>{error && <p role="alert" className="text-sm text-foreground">{getLocalizedErrorMessage(error, tCommon)}</p>}<div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onClose}>{t('cancel')}</Button><Button type="button" onClick={confirm} disabled={mutation.isPending}>{mutation.isPending ? t('deleting') : t('confirmDelete')}</Button></div></div></Dialog>;
+  return <Dialog title={t('deleteTitle')} onClose={onClose}><div className="space-y-5"><p className="text-sm leading-6 text-muted">{t('deleteDescription', { word: word.word })}</p>{error && <p role="alert" className="text-sm text-foreground">{getLocalizedErrorMessage(error, tCommon)}</p>}<div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onClose} icon={X} iconOnly>{t('cancel')}</Button><Button type="button" onClick={confirm} disabled={mutation.isPending} icon={Trash2}>{mutation.isPending ? t('deleting') : t('confirmDelete')}</Button></div></div></Dialog>;
 }

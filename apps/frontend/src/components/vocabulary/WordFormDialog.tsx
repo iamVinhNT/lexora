@@ -3,7 +3,7 @@
  * @description Localized native-control create and edit form for vocabulary items.
  */
 import { useState } from 'react';
-import { Volume2 } from 'lucide-react';
+import { Save, Volume2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Dialog } from '../ui/Dialog';
@@ -67,8 +67,9 @@ export function WordFormDialog({ word, onClose }: Props) {
             aria-label={canSpeak ? t('speakWord', { word: form.word.trim() }) : t('speak')}
             className="min-h-11 min-w-11 shrink-0 px-3 disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => speakEnglishWord(form.word)}
+            icon={Volume2}
+            iconOnly
           >
-            <Volume2 aria-hidden="true" size={18} />
           </Button>
         ) : undefined}
       />
@@ -82,7 +83,7 @@ export function WordFormDialog({ word, onClose }: Props) {
     </div>
     <div className="shrink-0 space-y-3 border-t border-border bg-surface px-4 py-3 sm:px-7">
       {mutation.error && <p role="alert" className="text-sm text-danger">{getLocalizedErrorMessage(mutation.error, tCommon)}</p>}
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onClose}>{t('cancel')}</Button><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? t('saving') : t('save')}</Button></div>
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onClose} icon={X} iconOnly>{t('cancel')}</Button><Button type="submit" disabled={mutation.isPending} icon={Save}>{mutation.isPending ? t('saving') : t('save')}</Button></div>
     </div>
   </form></Dialog>;
 }

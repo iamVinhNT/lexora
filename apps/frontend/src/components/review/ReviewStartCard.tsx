@@ -49,8 +49,8 @@ export function ReviewStartCard({
             disabled={isPending}
             onClick={onStart}
             className="min-h-12 px-8 font-semibold text-base"
+            icon={Play}
           >
-            <Play className="mr-2 h-5 w-5 fill-current" aria-hidden="true" />
             <span>{reviewedCount > 0 ? t('nextWord') : t('startReview')}</span>
           </Button>
         </div>

@@ -11,6 +11,7 @@ import { getLocalizedErrorMessage } from '../../i18n/presentation';
 import { useStudyPlanPreview, useStudyTaskMutations } from '../../hooks/useStudyCalendar';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { RotateCw, Save, X } from 'lucide-react';
 
 type Props = { onClose: () => void };
 type PreviewTask = StudyTaskInput & { selected: boolean };
@@ -71,7 +72,7 @@ export function StudyPlanPreviewDialog({ onClose }: Props) {
       <div className="min-w-0 space-y-5">
         <p className="text-sm text-muted">{t('forms.previewDescription')}</p>
         {loading && <p role="status" aria-busy="true" className="rounded-lg border border-border bg-secondary p-4 text-sm text-muted">{tCommon('status.loading')}</p>}
-        {Boolean(error) && <div role="alert" className="space-y-3 rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger"><p>{String(getLocalizedErrorMessage(error, tCommon))}</p><Button type="button" variant="secondary" onClick={() => { setError(null); void previewMutation.mutateAsync().then((result) => { setPreview(result); setTasks(result.tasks.map((task) => ({ ...task, selected: true }))); }).catch(setError); }}>{t('actions.retry')}</Button></div>}
+        {Boolean(error) && <div role="alert" className="space-y-3 rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger"><p>{String(getLocalizedErrorMessage(error, tCommon))}</p><Button type="button" variant="secondary" onClick={() => { setError(null); void previewMutation.mutateAsync().then((result) => { setPreview(result); setTasks(result.tasks.map((task) => ({ ...task, selected: true }))); }).catch(setError); }} icon={RotateCw} iconOnly>{t('actions.retry')}</Button></div>}
         {preview && preview.warnings.length > 0 && <div role="status" className="space-y-2 rounded-lg border border-border bg-secondary p-4 text-sm text-muted">{preview.warnings.map((warning, index) => <p key={`${warning.code}-${index}`}>{t(`warnings.preview.${warning.code}`)}</p>)}</div>}
         {preview && tasks.length === 0 && savedCount === 0 && <p role="status" className="rounded-lg border border-border bg-secondary p-4 text-sm text-muted">{t('forms.emptyPreview')}</p>}
         {preview && tasks.length === 0 && savedCount > 0 && Object.keys(itemErrors).length === 0 && <p role="status" className="rounded-lg border border-primary/30 bg-primary-subtle p-4 text-sm text-foreground">{t('forms.saved')}</p>}
@@ -92,8 +93,8 @@ export function StudyPlanPreviewDialog({ onClose }: Props) {
           </div>)}
         </div>}
         <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={isSaving}>{tCommon('actions.cancel')}</Button>
-          <Button type="button" onClick={() => void saveSelected()} disabled={isSaving || !canSave}>{isSaving ? t('actions.saving') : t('forms.saveSelected')}</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={isSaving} icon={X} iconOnly>{tCommon('actions.cancel')}</Button>
+          <Button type="button" onClick={() => void saveSelected()} disabled={isSaving || !canSave} icon={Save}>{isSaving ? t('actions.saving') : t('forms.saveSelected')}</Button>
         </div>
       </div>
     </Dialog>

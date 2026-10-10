@@ -9,6 +9,7 @@ import { ApiError } from '../../api/client';
 import { getLocalizedErrorMessage } from '../../i18n/presentation';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { Check, X } from 'lucide-react';
 
 const inputClass = 'min-h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary';
 
@@ -47,8 +48,8 @@ export function TypedConfirmDialog({ title, phrase, value, onChange, description
       </div>
       {error && <p role="alert" className="text-sm text-foreground"><span>{getLocalizedErrorMessage(error, t)}</span>{diagnosticError && <span className="sr-only"> {diagnosticError}</span>}</p>}
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-        <Button type="button" variant="secondary" onClick={onClose}>{t('actions.cancel')}</Button>
-        <Button type="button" variant="danger" disabled={value !== phrase || pending} onClick={onConfirm}>{pending ? t('actions.working') : actionLabel}</Button>
+        <Button type="button" variant="secondary" onClick={onClose} icon={X} iconOnly>{t('actions.cancel')}</Button>
+        <Button type="button" variant="danger" disabled={value !== phrase || pending} onClick={onConfirm} icon={Check}>{pending ? t('actions.working') : actionLabel}</Button>
       </div>
     </div>
   </Dialog>;

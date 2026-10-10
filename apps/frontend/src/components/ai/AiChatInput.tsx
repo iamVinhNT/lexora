@@ -3,7 +3,7 @@
  * @description Accessible text input form for Lexi chat with Enter-to-send and touch-ready buttons.
  */
 import type { FormEvent, KeyboardEvent, RefObject } from 'react';
-import { Send } from 'lucide-react';
+import { RotateCw, Send } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/Button';
 
@@ -62,8 +62,10 @@ export function AiChatInput({
           disabled={!canSend}
           aria-label={isError ? t('retry') : t('send')}
           className="min-h-11 min-w-11 px-3"
+          icon={isError ? RotateCw : Send}
+          iconOnly
         >
-          <Send size={18} aria-hidden="true" />
+          {isError ? t('retry') : t('send')}
         </Button>
       </div>
     </form>

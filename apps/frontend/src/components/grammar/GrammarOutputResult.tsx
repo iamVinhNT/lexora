@@ -2,7 +2,7 @@
  * @file GrammarOutputResult.tsx
  * @description Saved output, self-assessment disclosure, and reference answer.
  */
-import { CheckCircle2, Sparkles } from 'lucide-react';
+import { CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { SubmitGrammarOutputResponse } from '../../api/grammar-practice.api';
@@ -33,7 +33,7 @@ export function GrammarOutputResult({
         </div>
         <p className="whitespace-pre-line text-sm sm:text-base leading-relaxed text-foreground">{result.modelAnswer}</p>
       </div>
-      <Button type="button" variant="secondary" onClick={onPracticeAgain} className="min-h-11">
+      <Button type="button" variant="secondary" onClick={onPracticeAgain} className="min-h-11" icon={RotateCcw}>
         {t('practiceAgain')}
       </Button>
     </div>

@@ -141,6 +141,7 @@ export function Dialog({ title, children, onClose, wide = false, fixedContent = 
             ref={closeRef}
             type="button"
             aria-label={t('dialog.close', { title })}
+            title={t('dialog.close', { title })}
             onClick={onClose}
             className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
