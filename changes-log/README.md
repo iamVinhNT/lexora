@@ -28,5 +28,6 @@ Mỗi record nên ghi:
 
 ## Recent records
 
+- [2026-10-20 — Untrack docs files](./2026-10-20/chore-untrack-docs.md)
 - [2026-10-20 — Agent context setup and verify scripts](./2026-10-20/chore-agent-context-setup.md)
 - [2026-10-09 — Unreleased AI planner, backup v7 and assistant API migration](./2026-10-09/docs-unreleased-feature-audit.md)
