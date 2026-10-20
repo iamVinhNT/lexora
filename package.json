@@ -12,6 +12,8 @@
     "dev": "concurrently --kill-others-on-fail --names backend,frontend \"pnpm --filter @lexora/backend dev\" \"pnpm --filter @lexora/frontend dev\"",
     "build": "pnpm -r --if-present build",
     "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "verify": "pnpm run typecheck && pnpm test",
     "desktop:dev": "pnpm --filter @lexora/backend build && pnpm --filter @lexora/frontend build && pnpm --filter @lexora/desktop dev",
     "desktop:local": "pnpm run desktop:dev",
     "desktop:build": "pnpm --filter @lexora/backend build && pnpm --filter @lexora/frontend build && pnpm --filter @lexora/desktop build",
