@@ -8,6 +8,7 @@ interface WindowWebContents {
   setWindowOpenHandler(handler: (details: { url: string }) => { action: 'deny' }): void;
   on(event: 'will-navigate' | 'will-redirect', listener: (event: { preventDefault: () => void }, url: string) => void): void;
   executeJavaScript(code: string): Promise<unknown>;
+  send?(channel: string, ...args: unknown[]): void;
   session: {
     setPermissionRequestHandler(handler: (webContents: unknown, permission: string, callback: (allowed: boolean) => void) => void): void;
   };

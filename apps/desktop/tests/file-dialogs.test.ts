@@ -50,7 +50,7 @@ function trustedEvent(url = ALLOWED_ORIGIN) {
 
 async function compileDialogModules(outputRoot: string): Promise<string> {
   const sourceRoot = join(DESKTOP_ROOT, 'src');
-  const outputFiles = ['contracts.ts', 'file-dialogs.ts'];
+  const outputFiles = ['contracts.ts', 'ipc-security.ts', 'file-dialogs.ts'];
   await mkdir(outputRoot, { recursive: true });
   for (const sourceName of outputFiles) {
     const source = await readFileAsync(join(sourceRoot, sourceName), 'utf8');

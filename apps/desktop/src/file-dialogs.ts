@@ -6,6 +6,7 @@ import { readFile as readFileAsync, writeFile as writeFileAsync } from 'node:fs/
 import { basename, extname } from 'node:path';
 
 import { FILE_DIALOG_CHANNELS, type OpenFileRequest, type SaveFileRequest } from './contracts.js';
+import { isTrustedSender } from './ipc-security.js';
 
 interface IpcRegistrar {
   handle(channel: string, handler: (event: unknown, request: unknown) => Promise<unknown>): void;
@@ -43,26 +44,8 @@ function hasKeys(value: Record<string, unknown>, required: string[], optional: s
   return required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key));
 }
 
-function getSenderUrl(event: unknown): string {
-  if (!isRecord(event)) return '';
-  const senderFrame = event.senderFrame;
-  if (isRecord(senderFrame) && typeof senderFrame.url === 'string') return senderFrame.url;
-  const sender = event.sender;
-  if (isRecord(sender) && typeof sender.getURL === 'function') {
-    return String(sender.getURL());
-  }
-  return '';
-}
-
 function assertTrustedSender(event: unknown, allowedOrigin: string): void {
-  try {
-    if (new URL(getSenderUrl(event)).origin !== allowedOrigin) {
-      throw new DesktopFileError('File operation is not allowed from this page.');
-    }
-  } catch (error) {
-    if (error instanceof DesktopFileError) throw error;
-    throw new DesktopFileError('File operation is not allowed from this page.');
-  }
+  if (!isTrustedSender(event, allowedOrigin)) throw new DesktopFileError('File operation is not allowed from this page.');
 }
 
 function parseOpenRequest(request: unknown): OpenFileRequest {

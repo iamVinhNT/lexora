@@ -3,16 +3,19 @@
  * @description Bootstraps the secure Electron desktop, embedded server, and single-instance lifecycle.
  */
 import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { app, dialog, ipcMain } from 'electron';
+import { app, dialog, ipcMain, shell } from 'electron';
 
+import { UPDATE_CHANNELS, type UpdateState } from './contracts.js';
 import { createShutdownController, focusMainWindow } from './lifecycle.js';
 import { writeDesktopError } from './logging.js';
 import { resolveDesktopIconPath, resolveDesktopPaths, resolveDevelopmentRendererRoot, type DesktopPaths } from './paths.js';
 import { registerFileDialogHandlers } from './file-dialogs.js';
 import { startDesktopServer, type DesktopServerHandle } from './desktop-server.js';
+import { createUpdateService } from './update-service.js';
 import { createMainWindow, type CreateMainWindowOptions, type WindowLike } from './window.js';
 
 export type DesktopTestMode =
@@ -42,6 +45,18 @@ interface RegisterFileDialogsInput {
   logError: (message: string, error: unknown) => void | Promise<void>;
 }
 
+interface SetupUpdatesInput {
+  ipcMain: unknown;
+  allowedOrigin: string;
+  sendState: (state: UpdateState) => void;
+  logError: (message: string, error: unknown) => void;
+}
+
+export interface UpdatesHandle {
+  start(): Promise<void>;
+  dispose(): void;
+}
+
 export interface BootstrapDependencies {
   app: DesktopApp;
   dialog: { showErrorBox(title: string, content: string): void };
@@ -53,6 +68,7 @@ export interface BootstrapDependencies {
   resolvePaths: (userDataPath: string, resourcesPath: string) => DesktopPaths;
   startServer: (options: { databasePath: string; rendererRoot: string; logger?: boolean }) => Promise<DesktopServerHandle>;
   registerFileDialogs: (options: RegisterFileDialogsInput) => void;
+  setupUpdates?: (options: SetupUpdatesInput) => UpdatesHandle;
   createWindow: (options: CreateMainWindowOptions) => Promise<WindowLike>;
   focusWindow: (mainWindow: WindowLike | null) => void;
   writeError: (logPath: string, message: string, error: unknown) => Promise<void>;
@@ -76,6 +92,10 @@ const DESKTOP_BRIDGE_SMOKE_SCRIPT = `
     const methods = ['openImportFile', 'openBackupFile', 'saveExportFile', 'saveBackupFile'];
     if (!bridge || methods.some((method) => typeof bridge[method] !== 'function')) {
       throw new Error('Lexora desktop bridge is incomplete.');
+    }
+    const updateMethods = ['getState', 'download', 'cancelDownload', 'revealDownload', 'dismiss', 'onState'];
+    if (!bridge.updates || updateMethods.some((method) => typeof bridge.updates[method] !== 'function')) {
+      throw new Error('Lexora desktop update bridge is incomplete.');
     }
     const malformedRequests = [
       [bridge.openImportFile({}), 'Invalid file-open request.'],
@@ -160,6 +180,7 @@ export async function bootstrapDesktop(dependencies: BootstrapDependencies): Pro
   let server: DesktopServerHandle | undefined;
   let serverPromise: Promise<DesktopServerHandle> | undefined;
   let desktopPaths: DesktopPaths | undefined;
+  let updates: UpdatesHandle | undefined;
   let startupFailure = false;
   let quitStarted = false;
   let exitRequested = false;
@@ -189,6 +210,7 @@ export async function bootstrapDesktop(dependencies: BootstrapDependencies): Pro
     else window.destroy?.();
   };
   const shutdown = createShutdownController(async () => {
+    updates?.dispose();
     if (!server && serverPromise) server = await serverPromise;
     if (!startupFailure && windowPromise && !pendingWindow) pendingWindow = await windowPromise;
     closeWindow(pendingWindow ?? mainWindow ?? undefined);
@@ -283,6 +305,21 @@ export async function bootstrapDesktop(dependencies: BootstrapDependencies): Pro
       },
     });
     mainWindow.once('closed', () => { mainWindow = null; });
+    if (mode.kind === 'normal' && dependencies.setupUpdates) {
+      updates = dependencies.setupUpdates({
+        ipcMain: dependencies.ipcMain,
+        allowedOrigin: server.origin,
+        sendState: (state) => {
+          try {
+            mainWindow?.webContents.send?.(UPDATE_CHANNELS.state, state);
+          } catch {
+            // The window may be closing; the next state push or launch recovers.
+          }
+        },
+        logError: (message, error) => { void logBestEffort(message, error, 'Desktop update logging failed.'); },
+      });
+      void updates.start().catch((error) => logBestEffort('Desktop update service failed to start.', error, 'Desktop update logging failed.'));
+    }
     if (focusRequestedBeforeWindow) {
       focusRequestedBeforeWindow = false;
       dependencies.focusWindow(mainWindow);
@@ -333,6 +370,16 @@ function createProductionDependencies(): BootstrapDependencies {
     },
     startServer: startDesktopServer,
     registerFileDialogs: (options) => registerFileDialogHandlers(options as Parameters<typeof registerFileDialogHandlers>[0]),
+    setupUpdates: (options) => createUpdateService({
+      ...options,
+      ipcMain: options.ipcMain as Parameters<typeof createUpdateService>[0]['ipcMain'],
+      app,
+      shell,
+      homeDir: homedir(),
+      execPath: process.execPath,
+      env: process.env,
+      fetch,
+    }),
     createWindow: createMainWindow,
     focusWindow: (mainWindow) => focusMainWindow(mainWindow as never),
     writeError: writeDesktopError,

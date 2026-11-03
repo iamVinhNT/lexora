@@ -393,6 +393,105 @@ describe('bootstrapDesktop', () => {
     expect(app.exit).toHaveBeenCalledWith(1);
   });
 
+  describe('desktop updates', () => {
+    function updatesHandle() {
+      return { start: vi.fn(async () => undefined), dispose: vi.fn() };
+    }
+
+    it('starts the update service for a normal launch with the server origin and the IPC registrar', async () => {
+      const { app } = createApp(true);
+      const handle = updatesHandle();
+      const setupUpdates = vi.fn(() => handle);
+      const dependencies = createDependencies(app, { setupUpdates });
+
+      await bootstrapDesktop(dependencies);
+
+      expect(setupUpdates).toHaveBeenCalledWith(expect.objectContaining({ ipcMain: dependencies.ipcMain, allowedOrigin: 'http://127.0.0.1:45678' }));
+      expect(handle.start).toHaveBeenCalledTimes(1);
+    });
+
+    it('never starts updates in smoke or acceptance mode, so packaged checks stay offline', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: true, data: { status: 'ok' } }), { status: 200 })));
+      const smokeApp = createApp(true).app;
+      const smokeSetup = vi.fn(() => updatesHandle());
+      await bootstrapDesktop(createDependencies(smokeApp, {
+        args: ['electron', '--smoke-test'],
+        setupUpdates: smokeSetup,
+        createWindow: vi.fn(async () => ({ webContents: { executeJavaScript: vi.fn(async () => 'ok') }, once: vi.fn() })),
+      }));
+      expect(smokeSetup).not.toHaveBeenCalled();
+
+      const acceptanceSetup = vi.fn(() => updatesHandle());
+      await bootstrapDesktop(createDependencies(createApp(true).app, { args: ['electron', '--acceptance-test=/tmp/lexora-accept/control.json'], setupUpdates: acceptanceSetup }));
+      expect(acceptanceSetup).not.toHaveBeenCalled();
+    });
+
+    it('forwards update state to the main window renderer', async () => {
+      const { app } = createApp(true);
+      const send = vi.fn();
+      const setupUpdates = vi.fn((_options: { sendState: (state: unknown) => void }) => updatesHandle());
+      const dependencies = createDependencies(app, {
+        setupUpdates: setupUpdates as never,
+        createWindow: vi.fn(async () => ({ once: vi.fn(), webContents: { send } })),
+      });
+
+      await bootstrapDesktop(dependencies);
+      const state = { available: true };
+      setupUpdates.mock.calls[0]![0].sendState(state);
+
+      expect(send).toHaveBeenCalledWith('lexora:update:state', state);
+    });
+
+    it('does not throw when the window is gone while sending state', async () => {
+      const { app } = createApp(true);
+      const send = vi.fn(() => { throw new Error('Object has been destroyed'); });
+      const setupUpdates = vi.fn((_options: { sendState: (state: unknown) => void }) => updatesHandle());
+      await bootstrapDesktop(createDependencies(app, {
+        setupUpdates: setupUpdates as never,
+        createWindow: vi.fn(async () => ({ once: vi.fn(), webContents: { send } })),
+      }));
+
+      expect(() => setupUpdates.mock.calls[0]![0].sendState({})).not.toThrow();
+    });
+
+    it('disposes the update service during shutdown', async () => {
+      const { app, listeners } = createApp(true);
+      const handle = updatesHandle();
+      await bootstrapDesktop(createDependencies(app, { setupUpdates: vi.fn(() => handle) }));
+
+      listeners.get('before-quit')?.({ preventDefault: vi.fn() });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(handle.dispose).toHaveBeenCalledTimes(1);
+      expect(app.exit).toHaveBeenCalledWith(0);
+    });
+
+    it('keeps the app running and logs when the update service fails to start', async () => {
+      const { app } = createApp(true);
+      const writeError = vi.fn(async () => undefined);
+      const handle = { start: vi.fn(async () => { throw new Error('state file unreadable'); }), dispose: vi.fn() };
+      await bootstrapDesktop(createDependencies(app, { setupUpdates: vi.fn(() => handle), writeError }));
+      await flushMicrotasks();
+
+      expect(app.exit).not.toHaveBeenCalled();
+      expect(writeError).toHaveBeenCalledWith('/tmp/lexora-user-data/logs/desktop.log', 'Desktop update service failed to start.', expect.any(Error));
+    });
+
+    it('checks the update bridge from the smoke renderer', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: true, data: { status: 'ok' } }), { status: 200 })));
+      const executeJavaScript = vi.fn(async () => 'ok');
+      await bootstrapDesktop(createDependencies(createApp(true).app, {
+        args: ['electron', '--smoke-test'],
+        createWindow: vi.fn(async () => ({ webContents: { executeJavaScript }, once: vi.fn() })),
+      }));
+
+      const script = (executeJavaScript.mock.calls[0] as unknown as [string])[0];
+      for (const method of ['getState', 'download', 'cancelDownload', 'revealDownload', 'dismiss', 'onState']) {
+        expect(script).toContain(method);
+      }
+    });
+  });
+
   it('awaits one shared server close for overlapping quit events', async () => {
     const { app, listeners } = createApp(true);
     const close = vi.fn(async () => undefined);
