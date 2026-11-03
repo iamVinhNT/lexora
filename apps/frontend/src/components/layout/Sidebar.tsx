@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { useUiStore } from '../../stores/ui.store';
 import { NavMain } from './NavMain';
 import { SidebarTrigger } from './SidebarTrigger';
+import { UpdateBell } from './UpdateBell';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { LanguageSelector } from '../ui/LanguageSelector';
 
@@ -25,7 +26,7 @@ export function Sidebar() {
         isSidebarOpen ? 'lg:w-64' : 'lg:w-16'
       }`}
     >
-      <div className={`flex shrink-0 items-center justify-center border-b border-border px-2 py-3 ${isSidebarOpen ? 'lg:h-16 lg:justify-between lg:px-4' : 'lg:flex-col lg:gap-2'}`}>
+      <div data-sidebar-header className={`flex shrink-0 flex-col items-center justify-center gap-2 border-b border-border px-2 py-3 ${isSidebarOpen ? 'lg:h-16 lg:flex-row lg:justify-between lg:gap-0 lg:px-4' : ''}`}>
         <Link
           to="/"
           title="Lexora"
@@ -41,7 +42,10 @@ export function Sidebar() {
           />
           <span className={isSidebarOpen ? 'hidden lg:inline' : 'sr-only'}>Lexora</span>
         </Link>
-        <SidebarTrigger className="hidden lg:inline-flex" />
+        <div className={`contents ${isSidebarOpen ? 'lg:flex lg:items-center' : ''}`}>
+          <UpdateBell />
+          <SidebarTrigger className="hidden lg:inline-flex" />
+        </div>
       </div>
 
       <NavMain isSidebarOpen={isSidebarOpen} />
