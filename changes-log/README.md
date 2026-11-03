@@ -28,6 +28,7 @@ Mỗi record nên ghi:
 
 ## Recent records
 
+- [2026-10-20 — test:changed for the narrow check](./2026-10-20/chore-test-changed.md)
 - [2026-10-20 — CI workflow for pull requests](./2026-10-20/chore-ci-workflow.md)
 - [2026-10-20 — Untrack docs files](./2026-10-20/chore-untrack-docs.md)
 - [2026-10-20 — Agent context setup and verify scripts](./2026-10-20/chore-agent-context-setup.md)

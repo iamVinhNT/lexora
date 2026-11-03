@@ -12,8 +12,10 @@ Run from the repo root (pnpm 9, Node 22+).
 
 - Install: `pnpm install`
 - Dev: `pnpm dev` (backend on :3001 plus Vite; Vite proxies `/api` to `127.0.0.1:3001` and listens on `0.0.0.0` on purpose for LAN access)
-- Fast check: `pnpm typecheck` (all workspaces)
-- Full check: `pnpm verify` (typecheck + every test suite; about 3.5 minutes). Baseline on 2026-10-20: 637 backend, 244 frontend and 60 desktop tests pass.
+- Fast check: `pnpm typecheck` (all workspaces, about 10 s)
+- Narrow check: `pnpm test:changed [backend|frontend|desktop]` (vitest on the tests related to uncommitted source changes; seconds for a leaf file, minutes for a widely imported component)
+- Full check: `pnpm verify` (typecheck + every test suite; about 3.5 minutes)
+- No linter or formatter is configured.
 - CI: `.github/workflows/ci.yml` runs `pnpm verify` on pull requests and pushes to `main`. It has not been run on GitHub yet; trigger it once with `workflow_dispatch`.
 - One workspace: `pnpm --filter @lexora/<backend|frontend|desktop> test [path]` or `typecheck`
 - Build: `pnpm build`. Desktop: `pnpm desktop:local` (build and launch Electron), `pnpm desktop:dist` (Linux AppImage and deb)
