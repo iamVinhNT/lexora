@@ -155,6 +155,14 @@ describe('AiHistoryUi components', () => {
     });
 
     const resumeButton = screen.getByRole('button', { name: 'Tiếp tục hội thoại' });
+    expect(resumeButton.textContent).toBe('');
+    expect(resumeButton.getAttribute('title')).toBe('Tiếp tục hội thoại');
+    const backButton = screen.getByRole('button', { name: 'Quay lại' });
+    expect(backButton.textContent).toBe('');
+    expect(backButton.getAttribute('title')).toBe('Quay lại');
+    const storageInfo = screen.getByText('Thông tin lưu trữ hội thoại').closest('details');
+    expect(storageInfo).toBeTruthy();
+    expect(storageInfo?.hasAttribute('open')).toBe(false);
     fireEvent.click(resumeButton);
 
     await waitFor(() => {

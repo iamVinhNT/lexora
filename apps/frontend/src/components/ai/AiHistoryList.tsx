@@ -3,7 +3,7 @@
  * @description Paginated conversation history listing with resume, accessible controls, and resilient deletion.
  */
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Info, MessageSquare, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAiConversations, useDeleteAiConversation } from '../../hooks/useAiHistory';
 import { formatDate } from '../../i18n/formatters';
@@ -64,10 +64,10 @@ export function AiHistoryList({ onBack, onSelect, activeId }: AiHistoryListProps
           variant="ghost"
           onClick={onBack}
           aria-label={t('backToChat')}
-          className="min-h-11 px-2 text-xs font-semibold"
+          title={t('backToChat')}
+          className="min-h-11 min-w-11 px-2"
         >
-          <ArrowLeft size={16} className="mr-1 inline" aria-hidden="true" />
-          {t('backToChat')}
+          <ArrowLeft size={16} aria-hidden="true" />
         </Button>
         <span className="text-xs font-semibold text-muted">{t('historyTitle')}</span>
       </div>
@@ -92,7 +92,7 @@ export function AiHistoryList({ onBack, onSelect, activeId }: AiHistoryListProps
       )}
 
       {!isLoading && !isError && data?.items && data.items.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {data.items.map((item) => {
             const isActive = item.id === activeId;
             const isDeleting = deletingId === item.id;
@@ -104,13 +104,13 @@ export function AiHistoryList({ onBack, onSelect, activeId }: AiHistoryListProps
             return (
               <div
                 key={item.id}
-                className={`rounded-xl border p-2.5 transition-colors ${
+                className={`rounded-xl border px-2 py-1.5 transition-colors ${
                   isActive ? 'border-primary bg-primary/5' : 'border-border bg-background'
                 }`}
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-1">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold text-foreground">
+                    <p title={item.title || t('newConversation')} className="truncate text-xs font-semibold text-foreground">
                       {item.title || t('newConversation')}
                     </p>
                     <p className="mt-0.5 truncate text-[11px] text-muted">
@@ -124,9 +124,30 @@ export function AiHistoryList({ onBack, onSelect, activeId }: AiHistoryListProps
                     </p>
                   </div>
                   {isActive && (
-                    <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                      ✓
-                    </span>
+                    <Check size={14} className="shrink-0 text-primary" aria-hidden="true" />
+                  )}
+                  {!isDeleting && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        onClick={() => onSelect(item.id)}
+                        aria-label={t('resumeConversation')}
+                        aria-current={isActive ? 'true' : undefined}
+                        title={t('resumeConversation')}
+                        className="min-h-11 min-w-11 shrink-0 px-2 text-primary"
+                      >
+                        <MessageSquare size={16} aria-hidden="true" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleStartDelete(item.id)}
+                        aria-label={t('deleteConversation')}
+                        title={t('deleteConversation')}
+                        className="min-h-11 min-w-11 shrink-0 px-2 text-muted hover:text-danger"
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                      </Button>
+                    </>
                   )}
                 </div>
 
@@ -160,25 +181,7 @@ export function AiHistoryList({ onBack, onSelect, activeId }: AiHistoryListProps
                       </Button>
                     </div>
                   </div>
-                ) : (
-                  <div className="mt-2 flex items-center justify-between gap-2 border-t border-border/50 pt-2">
-                    <Button
-                      variant="ghost"
-                      onClick={() => onSelect(item.id)}
-                      className="min-h-11 flex-1 justify-start px-2 text-xs font-semibold text-primary"
-                    >
-                      {t('resumeConversation')}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleStartDelete(item.id)}
-                      aria-label={t('deleteConversation')}
-                      className="min-h-11 min-w-11 px-2 text-muted hover:text-danger"
-                    >
-                      <Trash2 size={14} aria-hidden="true" />
-                    </Button>
-                  </div>
-                )}
+                ) : null}
               </div>
             );
           })}
@@ -213,9 +216,16 @@ export function AiHistoryList({ onBack, onSelect, activeId }: AiHistoryListProps
         </div>
       )}
 
-      <p className="pt-2 text-center text-[11px] leading-relaxed text-muted">
-        {t('historyNotice')}
-      </p>
+      <details className="text-[11px] leading-relaxed text-muted">
+        <summary
+          title={t('historyNoticeLabel')}
+          className="ml-auto flex min-h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden"
+        >
+          <Info size={16} aria-hidden="true" />
+          <span className="sr-only">{t('historyNoticeLabel')}</span>
+        </summary>
+        <p className="pb-2">{t('historyNotice')}</p>
+      </details>
     </div>
   );
 }

@@ -58,6 +58,7 @@ export default {
   deleting: 'Đang xóa…',
   loadOlder: 'Tải tin nhắn cũ hơn',
   loadingOlder: 'Đang tải…',
+  historyNoticeLabel: 'Thông tin lưu trữ hội thoại',
   historyNotice: 'History lưu trong SQLite cục bộ, không mã hóa riêng, cho tới khi bạn xóa; bản backup học tập có chứa history. Context chỉ gửi khi bạn hỏi. Xóa history không xóa bản backup đã xuất hoặc bản lưu của nhà cung cấp.',
   memoryModes: {
     full: 'Bộ nhớ đầy đủ',

@@ -58,6 +58,7 @@ export default {
   deleting: 'Deleting…',
   loadOlder: 'Load older messages',
   loadingOlder: 'Loading…',
+  historyNoticeLabel: 'History storage information',
   historyNotice: 'History is stored in local SQLite without separate encryption until you delete it; learner backups include it. Context is sent only when you ask. Deleting history does not erase exported backups or provider copies.',
   memoryModes: {
     full: 'Full memory',
