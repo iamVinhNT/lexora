@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 ### Added
+- Desktop app shows a bell in the sidebar header when a newer Lexora release is available. Its popover downloads the AppImage or `.deb` into your Downloads folder after verifying its SHA-256 checksum; nothing is installed or run automatically. Requires the repository to be public.
 - Lexi, an original lazy-loaded procedural WebGL3D robot, opens a resizable, nonmodal chat window. Opening chat unmounts the robot and releases GPU resources; closing restores the robot.
 - Context-aware, read-only multi-turn chat with persistent local SQLite conversation history, paginated archive, resume/delete controls, opt-in progress snapshots, and explicit consent before sharing an old conversation with another provider/model.
 - Settings supports one OpenAI-compatible provider, multiple model names and one active model; API_KEY is AES-256-GCM encrypted in SQLite with a protected key file outside learner backups.
