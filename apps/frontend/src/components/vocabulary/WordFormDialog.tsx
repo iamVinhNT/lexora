@@ -35,6 +35,7 @@ export function WordFormDialog({ word, onClose }: Props) {
   const updateMutation = useUpdateWord();
   const mutation = word ? updateMutation : createMutation;
   const isCreate = !word;
+  const partOfSpeechOptions = form.partOfSpeech && !isKnownPartOfSpeech(form.partOfSpeech) ? [...partOfSpeechLabels, form.partOfSpeech] : partOfSpeechLabels;
   const canSpeak = Boolean(form.word.trim());
   const setField = (field: keyof FormState, value: string) => setForm((current) => ({ ...current, [field]: value }));
 
@@ -76,12 +77,12 @@ export function WordFormDialog({ word, onClose }: Props) {
       <Field label={t('fields.definition')} value={form.definition} error={errors.definition} onChange={(value) => setField('definition', value)} required />
       <Field label={t('fields.translation')} value={form.translation} onChange={(value) => setField('translation', value)} />
       <Field label={t('fields.phonetic')} value={form.phonetic} onChange={(value) => setField('phonetic', value)} />
-      <Field label={t('fields.partOfSpeech')} value={form.partOfSpeech} onChange={(value) => setField('partOfSpeech', value)} />
+      <div><label htmlFor="partOfSpeech" className="text-sm font-semibold text-foreground">{t('fields.partOfSpeech')}</label><Select value={form.partOfSpeech || noPartOfSpeechValue} onValueChange={(value) => setField('partOfSpeech', value === noPartOfSpeechValue ? '' : value)}><SelectTrigger id="partOfSpeech" aria-label={t('fields.partOfSpeech')} className={controlClass}><SelectValue /></SelectTrigger><SelectContent><SelectItem value={noPartOfSpeechValue}>{t('choosePartOfSpeech')}</SelectItem>{partOfSpeechOptions.map((option) => <SelectItem key={option} value={option}>{isKnownPartOfSpeech(option) ? t(`partsOfSpeech.${option}`) : option}</SelectItem>)}</SelectContent></Select></div>
       <div><label htmlFor="difficulty" className="text-sm font-semibold text-foreground">{t('fields.difficulty')}</label><Select value={form.difficulty || noDifficultyValue} onValueChange={(value) => setField('difficulty', value === noDifficultyValue ? '' : value)}><SelectTrigger id="difficulty" aria-label={t('fields.difficulty')} className={controlClass}><SelectValue /></SelectTrigger><SelectContent><SelectItem value={noDifficultyValue}>{t('chooseCefr')}</SelectItem>{['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((level) => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent></Select></div>
     </div>
     <TextAreaField label={t('fields.tags')} hint={tCommon('hints.commaSeparated')} value={form.tags} onChange={(value) => setField('tags', value)} /><TextAreaField label={t('fields.collocations')} hint={tCommon('hints.onePhrasePerLine')} value={form.collocations} onChange={(value) => setField('collocations', value)} /><TextAreaField label={t('fields.examples')} hint={tCommon('hints.oneSentencePerLine')} value={form.examples} onChange={(value) => setField('examples', value)} />
     </div>
-    <div className="shrink-0 space-y-3 border-t border-border bg-surface px-4 py-3 sm:px-7">
+    <div className="shrink-0 space-y-3 border-t border-border px-4 py-3 sm:px-7">
       {mutation.error && <p role="alert" className="text-sm text-danger">{getLocalizedErrorMessage(mutation.error, tCommon)}</p>}
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onClose} icon={X} iconOnly>{t('cancel')}</Button><Button type="submit" disabled={mutation.isPending} icon={Save}>{mutation.isPending ? t('saving') : t('save')}</Button></div>
     </div>
@@ -90,6 +91,10 @@ export function WordFormDialog({ word, onClose }: Props) {
 
 const controlClass = 'mt-2 min-h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary';
 const noDifficultyValue = '__no_difficulty__';
+const noPartOfSpeechValue = '__no_part_of_speech__';
+const partOfSpeechLabels = ['noun', 'verb', 'adjective', 'adverb', 'pronoun', 'preposition', 'conjunction', 'determiner', 'interjection'] as const;
+type KnownPartOfSpeech = (typeof partOfSpeechLabels)[number];
+const isKnownPartOfSpeech = (value: string): value is KnownPartOfSpeech => (partOfSpeechLabels as readonly string[]).includes(value);
 
 function Field({ label, value, error, onChange, required = false, action }: { label: string; value: string; error?: string; onChange: (value: string) => void; required?: boolean; action?: React.ReactNode }) {
   const id = label.toLowerCase().replaceAll(' ', '-');

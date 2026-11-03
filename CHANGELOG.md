@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 ### Added
+- Vocabulary form picks part of speech from a localized select box; values outside the list on existing words are kept.
 - Desktop app shows a bell in the sidebar header when a newer Lexora release is available. Its popover downloads the AppImage or `.deb` into your Downloads folder after verifying its SHA-256 checksum; nothing is installed or run automatically. Requires the repository to be public.
 - Lexi, an original lazy-loaded procedural WebGL3D robot, opens a resizable, nonmodal chat window. Opening chat unmounts the robot and releases GPU resources; closing restores the robot.
 - Context-aware, read-only multi-turn chat with persistent local SQLite conversation history, paginated archive, resume/delete controls, opt-in progress snapshots, and explicit consent before sharing an old conversation with another provider/model.
@@ -20,6 +21,7 @@
 - Server-owned review attempts resume after reload, reject stale snapshots, and replay stable receipts without duplicate scheduling or study-task credit.
 
 ### Fixed
+- Remove the white header and footer boxes from dialogs: headers stay put without an opaque background, and the vocabulary form footer is translucent like the panel.
 - Keep the desktop vocabulary layout within the browser or Electron viewport; only the word list and detail content scroll, with filters, pagination and actions remaining visible.
 - Conversational AI accepts ordinary text replies from OpenAI-compatible providers without requiring JSON-schema response formatting; blank, reasoning-only and oversized replies remain rejected.
 - Keep chat input and header visible on short mobile screens while conversation content scrolls independently.

@@ -129,11 +129,11 @@ export function Dialog({ title, children, onClose, wide = false, fixedContent = 
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`glass-panel relative z-50 w-full min-w-0 rounded-2xl shadow-xl ${fixedContent ? 'flex h-dvh max-h-dvh flex-col overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[90dvh] sm:rounded-2xl' : 'max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain p-4 sm:max-h-[90dvh] sm:p-6'} ${
+        className={`glass-panel relative z-50 w-full min-w-0 rounded-2xl shadow-xl ${fixedContent ? 'flex h-dvh max-h-dvh flex-col overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[90dvh] sm:rounded-2xl' : 'flex max-h-[calc(100dvh-1rem)] flex-col overflow-hidden p-4 sm:max-h-[90dvh] sm:p-6'} ${
           wide ? 'max-w-3xl' : 'max-w-xl'
         }`}
       >
-        <div className={`flex shrink-0 items-start justify-between gap-3 ${fixedContent ? 'border-b border-border px-4 py-3 sm:px-7' : 'sticky top-0 z-10 bg-surface pb-3'}`}>
+        <div className={`flex shrink-0 items-start justify-between gap-3 ${fixedContent ? 'border-b border-border px-4 py-3 sm:px-7' : 'pb-3'}`}>
           <h2 id={titleId} className="min-w-0 break-words text-lg font-semibold text-foreground sm:text-xl">
             {title}
           </h2>
@@ -148,7 +148,7 @@ export function Dialog({ title, children, onClose, wide = false, fixedContent = 
             <X aria-hidden="true" size={20} />
           </button>
         </div>
-        <div className={fixedContent ? 'min-h-0 flex flex-1 overflow-hidden' : 'mt-5'}>{children}</div>
+        <div className={fixedContent ? 'min-h-0 flex flex-1 overflow-hidden' : 'mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain'}>{children}</div>
       </div>
     </div>,
     document.body,

@@ -312,6 +312,8 @@ describe('VocabularyPage', () => {
     fireEvent.change(within(dialog).getByRole('textbox', { name: /^tags$/i }), { target: { value: 'work, growth' } });
     fireEvent.pointerDown(within(dialog).getByRole('combobox', { name: /difficulty/i }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(screen.getByRole('option', { name: 'B2' }));
+    fireEvent.pointerDown(within(dialog).getByRole('combobox', { name: /part of speech/i }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(screen.getByRole('option', { name: 'Adjective' }));
     await Promise.resolve();
     const saveButton = within(dialog).getByRole('button', { name: /save word/i });
     fireEvent.submit(saveButton.closest('form')!);
@@ -324,9 +326,10 @@ describe('VocabularyPage', () => {
 
     const postCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
     expect(postCall).toBeTruthy();
-    const postBody = JSON.parse(String(postCall?.[1]?.body)) as { tags: unknown };
+    const postBody = JSON.parse(String(postCall?.[1]?.body)) as { tags: unknown; difficulty: unknown; partOfSpeech: unknown };
     expect(postBody.tags).toEqual(['work', 'growth']);
     expect(postBody.difficulty).toBe('B2');
+    expect(postBody.partOfSpeech).toBe('adjective');
   });
 
   it('requires explicit confirmation before deleting a word', async () => {
