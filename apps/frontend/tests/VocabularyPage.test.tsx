@@ -101,13 +101,44 @@ describe('VocabularyPage', () => {
     const results = await screen.findByRole('listbox', { name: /vocabulary/i });
     const firstRow = await within(results).findByRole('option', { name: /reliable/i });
     expect(firstRow.getAttribute('aria-selected')).toBe('true');
-    expect(within(screen.getByRole('region', { name: /word details/i })).getByRole('heading', { name: 'reliable' })).toBeTruthy();
+    const detail = screen.getByRole('region', { name: /word details/i });
+    expect(within(detail).getByRole('heading', { name: 'reliable' })).toBeTruthy();
+    expect(within(detail).getByRole('heading', { name: 'Tags' })).toBeTruthy();
+    expect(within(detail).getByText('work')).toBeTruthy();
+    expect(within(detail).getByText('priority')).toBeTruthy();
 
     fireEvent.keyDown(firstRow, { key: 'ArrowDown' });
 
-    const detail = screen.getByRole('region', { name: /word details/i });
     expect(within(detail).getByRole('heading', { name: 'resilient' })).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('displays tags in the detail dialog and shows empty tag state when a word has no tags', async () => {
+    mockDesktopViewport(false);
+    const untaggedWord = { ...word, id: 'word-2', word: 'resilient', definition: 'Able to recover.', tags: [] };
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/word-1')) return response(word);
+      if (url.endsWith('/word-2')) return response(untaggedWord);
+      return response({ total: 2, page: 1, limit: 20, items: [word, untaggedWord] });
+    });
+
+    renderPage();
+    await screen.findByText('reliable');
+
+    fireEvent.click(screen.getByRole('button', { name: /details for reliable/i }));
+    const detailDialog = await screen.findByRole('dialog', { name: /reliable/i });
+    expect(within(detailDialog).getByRole('heading', { name: 'Tags' })).toBeTruthy();
+    expect(within(detailDialog).getByText('work')).toBeTruthy();
+    expect(within(detailDialog).getByText('priority')).toBeTruthy();
+
+    fireEvent.click(within(detailDialog).getByRole('button', { name: /close reliable/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: /details for resilient/i }));
+    const untaggedDialog = await screen.findByRole('dialog', { name: /resilient/i });
+    expect(within(untaggedDialog).getByRole('heading', { name: 'Tags' })).toBeTruthy();
+    expect(within(untaggedDialog).getByText('No tags yet.')).toBeTruthy();
   });
 
   it('closes desktop delete confirmation back to inline detail on cancel', async () => {

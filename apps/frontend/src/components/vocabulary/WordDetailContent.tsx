@@ -46,6 +46,20 @@ export function WordDetailContent({ word, onEdit, onDelete, onAskAssistant, fixe
         <p className="mt-2 break-words text-sm text-muted">{[word.partOfSpeech, word.phonetic, word.difficulty].filter(Boolean).join(' · ')}</p>
       </div>
       <div data-testid={fixedActions ? 'word-detail-scroll-area' : undefined} className={fixedActions ? 'min-h-0 flex-1 overflow-y-auto space-y-6 px-5 py-5 sm:px-7 pr-1' : 'space-y-6'}>
+        <section>
+          <h3 className="font-semibold text-foreground">{tCommon('labels.tags')}</h3>
+          {word.tags.length ? (
+            <ul className="mt-2 flex flex-wrap gap-1.5 text-xs text-muted">
+              {word.tags.map((tag) => (
+                <li key={tag.id} className="max-w-full whitespace-normal break-words rounded-full bg-secondary px-2.5 py-1">
+                  {tag.name}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-muted">{t('noTags')}</p>
+          )}
+        </section>
         <DetailList title={t('wordFamilies')} items={word.wordFamilies.map((item) => `${item.word.word} (${item.relationship})`)} empty={t('noWordFamilies')} />
       <DetailList title={tCommon('labels.collocations')} items={word.collocations.map((item) => item.phrase)} empty={t('noCollocations')} />
       <DetailList title={tCommon('labels.examples')} items={word.examples.map((item) => item.sentence)} empty={t('noExamples')} />

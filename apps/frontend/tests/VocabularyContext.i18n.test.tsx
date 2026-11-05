@@ -41,6 +41,11 @@ describe('Vocabulary and context i18n', () => {
     expect(screen.getByRole('textbox', { name: 'Tìm kiếm từ vựng' })).toBeTruthy();
     expect(screen.getByText('Đang học')).toBeTruthy();
     expect(screen.getByText('Able to be trusted.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Chi tiết reliable/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'reliable' });
+    expect(within(dialog).getByRole('heading', { name: 'Thẻ' })).toBeTruthy();
+    expect(within(dialog).getByText('work')).toBeTruthy();
   });
 
 
