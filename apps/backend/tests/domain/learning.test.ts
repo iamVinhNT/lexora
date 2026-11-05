@@ -2,12 +2,13 @@
  * @file learning.test.ts
  * @description Tests pure grouping, cursor, attempt evaluation, scoring, and state rules.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { groupSessionItems, type LearningWord } from '../../src/domain/learning/grouping.js';
 import { deriveLearningCursor, type LearningCursorItem, type LearningAttempt } from '../../src/domain/learning/cursor.js';
 import { evaluateOutput } from '../../src/domain/learning/output-evaluation.js';
 import { advanceStateOneLevel, deriveEffectiveRating, scoreAttempt } from '../../src/domain/learning/scoring.js';
 import { outputGradeSchema } from '../../src/domain/learning/ai-output-grader.js';
+import { needsOutputGrade } from '../../src/domain/learning/pending-output.js';
 import { LangGraphOutputGrader } from '../../src/services/output-grader.service.js';
 
 const words = (count: number, difficulty = 'B1'): LearningWord[] => Array.from({ length: count }, (_, index) => ({ id: `word-${index + 1}`, difficulty }));
@@ -49,6 +50,21 @@ describe('learning domain', () => {
     expect(deriveLearningCursor([item({ completedStep: 'RECALL' })], attempts.slice(0, 2))).toMatchObject({ step: 'OUTPUT', attemptNumber: 2 });
     expect(deriveLearningCursor([item({ completedStep: 'OUTPUT' })], attempts)).toMatchObject({ step: 'ASSESS', attemptNumber: null });
   });
+  it('moves to assessment right after the output sentence is saved, before any grading', () => {
+    const recall: LearningAttempt[] = [{ id: 'recall-1', sessionItemId: 'item-1', type: 'RECALL', attemptNumber: 1, result: 'CORRECT' }];
+    expect(deriveLearningCursor([item({ completedStep: 'RECALL' })], recall)).toMatchObject({ step: 'OUTPUT', attemptNumber: 1 });
+    expect(deriveLearningCursor([item({ completedStep: 'OUTPUT' })], recall)).toMatchObject({ step: 'ASSESS', attemptNumber: null });
+  });
+  it('flags a saved output sentence as pending until an attempt graded that exact sentence', () => {
+    const saved = { id: 'item-1', completedStep: 'OUTPUT', outputSentence: 'She occupies the room.' };
+    const graded = [{ sessionItemId: 'item-1', type: 'OUTPUT', answer: 'She occupies the room.' }];
+    expect(needsOutputGrade(saved, [])).toBe(true);
+    expect(needsOutputGrade({ ...saved, completedStep: 'ASSESS' }, [])).toBe(true);
+    expect(needsOutputGrade(saved, graded)).toBe(false);
+    expect(needsOutputGrade(saved, [{ ...graded[0], answer: 'An older sentence.' }])).toBe(true);
+    expect(needsOutputGrade({ ...saved, completedStep: 'RECALL' }, [])).toBe(false);
+    expect(needsOutputGrade({ ...saved, outputSentence: null }, [])).toBe(false);
+  });
   it('evaluates output with bounded token and target-boundary rules', () => {
     expect(evaluateOutput('', 'reliable')).toEqual({ valid: false, codes: ['EMPTY'] });
     expect(evaluateOutput('It works.', 'reliable')).toEqual({ valid: false, codes: ['TOO_SHORT'] });
@@ -71,6 +87,17 @@ describe('learning domain', () => {
     expect(outputGradeSchema.parse({ score: 84, explanation: 'Correct use.', suggestion: 'She occupies the room.' }).score).toBe(84);
     expect(() => outputGradeSchema.parse({ score: 101, explanation: 'Invalid.', suggestion: 'Retry.' })).toThrow();
     expect(() => outputGradeSchema.parse({ score: 60.5, explanation: 'Invalid.', suggestion: 'Retry.' })).toThrow();
+  });
+  it('grades a whole batch with one structured model call and echoes item ids', async () => {
+    const invoke = vi.fn(async () => ({ grades: [{ id: 'a', score: 80, explanation: 'Good.', suggestion: 'She occupies the room.' }, { id: 'b', score: 30, explanation: 'Wrong sense.', suggestion: 'Try again.' }] }));
+    const model = { withStructuredOutput: () => ({ invoke }) } as never;
+    const grades = await new LangGraphOutputGrader({ model }).gradeBatch([
+      { id: 'a', word: 'occupy', definition: 'to fill a place', sentence: 'She occupies the room.' },
+      { id: 'b', word: 'occupy', definition: 'to fill a place', sentence: 'He occupy.' },
+    ]);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(invoke.mock.calls[0])).toContain('He occupy.');
+    expect(grades.map((grade) => [grade.id, grade.score])).toEqual([['a', 80], ['b', 30]]);
   });
   it('fails before any provider call when AI is not configured', async () => {
     const previous = process.env.API_KEY;

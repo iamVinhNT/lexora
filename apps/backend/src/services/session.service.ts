@@ -9,9 +9,10 @@ import {
   NotFoundError,
   ValidationError,
   type LearningActionResult,
+  type PendingOutputGrade,
 } from '../repositories/session.repository.js';
 import type { StartSessionInput, SubmitStepInput } from '../schemas/session.schema.js';
-import type { OutputGrader } from '../domain/learning/ai-output-grader.js';
+import { outputGradeSchema, type OutputGrade, type OutputGrader } from '../domain/learning/ai-output-grader.js';
 import { LangGraphOutputGrader } from './output-grader.service.js';
 
 export { AppError, ConflictError, NotFoundError, ValidationError };
@@ -41,36 +42,39 @@ export class SessionService {
   getRecentSessions(limit = 10) { return this.repo.findRecentSessions(limit); }
 
   async submitStep(sessionId: string, input: SubmitStepInput): Promise<LearningActionResult> {
-    if (input.step !== 'OUTPUT') {
-      return this.repo.submitAction(sessionId, input);
-    }
-
-    // 1. Idempotency check: if requestId was already processed, return existing result without calling AI
-    const existing = this.repo.findExistingActionResultByRequestId(sessionId, input.requestId);
-    if (existing) return existing;
-
-    // 2. Preflight validation: verify session state, attempt limit, and match with current cursor
-    const target = this.repo.getOutputStepTarget(sessionId, input);
-
+    if (input.step !== 'OUTPUT') return this.repo.submitAction(sessionId, input);
+    // Output sentences are only saved here; gradeOutputs() grades them all together at the end of the session.
     const sentence = input.answer?.trim() ?? '';
-    if (!sentence) {
-      throw new ValidationError('Output sentence cannot be empty', 'EMPTY_OUTPUT');
-    }
+    if (!sentence) throw new ValidationError('Output sentence cannot be empty', 'EMPTY_OUTPUT');
+    return this.repo.submitAction(sessionId, { ...input, answer: sentence });
+  }
 
-    // 3. Call AI grading OUTSIDE SQLite sync transaction (RISK-1)
-    let aiResult;
-    try {
-      aiResult = await this.outputGrader.grade({
-        word: target.word,
-        definition: target.definition,
-        sentence,
-      });
-    } catch {
-      throw new AppError(503, 'SERVICE_UNAVAILABLE', 'AI grading unavailable; please retry');
+  /** Grades every saved, ungraded Output sentence in one AI round trip, outside any SQLite transaction. */
+  async gradeOutputs(sessionId: string) {
+    const pending = this.repo.getPendingOutputGrades(sessionId);
+    if (pending.length) {
+      let grades: Array<{ itemId: string; sentence: string; grade: OutputGrade }>;
+      try {
+        grades = await this.gradePending(pending);
+      } catch {
+        throw new AppError(503, 'SERVICE_UNAVAILABLE', 'AI grading unavailable; please retry');
+      }
+      this.repo.commitOutputGrades(sessionId, grades);
     }
+    return this.getSessionById(sessionId);
+  }
 
-    // 4. Commit into database inside transaction with atomic recheck (RISK-3)
-    return this.repo.submitAction(sessionId, input, aiResult);
+  private async gradePending(pending: PendingOutputGrade[]) {
+    const inputs = pending.map(({ itemId, word, definition, sentence }) => ({ id: itemId, word, definition, sentence }));
+    const graded = this.outputGrader.gradeBatch
+      ? await this.outputGrader.gradeBatch(inputs)
+      : await Promise.all(inputs.map(async (input) => ({ id: input.id, ...(await this.outputGrader.grade(input)) })));
+    const byId = new Map(graded.map((grade) => [grade.id, grade]));
+    if (byId.size !== graded.length || inputs.some((input) => !byId.has(input.id))) throw new Error('AI grader did not return exactly one grade per sentence');
+    return pending.map(({ itemId, sentence }) => {
+      const { score, explanation, suggestion } = byId.get(itemId)!;
+      return { itemId, sentence, grade: outputGradeSchema.parse({ score, explanation, suggestion }) };
+    });
   }
 
   abandonSession(sessionId: string) { return this.repo.abandonSession(sessionId); }

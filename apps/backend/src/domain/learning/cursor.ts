@@ -42,9 +42,7 @@ function nextRetrieveStep(item: LearningCursorItem, attempts: LearningAttempt[])
   const itemAttempts = attempts.filter((attempt) => attempt.sessionItemId === item.id);
   const recallAttempts = itemAttempts.filter((attempt) => attempt.type === 'RECALL');
   if (!recallAttempts.length || (recallAttempts.length === 1 && recallAttempts[0].result === 'INCORRECT')) return 'RECALL';
-  const outputAttempts = itemAttempts.filter((attempt) => attempt.type === 'OUTPUT');
-  if (!outputAttempts.length || (outputAttempts.length === 1 && outputAttempts[0].result === 'INVALID')) return 'OUTPUT';
-  return 'ASSESS';
+  return item.completedStep === 'OUTPUT' || item.completedStep === 'ASSESS' ? 'ASSESS' : 'OUTPUT';
 }
 
 function nextAttempt(itemId: string, step: LearningStep, attempts: LearningAttempt[]): 1 | 2 {

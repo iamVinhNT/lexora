@@ -28,6 +28,7 @@ Mỗi record nên ghi:
 
 ## Recent records
 
+- [2026-11-06 — Batch AI grading of Learn sentences](./2026-11-06/feat-learn-batch-output-grading.md)
 - [2026-10-20 — test:changed for the narrow check](./2026-10-20/chore-test-changed.md)
 - [2026-10-20 — CI workflow for pull requests](./2026-10-20/chore-ci-workflow.md)
 - [2026-10-20 — Untrack docs files](./2026-10-20/chore-untrack-docs.md)

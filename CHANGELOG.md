@@ -20,6 +20,9 @@
 - Adaptive active review checks recall before revealing answers, distinguishes exact/typo/forgotten evidence, and adds sentence practice for weak words with optional AI grading or honest self-check.
 - Server-owned review attempts resume after reload, reject stale snapshots, and replay stable receipts without duplicate scheduling or study-task credit.
 
+### Changed
+- Learn no longer grades each sentence as you write it. The Output step only saves the sentence; after the last word is assessed, one button sends all sentences to the AI together, then completes the session. The summary lists each sentence with its score and feedback. A sentence that scores below 60 is no longer offered a second attempt. Sessions already in progress keep working.
+
 ### Fixed
 - Remove the white header and footer boxes from dialogs: headers stay put without an opaque background, and the vocabulary form footer is translucent like the panel.
 - Keep the desktop vocabulary layout within the browser or Electron viewport; only the word list and detail content scroll, with filters, pagination and actions remaining visible.

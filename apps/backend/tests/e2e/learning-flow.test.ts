@@ -281,6 +281,8 @@ describe('learning lifecycle end to end', () => {
       expect(response.statusCode).toBe(200);
     }
 
+    const gradeResponse = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/grade-outputs` });
+    expect(gradeResponse.statusCode).toBe(200);
     const completeResponse = await app.inject({
       method: 'POST',
       url: `/api/learning/session/${session.id}/complete`,

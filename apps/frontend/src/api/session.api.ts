@@ -34,5 +34,6 @@ export function getLearningSession() { return apiFetch<LearningSessionOverview>(
 export function startLearningSession(payload: SessionStartPayload) { return apiFetch<LearningSession>('/api/learning/session', { method: 'POST', body: payload }); }
 export function getLearningSessionById(id: string) { return apiFetch<LearningSession>(`/api/learning/session/${id}`); }
 export function submitLearningSessionStep(id: string, payload: SubmitStepPayload) { return apiFetch<LearningActionResult>(`/api/learning/session/${id}/step`, { method: 'POST', body: payload }); }
+export function gradeLearningOutputs(id: string) { return apiFetch<LearningSession>(`/api/learning/session/${id}/grade-outputs`, { method: 'POST' }); }
 export function completeLearningSession(id: string) { return apiFetch<LearningSession>(`/api/learning/session/${id}/complete`, { method: 'POST' }); }
 export function abandonLearningSession(id: string) { return apiFetch<LearningSession>(`/api/learning/session/${id}/abandon`, { method: 'POST' }); }

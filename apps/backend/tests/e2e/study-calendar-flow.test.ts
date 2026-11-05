@@ -89,6 +89,7 @@ describe('study calendar flow end to end', () => {
       const step = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
       expect(step.statusCode).toBe(200);
     }
+    expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/grade-outputs` })).statusCode).toBe(200);
     const completed = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/complete` });
     expect(completed.statusCode).toBe(200);
 

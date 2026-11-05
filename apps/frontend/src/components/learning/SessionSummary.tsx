@@ -83,6 +83,8 @@ export function SessionSummary({
         )}
       </dl>
 
+      <SentenceResults items={session.items} />
+
       <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
         <Link
           to="/"
@@ -100,6 +102,33 @@ export function SessionSummary({
           <ArrowRight size={16} aria-hidden="true" className="ml-2" />
         </button>
       </div>
+    </section>
+  );
+}
+
+function SentenceResults({ items }: { items: LearningSession['items'] }) {
+  const { t } = useTranslation('learning');
+  const graded = items.flatMap((item) => {
+    const attempt = item.attempts?.filter((candidate) => candidate.type === 'OUTPUT' && candidate.source === 'AI').sort((left, right) => right.attemptNumber - left.attemptNumber)[0];
+    return attempt ? [{ item, attempt }] : [];
+  });
+  if (!graded.length) return null;
+  return (
+    <section aria-labelledby="sentence-results-heading" className="space-y-3">
+      <h3 id="sentence-results-heading" className="text-xs font-semibold uppercase tracking-wider text-muted">{t('sentenceResults')}</h3>
+      <ul className="space-y-3">
+        {graded.map(({ item, attempt }) => (
+          <li key={item.id} className="space-y-1.5 rounded-xl border border-border bg-background p-3.5 sm:p-4 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-foreground">{item.word.headword || item.word.word}</span>
+              <strong className="text-primary">{t('outputScore', { score: attempt.performanceScore })}</strong>
+            </div>
+            <p className="break-words text-foreground">{attempt.answer}</p>
+            {attempt.explanation && <p className="text-muted">{attempt.explanation}</p>}
+            {attempt.suggestion && <p className="text-foreground"><strong>{t('outputSuggestion')}:</strong> {attempt.suggestion}</p>}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

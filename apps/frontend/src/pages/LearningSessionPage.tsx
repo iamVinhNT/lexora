@@ -7,7 +7,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import type { LearningSession, SessionStep, SubmitStepPayload } from '../api/session.api';
-import { useAbandonLearningSession, useCompleteLearningSession, useLearningOptions, useLearningSession, useLearningSessionOverview, useStartLearningSession, useSubmitLearningStep } from '../hooks/useLearningSession';
+import { useAbandonLearningSession, useCompleteLearningSession, useGradeLearningOutputs, useLearningOptions, useLearningSession, useLearningSessionOverview, useStartLearningSession, useSubmitLearningStep } from '../hooks/useLearningSession';
 import { LearningSessionBar } from '../components/learning/LearningSessionBar';
 import { LearningStepView } from '../components/learning/LearningStepView';
 import { SessionStartForm } from '../components/learning/SessionStartForm';
@@ -30,6 +30,7 @@ export function LearningSessionPage() {
   const submitLock = useRef(false);
   const startMutation = useStartLearningSession();
   const submitMutation = useSubmitLearningStep();
+  const gradeMutation = useGradeLearningOutputs();
   const completeMutation = useCompleteLearningSession();
   const abandonMutation = useAbandonLearningSession();
   const detail = useLearningSession(sessionId);
@@ -50,7 +51,7 @@ export function LearningSessionPage() {
   }
 
   async function handleStepSubmit(payload: Omit<SubmitStepPayload, 'wordId' | 'step' | 'requestId'>, step: SessionStep) {
-    if (!safeActiveSession || submitMutation.isPending || completeMutation.isPending || submitLock.current) return;
+    if (!safeActiveSession || submitMutation.isPending || gradeMutation.isPending || completeMutation.isPending || submitLock.current) return;
     const item = safeActiveSession.items.find((candidate) => candidate.id === safeActiveSession.cursor?.itemId);
     if (!item) return;
     submitLock.current = true;
@@ -59,17 +60,10 @@ export function LearningSessionPage() {
 
       const requestId = requestIds.current.get(requestKey) ?? `${safeActiveSession.id}-${item.id}-${step}-${Date.now()}`;
       requestIds.current.set(requestKey, requestId);
-      const actionResult = await submitMutation.mutateAsync({
+      await submitMutation.mutateAsync({
         id: safeActiveSession.id,
         payload: { ...payload, requestId: requestId, wordId: item.wordId, step },
       });
-
-      if (step === 'ASSESS') {
-        const updatedSession = { ...safeActiveSession, items: safeActiveSession.items.map((candidate) => candidate.wordId === actionResult.item.wordId ? actionResult.item : candidate) };
-        if (updatedSession.items.every((candidate) => candidate.completedStep === 'ASSESS' && Boolean(candidate.reviewRating))) {
-          await handleComplete(safeActiveSession.id);
-        }
-      }
     } catch {
       // Mutation error remains exposed by React Query; current step intentionally stays unchanged.
     } finally {
@@ -79,10 +73,12 @@ export function LearningSessionPage() {
 
   async function handleComplete(id: string) {
     try {
+      // Output sentences are graded together here, once the learner has finished every word.
+      await gradeMutation.mutateAsync(id);
       const completed = await completeMutation.mutateAsync(id);
       setCompletedSession(completed);
     } catch {
-      // Mutation error remains visible; completion can be retried without changing step state.
+      // Mutation error remains visible; grading and completion can be retried without changing step state.
     }
   }
 
@@ -163,8 +159,9 @@ export function LearningSessionPage() {
         <ActiveSession
           session={safeActiveSession}
           detailError={detail.error}
-          isPending={submitMutation.isPending || completeMutation.isPending || abandonMutation.isPending}
-          submitError={submitMutation.error ? getLocalizedErrorMessage(submitMutation.error, tCommon) : completeMutation.error ? getLocalizedErrorMessage(completeMutation.error, tCommon) : undefined}
+          isPending={submitMutation.isPending || gradeMutation.isPending || completeMutation.isPending || abandonMutation.isPending}
+          isGrading={gradeMutation.isPending}
+          submitError={submitMutation.error ? getLocalizedErrorMessage(submitMutation.error, tCommon) : gradeMutation.error ? getLocalizedErrorMessage(gradeMutation.error, tCommon) : completeMutation.error ? getLocalizedErrorMessage(completeMutation.error, tCommon) : undefined}
           onSubmit={handleStepSubmit}
           onComplete={handleComplete}
           onAbandon={handleAbandon}
@@ -178,6 +175,7 @@ function ActiveSession({
   session,
   detailError,
   isPending,
+  isGrading,
   submitError,
   onSubmit,
   onComplete,
@@ -186,6 +184,7 @@ function ActiveSession({
   session: LearningSession;
   detailError: Error | null;
   isPending: boolean;
+  isGrading: boolean;
   submitError?: string;
   onSubmit: (payload: Omit<SubmitStepPayload, 'wordId' | 'step' | 'requestId'>, step: SessionStep) => Promise<void>;
   onComplete: (id: string) => Promise<void>;
@@ -200,7 +199,7 @@ function ActiveSession({
     return (
       <div className="mx-auto max-w-xl space-y-4 rounded-2xl border border-border bg-surface p-4 sm:p-6">
         <h2 className="text-xl sm:text-2xl font-semibold text-foreground">{t('sessionReady')}</h2>
-        <p className="text-muted text-sm sm:text-base">{t('allAssessmentsRecorded')}</p>
+        <p className="text-muted text-sm sm:text-base">{t('allAssessmentsRecorded')} {t('gradeNotice')}</p>
         {submitError && <p role="alert" className="text-sm text-red-700 dark:text-red-200">{submitError}</p>}
         <button
           type="button"
@@ -209,7 +208,7 @@ function ActiveSession({
           className="min-h-11 w-full sm:w-auto inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
         >
           <CheckCircle2 size={16} aria-hidden="true" className="mr-2" />
-          {tCommon('actions.completeSession')}
+          {isGrading ? t('grading') : t('gradeAndComplete')}
         </button>
       </div>
     );

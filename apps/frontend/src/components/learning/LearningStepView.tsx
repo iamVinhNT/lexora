@@ -291,12 +291,12 @@ export function LearningStepView({
               className="w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
             <p id="user-sentence-help" className="text-sm text-muted">
-              {t('outputHelp', { word: word.headword || word.word })}
+              {t('outputHelp', { word: word.headword || word.word })} {t('outputDeferredNote')}
             </p>
           </div>
           {outputError && <p role="alert" className="text-sm text-red-700 dark:text-red-200">{outputError}</p>}
           <div>
-            <SubmitButton isPending={isPending} disabled={!userSentence.trim()} label={nextLabel} pendingLabel={t('grading')} />
+            <SubmitButton isPending={isPending} disabled={!userSentence.trim()} label={nextLabel} />
           </div>
         </form>
       )}
@@ -336,7 +336,7 @@ export function LearningStepView({
   );
 }
 
-function SubmitButton({ isPending, disabled, label, pendingLabel }: { isPending: boolean; disabled: boolean; label: string; pendingLabel?: string }) {
+function SubmitButton({ isPending, disabled, label }: { isPending: boolean; disabled: boolean; label: string }) {
   const { t } = useTranslation('learning');
   return (
     <button
@@ -345,7 +345,7 @@ function SubmitButton({ isPending, disabled, label, pendingLabel }: { isPending:
       className="min-h-11 w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-primary px-6 py-2.5 text-sm sm:text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
       <Check size={16} aria-hidden="true" className="mr-2 shrink-0" />
-      {isPending ? pendingLabel ?? t('saving') : label}
+      {isPending ? t('saving') : label}
     </button>
   );
 }

@@ -29,6 +29,7 @@ export const sessionRoutes: FastifyPluginAsync<SessionRouteOptions> = async (fas
   });
   fastify.get(`${base}/:id`, async (request, reply) => reply.send({ success: true, data: service.getSessionById((request.params as { id: string }).id) }));
   fastify.post(`${base}/:id/step`, async (request, reply) => reply.send({ success: true, data: await service.submitStep((request.params as { id: string }).id, submitStepSchema.parse(request.body)) }));
+  fastify.post(`${base}/:id/grade-outputs`, async (request, reply) => reply.send({ success: true, data: await service.gradeOutputs((request.params as { id: string }).id) }));
   fastify.post(`${base}/:id/complete`, async (request, reply) => reply.send({ success: true, data: service.completeSession((request.params as { id: string }).id) }));
   fastify.post(`${base}/:id/abandon`, async (request, reply) => reply.send({ success: true, data: service.abandonSession((request.params as { id: string }).id) }));
 };

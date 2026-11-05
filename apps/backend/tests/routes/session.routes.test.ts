@@ -8,6 +8,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { getDb, type AppDatabase } from '../../src/db/client.js';
 import { sessionRoutes } from '../../src/routes/session.routes.js';
 import { vocabularyRoutes } from '../../src/routes/vocabulary.routes.js';
+import type { OutputGrader } from '../../src/domain/learning/ai-output-grader.js';
 import { SessionRepository } from '../../src/repositories/session.repository.js';
 import { StudyRepository } from '../../src/repositories/study.repository.js';
 import { words, contexts, contextWords, learningSessions, learningSessionItems, learningAttempts, reviewLogs, studyTasks } from '../../src/db/schema.js';
@@ -18,13 +19,15 @@ describe('redesigned learning session contract', () => {
   let db: AppDatabase;
   let app: FastifyInstance;
   let scoreOutput: (sentence: string) => number;
+  let gradeCalls: number;
 
   beforeEach(async () => {
     db = getDb(':memory:');
     app = Fastify();
     scoreOutput = (sentence) => sentence.length < 12 ? 0 : 70;
+    gradeCalls = 0;
     await app.register(vocabularyRoutes, { db });
-    await app.register(sessionRoutes, { db, outputGrader: { grade: async ({ sentence }) => ({ score: scoreOutput(sentence), explanation: 'Mock grading result.', suggestion: sentence }) } });
+    await app.register(sessionRoutes, { db, outputGrader: { grade: async ({ sentence }) => (gradeCalls++, { score: scoreOutput(sentence), explanation: 'Mock grading result.', suggestion: sentence }) } });
     await app.ready();
     for (let i = 1; i <= 6; i++) {
       db.insert(words).values({ id: uuid(i), word: `word${i}`, definition: 'definition', difficulty: 'B1', createdAt: new Date().toISOString() }).run();
@@ -214,170 +217,218 @@ describe('redesigned learning session contract', () => {
     expect(db.select().from(learningAttempts).all()).toHaveLength(2);
   });
 
-  async function prepareCompleteSession() {
-    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
-    const session = JSON.parse(start.payload).data;
-    const wordId = session.items[0].wordId;
-    const steps = [
-      { requestId: 'complete-context', wordId, step: 'CONTEXT' },
-      { requestId: 'complete-understand', wordId, step: 'UNDERSTAND' },
-      { requestId: 'complete-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
-      { requestId: 'complete-output', wordId, step: 'OUTPUT', answer: `This ${session.items[0].word.word} example works.` },
-      { requestId: 'complete-assess', wordId, step: 'ASSESS', assessmentRating: 'GOOD' },
-    ];
-    for (const payload of steps) {
-      expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload })).statusCode).toBe(200);
-    }
-    return { id: session.id, wordId };
+  const sessionUrl = (id: string, suffix = '') => `/api/learning/session/${id}${suffix}`;
+  const submit = (id: string, payload: Record<string, unknown>) => app.inject({ method: 'POST', url: sessionUrl(id, '/step'), payload });
+  const gradeOutputs = (id: string) => app.inject({ method: 'POST', url: sessionUrl(id, '/grade-outputs') });
+  const outputAttempts = () => db.select().from(learningAttempts).all().filter((attempt) => attempt.type === 'OUTPUT');
+  const sessionData = async (id: string) => JSON.parse((await app.inject({ method: 'GET', url: sessionUrl(id) })).payload).data;
+
+  async function replaceApp(outputGrader: OutputGrader) {
+    await app.close();
+    app = Fastify();
+    await app.register(vocabularyRoutes, { db });
+    await app.register(sessionRoutes, { db, outputGrader });
+    await app.ready();
   }
 
-  it('reports final recall and output attempts in completion summary and review logs', async () => {
-    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
-    const session = JSON.parse(start.payload).data;
-    const wordId = session.items[0].wordId;
-    const actions = [
-      { requestId: 'summary-context', wordId, step: 'CONTEXT' },
-      { requestId: 'summary-understand', wordId, step: 'UNDERSTAND' },
-      { requestId: 'summary-recall-wrong', wordId, step: 'RECALL', answer: 'wrong' },
-      { requestId: 'summary-recall-right', wordId, step: 'RECALL', answer: session.items[0].word.word },
-      { requestId: 'summary-output-invalid', wordId, step: 'OUTPUT', answer: 'too short' },
-      { requestId: 'summary-output-valid', wordId, step: 'OUTPUT', answer: `This ${session.items[0].word.word} example works.` },
-      { requestId: 'summary-assess', wordId, step: 'ASSESS', assessmentRating: 'GOOD' },
-    ];
-    for (const payload of actions) expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload })).statusCode).toBe(200);
+  /** Answers whatever step the server cursor asks for until the session has no step left. */
+  async function driveSession(id: string, sentenceFor: (word: string) => string = (word) => `This ${word} example works.`) {
+    for (let guard = 0; guard < 60; guard++) {
+      const session = await sessionData(id);
+      const { step, wordId } = session.cursor;
+      if (!step) return session;
+      const word = session.items.find((item: { wordId: string }) => item.wordId === wordId).word.word;
+      const extra = step === 'RECALL' ? { answer: word } : step === 'OUTPUT' ? { answer: sentenceFor(word) } : step === 'ASSESS' ? { assessmentRating: 'GOOD' } : {};
+      expect((await submit(id, { requestId: `drive-${guard}`, wordId, step, ...extra })).statusCode).toBe(200);
+    }
+    throw new Error('session never reached the end of its cursor');
+  }
 
-    const completed = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/complete` });
-    const data = JSON.parse(completed.payload).data;
+  async function startSession(count: number) {
+    return JSON.parse((await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count } })).payload).data;
+  }
+
+  async function prepareCompleteSession() {
+    const session = await startSession(1);
+    await driveSession(session.id);
+    expect((await gradeOutputs(session.id)).statusCode).toBe(200);
+    return { id: session.id, wordId: session.items[0].wordId };
+  }
+
+  it('saves the Output sentence without grading it and moves straight to Assess', async () => {
+    const session = await startSession(1);
+    const wordId = session.items[0].wordId;
+    for (const [step, requestId] of [['CONTEXT', 'save-context'], ['UNDERSTAND', 'save-understand']]) await submit(session.id, { requestId, wordId, step });
+    await submit(session.id, { requestId: 'save-recall', wordId, step: 'RECALL', answer: session.items[0].word.word });
+    const saved = await submit(session.id, { requestId: 'save-output', wordId, step: 'OUTPUT', answer: '  She occupies the room.  ' });
+    expect(saved.statusCode).toBe(200);
+    expect(JSON.parse(saved.payload).data).toMatchObject({ feedback: null, cursor: { step: 'ASSESS', attemptNumber: null }, item: { completedStep: 'OUTPUT', outputSentence: 'She occupies the room.' } });
+    expect(gradeCalls).toBe(0);
+    expect(outputAttempts()).toHaveLength(0);
+    await submit(session.id, { requestId: 'save-assess', wordId, step: 'ASSESS', assessmentRating: 'GOOD' });
+    expect((await sessionData(session.id)).cursor).toMatchObject({ phase: 'COMPLETE', step: null });
+  });
+
+  it('replays a repeated Output save whose first response was lost', async () => {
+    const session = await startSession(1);
+    const wordId = session.items[0].wordId;
+    for (const [step, requestId] of [['CONTEXT', 'replay-context'], ['UNDERSTAND', 'replay-understand']]) await submit(session.id, { requestId, wordId, step });
+    await submit(session.id, { requestId: 'replay-recall', wordId, step: 'RECALL', answer: session.items[0].word.word });
+    const payload = { requestId: 'replay-output', wordId, step: 'OUTPUT', answer: 'She occupies the room.' };
+    const first = await submit(session.id, payload);
+    const second = await submit(session.id, payload);
+    expect([first.statusCode, second.statusCode]).toEqual([200, 200]);
+    expect(JSON.parse(second.payload).data).toMatchObject({ feedback: null, cursor: { step: 'ASSESS' }, item: { outputSentence: 'She occupies the room.' } });
+    const different = await submit(session.id, { ...payload, requestId: 'replay-other', answer: 'A different sentence.' });
+    expect(different.statusCode).toBe(409);
+  });
+
+  it('refuses to grade before every item is assessed', async () => {
+    const session = await startSession(2);
+    const word = session.items[0];
+    for (const [step, requestId] of [['CONTEXT', 'early-c1'], ['UNDERSTAND', 'early-u1']]) await submit(session.id, { requestId, wordId: word.wordId, step });
+    const early = await gradeOutputs(session.id);
+    expect(early.statusCode).toBe(409);
+    expect(JSON.parse(early.payload).error.code).toBe('INVALID_SESSION_TRANSITION');
+    expect(gradeCalls).toBe(0);
+  });
+
+  it('rejects an empty Output sentence without saving anything', async () => {
+    const session = await startSession(1);
+    const wordId = session.items[0].wordId;
+    for (const [step, requestId] of [['CONTEXT', 'empty-context'], ['UNDERSTAND', 'empty-understand']]) await submit(session.id, { requestId, wordId, step });
+    await submit(session.id, { requestId: 'empty-recall', wordId, step: 'RECALL', answer: session.items[0].word.word });
+    const empty = await submit(session.id, { requestId: 'empty-output', wordId, step: 'OUTPUT', answer: '   ' });
+    expect(empty.statusCode).toBe(400);
+    expect(JSON.parse(empty.payload).error.code).toBe('EMPTY_OUTPUT');
+    expect((await sessionData(session.id)).cursor).toMatchObject({ step: 'OUTPUT' });
+  });
+
+  it('refuses to complete while saved sentences are still ungraded', async () => {
+    const session = await startSession(1);
+    await driveSession(session.id);
+    const early = await app.inject({ method: 'POST', url: sessionUrl(session.id, '/complete') });
+    expect(early.statusCode).toBe(400);
+    expect(JSON.parse(early.payload).error.code).toBe('OUTPUT_NOT_GRADED');
+    expect((await sessionData(session.id)).status).toBe('IN_PROGRESS');
+    expect(db.select().from(reviewLogs).all()).toHaveLength(0);
+  });
+
+  it('grades every saved sentence in one provider call and applies the 60-point threshold', async () => {
+    const batches: Array<Array<{ id: string; word: string; definition: string; sentence: string }>> = [];
+    await replaceApp({
+      grade: async () => { throw new Error('single grading must not be used'); },
+      gradeBatch: async (inputs) => { batches.push(inputs); return inputs.map((input) => ({ id: input.id, score: input.sentence.includes('below') ? 59 : 60, explanation: `Explained ${input.word}.`, suggestion: `Better ${input.word}.` })); },
+    });
+    const session = await startSession(2);
+    await driveSession(session.id, (word) => (word === 'word1' ? `A below sentence with ${word}.` : `A passing sentence with ${word}.`));
+    const graded = await gradeOutputs(session.id);
+    expect(graded.statusCode).toBe(200);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].map((input) => [input.word, input.definition, input.sentence])).toEqual([
+      ['word1', 'definition', 'A below sentence with word1.'], ['word2', 'definition', 'A passing sentence with word2.'],
+    ]);
+    expect(outputAttempts().map((attempt) => [attempt.attemptNumber, attempt.result, attempt.performanceScore, attempt.source])).toEqual([[1, 'INVALID', 59, 'AI'], [1, 'VALID', 60, 'AI']]);
+    const items = JSON.parse(graded.payload).data.items;
+    expect(items[0].feedback).toMatchObject({ outcome: 'INVALID', score: 59, canRetry: false, explanation: 'Explained word1.', suggestion: 'Better word1.' });
+    const completed = JSON.parse((await app.inject({ method: 'POST', url: sessionUrl(session.id, '/complete') })).payload).data;
+    expect(completed.summary).toMatchObject({ outputValid: 1, outputInvalid: 1 });
+    expect(db.sqlite.prepare("SELECT correct, performance_score AS performanceScore FROM review_logs WHERE word_id = ? AND review_type = 'PRODUCTION'").get(session.items[0].wordId)).toEqual({ correct: 0, performanceScore: 59 });
+    expect(db.sqlite.prepare("SELECT correct, performance_score AS performanceScore FROM review_logs WHERE word_id = ? AND review_type = 'PRODUCTION'").get(session.items[1].wordId)).toEqual({ correct: 1, performanceScore: 60 });
+  });
+
+  it('falls back to grading each sentence separately when the grader has no batch support', async () => {
+    const session = await startSession(2);
+    await driveSession(session.id);
+    expect((await gradeOutputs(session.id)).statusCode).toBe(200);
+    expect(gradeCalls).toBe(2);
+    expect(outputAttempts()).toHaveLength(2);
+  });
+
+  it('reports final recall and output results in the completion summary and review logs', async () => {
+    const session = await startSession(1);
+    const wordId = session.items[0].wordId;
+    const word = session.items[0].word.word;
+    for (const [step, requestId, answer] of [['CONTEXT', 'summary-context'], ['UNDERSTAND', 'summary-understand'], ['RECALL', 'summary-recall-wrong', 'wrong'], ['RECALL', 'summary-recall-right', word], ['OUTPUT', 'summary-output', `This ${word} example works.`]]) {
+      expect((await submit(session.id, { requestId, wordId, step, ...(answer ? { answer } : {}) })).statusCode).toBe(200);
+    }
+    await submit(session.id, { requestId: 'summary-assess', wordId, step: 'ASSESS', assessmentRating: 'GOOD' });
+    await gradeOutputs(session.id);
+    const data = JSON.parse((await app.inject({ method: 'POST', url: sessionUrl(session.id, '/complete') })).payload).data;
     expect(data.summary).toEqual({ totalWords: 1, recallFirstTry: 0, recallSecondTry: 1, recallFailed: 0, outputValid: 1, outputInvalid: 0, legacyUnknown: 0 });
-    expect(db.sqlite.prepare("SELECT performance_score AS performanceScore, answer FROM review_logs WHERE word_id = ? AND review_type = 'RECALL'").get(wordId)).toEqual({ performanceScore: 70, answer: session.items[0].word.word });
-    expect(db.sqlite.prepare("SELECT performance_score AS performanceScore, answer FROM review_logs WHERE word_id = ? AND review_type = 'PRODUCTION'").get(wordId)).toEqual({ performanceScore: 70, answer: `This ${session.items[0].word.word} example works.` });
+    expect(db.sqlite.prepare("SELECT performance_score AS performanceScore, answer FROM review_logs WHERE word_id = ? AND review_type = 'RECALL'").get(wordId)).toEqual({ performanceScore: 70, answer: word });
+    expect(db.sqlite.prepare("SELECT performance_score AS performanceScore, answer FROM review_logs WHERE word_id = ? AND review_type = 'PRODUCTION'").get(wordId)).toEqual({ performanceScore: 70, answer: `This ${word} example works.` });
     expect(db.select().from(reviewLogs).all().every((log) => log.studyTaskId === null)).toBe(true);
   });
 
-  it('persists invalid Output attempt one and advances to Assess after valid attempt two', async () => {
-    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
-    const session = JSON.parse(start.payload).data;
-    const wordId = session.items[0].wordId;
-    for (const payload of [
-      { requestId: 'output-valid-context', wordId, step: 'CONTEXT' },
-      { requestId: 'output-valid-understand', wordId, step: 'UNDERSTAND' },
-      { requestId: 'output-valid-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
-      { requestId: 'output-invalid-one', wordId, step: 'OUTPUT', answer: 'too short' },
-    ]) expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload })).statusCode).toBe(200);
-    const first = db.select().from(learningAttempts).all();
-    expect(first).toHaveLength(2);
-    expect(first.find((attempt) => attempt.type === 'OUTPUT')).toMatchObject({ attemptNumber: 1, result: 'INVALID', performanceScore: 0, source: 'AI' });
-    const second = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'output-valid-two', wordId, step: 'OUTPUT', answer: `This ${session.items[0].word.word} example works.` } });
-    expect(JSON.parse(second.payload).data.cursor).toMatchObject({ step: 'ASSESS', attemptNumber: null });
-    expect(db.select().from(learningAttempts).all()).toHaveLength(3);
-    expect(db.select().from(learningAttempts).all().find((attempt) => attempt.type === 'OUTPUT' && attempt.attemptNumber === 2)).toMatchObject({ result: 'VALID_AFTER_FEEDBACK', performanceScore: 70 });
-  });
-
-  it('completes a below-threshold Output after attempt two and records it as incorrect', async () => {
-    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
-    const session = JSON.parse(start.payload).data;
-    const wordId = session.items[0].wordId;
+  it('records a below-threshold sentence as incorrect production', async () => {
     scoreOutput = () => 42;
-    for (const payload of [
-      { requestId: 'output-invalid-context', wordId, step: 'CONTEXT' },
-      { requestId: 'output-invalid-understand', wordId, step: 'UNDERSTAND' },
-      { requestId: 'output-invalid-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
-      { requestId: 'output-invalid-one', wordId, step: 'OUTPUT', answer: 'This sentence uses the word.' },
-      { requestId: 'output-invalid-two', wordId, step: 'OUTPUT', answer: 'This revised sentence uses the word.' },
-    ]) expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload })).statusCode).toBe(200);
-    const outputAttempts = db.select().from(learningAttempts).all().filter((attempt) => attempt.type === 'OUTPUT');
-    expect(JSON.parse((await app.inject({ method: 'GET', url: `/api/learning/session/${session.id}` })).payload).data.cursor).toMatchObject({ step: 'ASSESS', attemptNumber: null });
-    expect(outputAttempts).toHaveLength(2);
-    expect(outputAttempts.map((attempt) => [attempt.attemptNumber, attempt.result, attempt.performanceScore])).toEqual([[1, 'INVALID', 42], [2, 'INVALID', 42]]);
-    expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'output-invalid-assess', wordId, step: 'ASSESS', assessmentRating: 'GOOD' } })).statusCode).toBe(200);
-    expect((await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/complete` })).statusCode).toBe(200);
-    expect(db.sqlite.prepare("SELECT correct, performance_score AS performanceScore FROM review_logs WHERE word_id = ? AND review_type = 'PRODUCTION'").get(wordId)).toEqual({ correct: 0, performanceScore: 42 });
+    const session = await prepareCompleteSession();
+    expect((await app.inject({ method: 'POST', url: sessionUrl(session.id, '/complete') })).statusCode).toBe(200);
+    expect(db.sqlite.prepare("SELECT correct, performance_score AS performanceScore FROM review_logs WHERE word_id = ? AND review_type = 'PRODUCTION'").get(session.wordId)).toEqual({ correct: 0, performanceScore: 42 });
   });
 
-  it('uses the inclusive 60-point Output pass threshold', async () => {
-    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
-    const session = JSON.parse(start.payload).data;
-    const wordId = session.items[0].wordId;
-    for (const payload of [
-      { requestId: 'threshold-context', wordId, step: 'CONTEXT' },
-      { requestId: 'threshold-understand', wordId, step: 'UNDERSTAND' },
-      { requestId: 'threshold-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
-    ]) await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
-    scoreOutput = () => 59;
-    const below = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'threshold-below', wordId, step: 'OUTPUT', answer: 'This is the first boundary sentence.' } });
-    expect(JSON.parse(below.payload).data.feedback).toMatchObject({ score: 59, outcome: 'INVALID', canRetry: true });
-    scoreOutput = () => 60;
-    const passing = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'threshold-passing', wordId, step: 'OUTPUT', answer: 'This is the revised boundary sentence.' } });
-    expect(JSON.parse(passing.payload).data).toMatchObject({ cursor: { step: 'ASSESS' }, feedback: { score: 60, outcome: 'VALID_AFTER_FEEDBACK', canRetry: false } });
-  });
-
-  it('commits concurrent retries with the same Output request ID only once', async () => {
-    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
-    const session = JSON.parse(start.payload).data;
-    const wordId = session.items[0].wordId;
-    for (const payload of [
-      { requestId: 'concurrent-context', wordId, step: 'CONTEXT' },
-      { requestId: 'concurrent-understand', wordId, step: 'UNDERSTAND' },
-      { requestId: 'concurrent-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
-    ]) await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
-    const payload = { requestId: 'concurrent-output', wordId, step: 'OUTPUT', answer: 'This sentence is graded concurrently.' };
-    const responses = await Promise.all([
-      app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload }),
-      app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload }),
-    ]);
+  it('commits concurrent grading requests only once', async () => {
+    const session = await startSession(1);
+    await driveSession(session.id);
+    const responses = await Promise.all([gradeOutputs(session.id), gradeOutputs(session.id)]);
     expect(responses.map((response) => response.statusCode)).toEqual([200, 200]);
-    expect(JSON.parse(responses[1].payload)).toEqual(JSON.parse(responses[0].payload));
-    expect(db.select().from(learningAttempts).all().filter((attempt) => attempt.type === 'OUTPUT')).toHaveLength(1);
+    expect(outputAttempts()).toHaveLength(1);
+    expect((await gradeOutputs(session.id)).statusCode).toBe(200);
+    expect(outputAttempts()).toHaveLength(1);
   });
 
   it('persists AI score and feedback, and returns them on resume', async () => {
-    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
-    const session = JSON.parse(start.payload).data;
-    const wordId = session.items[0].wordId;
-    for (const payload of [
-      { requestId: 'ai-context', wordId, step: 'CONTEXT' },
-      { requestId: 'ai-understand', wordId, step: 'UNDERSTAND' },
-      { requestId: 'ai-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
-    ]) await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
-    app.close();
-    app = Fastify();
-    await app.register(vocabularyRoutes, { db });
-    await app.register(sessionRoutes, { db, outputGrader: { grade: async () => ({ score: 84, explanation: 'Correct meaning and grammar.', suggestion: 'She occupies the front room.' }) } });
-    await app.ready();
-    const output = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload: { requestId: 'ai-output', wordId, step: 'OUTPUT', answer: 'She occupies the room.' } });
-    expect(output.statusCode).toBe(200);
-    expect(JSON.parse(output.payload).data.feedback).toMatchObject({ score: 84, explanation: 'Correct meaning and grammar.', suggestion: 'She occupies the front room.' });
-    expect(db.select().from(learningAttempts).all().find((attempt) => attempt.type === 'OUTPUT')).toMatchObject({ performanceScore: 84, source: 'AI' });
-    const resumed = await app.inject({ method: 'GET', url: `/api/learning/session/${session.id}` });
-    expect(JSON.parse(resumed.payload).data.items[0].feedback).toMatchObject({ score: 84, explanation: 'Correct meaning and grammar.', suggestion: 'She occupies the front room.' });
+    await replaceApp({ grade: async () => ({ score: 84, explanation: 'Correct meaning and grammar.', suggestion: 'She occupies the front room.' }) });
+    const session = await startSession(1);
+    await driveSession(session.id, () => 'She occupies the room.');
+    const graded = await gradeOutputs(session.id);
+    expect(graded.statusCode).toBe(200);
+    expect(outputAttempts()[0]).toMatchObject({ performanceScore: 84, source: 'AI', answer: 'She occupies the room.' });
+    expect((await sessionData(session.id)).items[0].feedback).toMatchObject({ score: 84, explanation: 'Correct meaning and grammar.', suggestion: 'She occupies the front room.' });
   });
 
-  it('does not consume an Output attempt when grading fails and allows same request ID retry', async () => {
-    const start = await app.inject({ method: 'POST', url: '/api/learning/session', payload: { mode: 'new_words', count: 1 } });
-    const session = JSON.parse(start.payload).data;
-    const wordId = session.items[0].wordId;
-    for (const payload of [
-      { requestId: 'ai-fail-context', wordId, step: 'CONTEXT' },
-      { requestId: 'ai-fail-understand', wordId, step: 'UNDERSTAND' },
-      { requestId: 'ai-fail-recall', wordId, step: 'RECALL', answer: session.items[0].word.word },
-    ]) await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
-    app.close();
-    app = Fastify();
-    await app.register(vocabularyRoutes, { db });
+  it('keeps sentences ungraded when the provider fails and succeeds on retry', async () => {
     let calls = 0;
-    await app.register(sessionRoutes, { db, outputGrader: { grade: async () => { if (++calls === 1) throw new Error('private-provider-detail'); return { score: 42, explanation: 'Wrong sense.', suggestion: 'Try another sentence.' }; } } });
-    await app.ready();
-    const payload = { requestId: 'retry-ai-id', wordId, step: 'OUTPUT', answer: 'She occupies the room.' };
-    const failed = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
+    await replaceApp({ grade: async () => { if (++calls === 1) throw new Error('private-provider-detail'); return { score: 42, explanation: 'Wrong sense.', suggestion: 'Try another sentence.' }; } });
+    const session = await startSession(1);
+    await driveSession(session.id, () => 'She occupies the room.');
+    const failed = await gradeOutputs(session.id);
     expect(failed.statusCode).toBe(503);
     expect(JSON.parse(failed.payload).error.code).toBe('SERVICE_UNAVAILABLE');
     expect(failed.payload).not.toContain('private-provider-detail');
-    expect(db.select().from(learningAttempts).all().filter((attempt) => attempt.type === 'OUTPUT')).toHaveLength(0);
-    expect(JSON.parse((await app.inject({ method: 'GET', url: `/api/learning/session/${session.id}` })).payload).data.cursor).toMatchObject({ step: 'OUTPUT', attemptNumber: 1 });
-    const retried = await app.inject({ method: 'POST', url: `/api/learning/session/${session.id}/step`, payload });
-    expect(retried.statusCode).toBe(200);
-    expect(JSON.parse(retried.payload).data.feedback).toMatchObject({ score: 42, canRetry: true, attemptNumber: 1 });
-    expect(db.select().from(learningAttempts).all().filter((attempt) => attempt.type === 'OUTPUT')).toHaveLength(1);
+    expect(outputAttempts()).toHaveLength(0);
+    expect((await sessionData(session.id)).items[0].outputSentence).toBe('She occupies the room.');
+    expect((await gradeOutputs(session.id)).statusCode).toBe(200);
+    expect(outputAttempts()).toHaveLength(1);
+  });
+
+  it('treats a batch response that misses a sentence as a grading failure', async () => {
+    await replaceApp({ grade: async () => { throw new Error('unused'); }, gradeBatch: async (inputs) => inputs.slice(1).map((input) => ({ id: input.id, score: 90, explanation: 'ok', suggestion: 'ok' })) });
+    const session = await startSession(2);
+    await driveSession(session.id);
+    expect((await gradeOutputs(session.id)).statusCode).toBe(503);
+    expect(outputAttempts()).toHaveLength(0);
+  });
+
+  it('rejects grading for a session that is not in progress', async () => {
+    const session = await startSession(1);
+    await app.inject({ method: 'POST', url: sessionUrl(session.id, '/abandon') });
+    expect((await gradeOutputs(session.id)).statusCode).toBe(409);
+    expect((await gradeOutputs('missing-session')).statusCode).toBe(404);
+  });
+
+  it('grades a sentence saved after a legacy graded first attempt as attempt two', async () => {
+    const session = await startSession(1);
+    const wordId = session.items[0].wordId;
+    for (const [step, requestId] of [['CONTEXT', 'legacy-context'], ['UNDERSTAND', 'legacy-understand']]) await submit(session.id, { requestId, wordId, step });
+    await submit(session.id, { requestId: 'legacy-recall', wordId, step: 'RECALL', answer: session.items[0].word.word });
+    db.insert(learningAttempts).values({ id: 'legacy-output-1', sessionItemId: session.items[0].id, requestId: 'legacy-output-1', type: 'OUTPUT', attemptNumber: 1, answer: 'too short', result: 'INVALID', performanceScore: 0, source: 'AI' }).run();
+    expect((await sessionData(session.id)).cursor).toMatchObject({ step: 'OUTPUT', attemptNumber: 2 });
+    await submit(session.id, { requestId: 'legacy-output-2', wordId, step: 'OUTPUT', answer: `This ${session.items[0].word.word} example works.` });
+    await submit(session.id, { requestId: 'legacy-assess', wordId, step: 'ASSESS', assessmentRating: 'GOOD' });
+    expect((await gradeOutputs(session.id)).statusCode).toBe(200);
+    expect(outputAttempts().map((attempt) => [attempt.attemptNumber, attempt.result])).toEqual([[1, 'INVALID'], [2, 'VALID_AFTER_FEEDBACK']]);
   });
 
   it('makes repeated and concurrent completion idempotent', async () => {

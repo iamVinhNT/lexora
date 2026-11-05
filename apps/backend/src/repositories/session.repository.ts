@@ -17,6 +17,8 @@ import { createCloze } from '../domain/text/cloze.js';
 import { groupSessionItems } from '../domain/learning/grouping.js';
 import { deriveLearningCursor, type LearningAttempt, type LearningCursor, type LearningCursorItem } from '../domain/learning/cursor.js';
 import { advanceStateOneLevel, deriveEffectiveRating, OUTPUT_PASSING_SCORE, scoreAttempt } from '../domain/learning/scoring.js';
+import { needsOutputGrade } from '../domain/learning/pending-output.js';
+import type { OutputGrade } from '../domain/learning/ai-output-grader.js';
 import { SM2Scheduler } from '../domain/spaced-repetition/sm2.js';
 import type { ReviewRating } from '../domain/spaced-repetition/types.js';
 import { KnowledgeAssessmentService } from '../domain/knowledge/assessment.js';
@@ -34,6 +36,7 @@ export type LearningFeedback = {
   score?: number; explanation?: string; suggestion?: string;
   hint?: { firstLetter: string; letterCount: number }; revealedAnswer?: string; codes?: string[];
 };
+export type PendingOutputGrade = { itemId: string; word: string; definition: string; sentence: string };
 export type LearningActionResult = { item: any; cursor: LearningCursor; feedback: LearningFeedback | null };
 
 function cursorItems(items: any[]): LearningCursorItem[] {
@@ -164,29 +167,48 @@ export class SessionRepository {
   findActiveSession() { const session = this.db.select().from(learningSessions).where(eq(learningSessions.status, 'IN_PROGRESS')).orderBy(desc(learningSessions.startedAt)).limit(1).all()[0]; return session ? this.findById(session.id) : null; }
   findRecentSessions(limit = 10) { return this.db.select().from(learningSessions).orderBy(desc(learningSessions.startedAt)).limit(limit).all().map((session) => this.findById(session.id)).filter(Boolean); }
 
-  findExistingActionResultByRequestId(sessionId: string, requestId: string): LearningActionResult | null {
-    const attempt = this.db.select().from(learningAttempts).where(eq(learningAttempts.requestId, requestId)).all()[0];
-    if (!attempt) return null;
-    const item = this.db.select().from(learningSessionItems).where(and(eq(learningSessionItems.id, attempt.sessionItemId), eq(learningSessionItems.sessionId, sessionId))).all()[0];
-    if (!item) return null;
-    const sessionItems = this.db.select().from(learningSessionItems).where(eq(learningSessionItems.sessionId, sessionId)).all();
-    const attempts = this.db.select().from(learningAttempts).where(sql`${learningAttempts.sessionItemId} IN (SELECT id FROM learning_session_items WHERE session_id = ${sessionId})`).all();
-    const word = this.db.select().from(words).where(eq(words.id, item.wordId)).all()[0];
-    return { item: this.populateItems([item], this.db, attempts)[0], cursor: deriveLearningCursor(cursorItems(sessionItems), attemptModels(attempts)), feedback: feedbackForAttempt(attempt, word.word) };
-  }
-
-  getOutputStepTarget(sessionId: string, input: SubmitStepInput): { word: string; definition: string } {
+  /** Saved Output sentences that no AI attempt has graded yet, in session order. */
+  getPendingOutputGrades(sessionId: string): PendingOutputGrade[] {
     const session = this.db.select().from(learningSessions).where(eq(learningSessions.id, sessionId)).all()[0];
     if (!session) throw new NotFoundError(`Session with id "${sessionId}" not found`);
     if (session.status !== 'IN_PROGRESS') throw new ConflictError('Session is not active', 'INVALID_SESSION_TRANSITION');
-    const items = this.db.select().from(learningSessionItems).where(eq(learningSessionItems.sessionId, sessionId)).all();
-    const attempts = this.db.select().from(learningAttempts).where(sql`${learningAttempts.sessionItemId} IN (SELECT id FROM learning_session_items WHERE session_id = ${sessionId})`).all();
-    const item = items.find((candidate) => candidate.wordId === input.wordId);
-    if (item && attempts.filter((attempt) => attempt.sessionItemId === item.id && attempt.type === 'OUTPUT').length >= 2) throw new ConflictError('Attempt limit reached');
-    const cursor = deriveLearningCursor(cursorItems(items), attemptModels(attempts));
-    if (cursor.itemId !== item?.id || cursor.step !== 'OUTPUT') throw new ConflictError('Action does not match current session cursor', 'INVALID_SESSION_TRANSITION');
-    const word = this.db.select().from(words).where(eq(words.id, item!.wordId)).all()[0];
-    return { word: word.word, definition: word.definition };
+    const items = this.db.select().from(learningSessionItems).where(eq(learningSessionItems.sessionId, sessionId)).orderBy(learningSessionItems.position).all();
+    const attempts = this.sessionAttempts(this.db, sessionId);
+    if (deriveLearningCursor(cursorItems(items), attemptModels(attempts)).phase !== 'COMPLETE') throw new ConflictError('Every item must be assessed before its sentences are graded', 'INVALID_SESSION_TRANSITION');
+    const pending = items.filter((item) => needsOutputGrade(item, attempts));
+    if (!pending.length) return [];
+    const wordRows = this.db.select().from(words).where(inArray(words.id, pending.map((item) => item.wordId))).all();
+    return pending.map((item) => {
+      const word = wordRows.find((row) => row.id === item.wordId)!;
+      return { itemId: item.id, word: word.word, definition: word.definition, sentence: item.outputSentence! };
+    });
+  }
+
+  /** Stores one AI attempt per graded sentence; sentences graded or edited since the read are skipped. */
+  commitOutputGrades(sessionId: string, grades: Array<{ itemId: string; sentence: string; grade: OutputGrade }>) {
+    this.db.transaction((tx) => {
+      const session = tx.select().from(learningSessions).where(eq(learningSessions.id, sessionId)).all()[0];
+      if (!session) throw new NotFoundError(`Session with id "${sessionId}" not found`);
+      if (session.status !== 'IN_PROGRESS') throw new ConflictError('Session is not active', 'INVALID_SESSION_TRANSITION');
+      const items = tx.select().from(learningSessionItems).where(eq(learningSessionItems.sessionId, sessionId)).all();
+      const attempts = this.sessionAttempts(tx, sessionId);
+      for (const { itemId, sentence, grade } of grades) {
+        const item = items.find((candidate) => candidate.id === itemId);
+        if (!item || item.outputSentence !== sentence || !needsOutputGrade(item, attempts)) continue;
+        const attemptNumber = attempts.filter((attempt) => attempt.sessionItemId === itemId && attempt.type === 'OUTPUT').length + 1;
+        if (attemptNumber > 2) continue;
+        const passed = grade.score >= OUTPUT_PASSING_SCORE;
+        tx.insert(learningAttempts).values({
+          id: randomUUID(), sessionItemId: itemId, requestId: `${itemId}:output-grade:${attemptNumber}`, type: 'OUTPUT', attemptNumber, answer: sentence,
+          result: passed ? (attemptNumber === 1 ? 'VALID' : 'VALID_AFTER_FEEDBACK') : 'INVALID', performanceScore: grade.score, feedbackCodes: null,
+          explanation: grade.explanation, suggestion: grade.suggestion, source: 'AI', createdAt: new Date().toISOString(),
+        }).run();
+      }
+    });
+  }
+
+  private sessionAttempts(executor: any, sessionId: string) {
+    return executor.select().from(learningAttempts).where(sql`${learningAttempts.sessionItemId} IN (SELECT id FROM learning_session_items WHERE session_id = ${sessionId})`).all() as Array<typeof learningAttempts.$inferSelect>;
   }
 
   getOptions() {
@@ -198,7 +220,7 @@ export class SessionRepository {
     return { contexts: contextRows, topics: topicRows, availability: { newWords, weakWords, dueWords } };
   }
 
-  submitAction(sessionId: string, input: SubmitStepInput, aiGrade?: { score: number; explanation: string; suggestion: string }): LearningActionResult {
+  submitAction(sessionId: string, input: SubmitStepInput): LearningActionResult {
     let result: LearningActionResult | null = null;
     this.db.transaction((tx) => {
       const session = tx.select().from(learningSessions).where(eq(learningSessions.id, sessionId)).all()[0];
@@ -216,41 +238,38 @@ export class SessionRepository {
       }
       const cursor = deriveLearningCursor(cursorItems(rawItems), attemptModels(attempts));
       const requestedItem = rawItems.find((item) => item.wordId === input.wordId);
-      if ((input.step === 'RECALL' || input.step === 'OUTPUT') && requestedItem && attempts.filter((attempt) => attempt.sessionItemId === requestedItem.id && attempt.type === input.step).length >= 2) {
+      if (input.step === 'RECALL' && requestedItem && attempts.filter((attempt) => attempt.sessionItemId === requestedItem.id && attempt.type === 'RECALL').length >= 2) {
         throw new ConflictError('Attempt limit reached');
+      }
+      if (input.step === 'OUTPUT' && requestedItem && requestedItem.outputSentence === input.answer && (requestedItem.completedStep === 'OUTPUT' || requestedItem.completedStep === 'ASSESS')) {
+        // A retry of a save whose response was lost: the sentence is already stored, so replay instead of conflicting.
+        result = { item: this.populateItems([requestedItem], tx, attempts)[0], cursor, feedback: null };
+        return;
       }
       if (cursor.itemId !== requestedItem?.id || cursor.step !== input.step) throw new ConflictError('Action does not match current session cursor', 'INVALID_SESSION_TRANSITION');
       const item = rawItems.find((candidate) => candidate.id === cursor.itemId)!;
       let feedback: LearningFeedback = { outcome: 'COMPLETED', attemptNumber: null, canRetry: false };
       if (input.step === 'CONTEXT' || input.step === 'UNDERSTAND') {
         tx.update(learningSessionItems).set({ completedStep: input.step }).where(eq(learningSessionItems.id, item.id)).run();
-      } else if (input.step === 'RECALL' || input.step === 'OUTPUT') {
-        const type = input.step;
-        const previous = attempts.filter((attempt) => attempt.sessionItemId === item.id && attempt.type === type);
+      } else if (input.step === 'OUTPUT') {
+        tx.update(learningSessionItems).set({ completedStep: 'OUTPUT', outputSentence: input.answer ?? '' }).where(eq(learningSessionItems.id, item.id)).run();
+      } else if (input.step === 'RECALL') {
+        const previous = attempts.filter((attempt) => attempt.sessionItemId === item.id && attempt.type === 'RECALL');
         if (previous.length >= 2) throw new ConflictError('Attempt limit reached');
         const attemptNumber = (previous.length + 1) as 1 | 2;
-        let passed = false; let resultName = 'INCORRECT';
         const word = tx.select().from(words).where(eq(words.id, item.wordId)).all()[0];
-        if (type === 'RECALL') {
-          const checked = checkAnswer(input.answer ?? '', word.word);
-          passed = checked.exact || checked.almostCorrect;
-          resultName = checked.exact ? (attemptNumber === 1 ? 'CORRECT' : 'CORRECT_AFTER_HINT') : checked.almostCorrect ? 'CORRECT_AFTER_HINT' : 'INCORRECT';
-          feedback = feedbackForRecall(resultName, attemptNumber, word.word);
-        } else {
-          if (!aiGrade) throw new ValidationError('AI grade is required for Output');
-          passed = aiGrade.score >= OUTPUT_PASSING_SCORE;
-          resultName = passed ? (attemptNumber === 1 ? 'VALID' : 'VALID_AFTER_FEEDBACK') : 'INVALID';
-          feedback = { outcome: resultName, attemptNumber, canRetry: !passed && attemptNumber === 1, score: aiGrade.score, explanation: aiGrade.explanation, suggestion: aiGrade.suggestion };
-        }
-        const performanceScore = type === 'OUTPUT' ? aiGrade!.score : scoreAttempt(attemptNumber, passed);
-        tx.insert(learningAttempts).values({ id: randomUUID(), sessionItemId: item.id, requestId: input.requestId, type, attemptNumber, answer: input.answer ?? '', result: resultName, performanceScore, feedbackCodes: null, explanation: aiGrade?.explanation ?? null, suggestion: aiGrade?.suggestion ?? null, source: aiGrade ? 'AI' : 'LOCAL', createdAt: new Date().toISOString() }).run();
-        if (passed || attemptNumber === 2) tx.update(learningSessionItems).set(type === 'RECALL' ? { completedStep: 'RECALL', recallResult: resultName === 'INCORRECT' ? 'INCORRECT' : resultName === 'CORRECT_AFTER_HINT' ? 'ALMOST_CORRECT' : 'CORRECT' } : { completedStep: 'OUTPUT', outputSentence: input.answer ?? '' }).where(eq(learningSessionItems.id, item.id)).run();
+        const checked = checkAnswer(input.answer ?? '', word.word);
+        const passed = checked.exact || checked.almostCorrect;
+        const resultName = checked.exact ? (attemptNumber === 1 ? 'CORRECT' : 'CORRECT_AFTER_HINT') : checked.almostCorrect ? 'CORRECT_AFTER_HINT' : 'INCORRECT';
+        feedback = feedbackForRecall(resultName, attemptNumber, word.word);
+        tx.insert(learningAttempts).values({ id: randomUUID(), sessionItemId: item.id, requestId: input.requestId, type: 'RECALL', attemptNumber, answer: input.answer ?? '', result: resultName, performanceScore: scoreAttempt(attemptNumber, passed), feedbackCodes: null, explanation: null, suggestion: null, source: 'LOCAL', createdAt: new Date().toISOString() }).run();
+        if (passed || attemptNumber === 2) tx.update(learningSessionItems).set({ completedStep: 'RECALL', recallResult: resultName === 'INCORRECT' ? 'INCORRECT' : resultName === 'CORRECT_AFTER_HINT' ? 'ALMOST_CORRECT' : 'CORRECT' }).where(eq(learningSessionItems.id, item.id)).run();
       } else {
         tx.update(learningSessionItems).set({ completedStep: 'ASSESS', reviewRating: input.assessmentRating }).where(eq(learningSessionItems.id, item.id)).run();
       }
       const nextItems = tx.select().from(learningSessionItems).where(eq(learningSessionItems.sessionId, sessionId)).all();
       const nextAttempts = tx.select().from(learningAttempts).where(sql`${learningAttempts.sessionItemId} IN (SELECT id FROM learning_session_items WHERE session_id = ${sessionId})`).all();
-      result = { item: this.populateItems([tx.select().from(learningSessionItems).where(eq(learningSessionItems.id, item.id)).all()[0]], tx, nextAttempts)[0], cursor: deriveLearningCursor(cursorItems(nextItems), attemptModels(nextAttempts)), feedback: input.step === 'CONTEXT' || input.step === 'UNDERSTAND' || input.step === 'ASSESS' ? null : feedback };
+      result = { item: this.populateItems([tx.select().from(learningSessionItems).where(eq(learningSessionItems.id, item.id)).all()[0]], tx, nextAttempts)[0], cursor: deriveLearningCursor(cursorItems(nextItems), attemptModels(nextAttempts)), feedback: input.step === 'RECALL' ? feedback : null };
     });
     return result!;
   }
@@ -274,6 +293,7 @@ export class SessionRepository {
       const items = tx.select().from(learningSessionItems).where(eq(learningSessionItems.sessionId, sessionId)).all();
       const attempts = tx.select().from(learningAttempts).where(sql`${learningAttempts.sessionItemId} IN (SELECT id FROM learning_session_items WHERE session_id = ${sessionId})`).all();
       if (deriveLearningCursor(cursorItems(items), attemptModels(attempts)).phase !== 'COMPLETE') throw new ValidationError('Cannot complete session before all items are assessed');
+      if (items.some((item) => needsOutputGrade(item, attempts))) throw new ValidationError('Output sentences must be graded before completing the session', 'OUTPUT_NOT_GRADED');
       tx.update(learningSessions).set({ status: 'COMPLETED', completedAt: now }).where(and(eq(learningSessions.id, sessionId), eq(learningSessions.status, 'IN_PROGRESS'))).run();
       for (const item of items) this.applyCompletion(tx, item, attempts.filter((attempt) => attempt.sessionItemId === item.id), now);
     });
@@ -307,7 +327,7 @@ function finalAttempt(attempts: any[], type: 'RECALL' | 'OUTPUT') {
 
 function feedbackForAttempt(attempt: any, answer: string): LearningFeedback {
   if (attempt.type === 'RECALL') return feedbackForRecall(attempt.result, attempt.attemptNumber, answer);
-  return { outcome: attempt.result, attemptNumber: attempt.attemptNumber, canRetry: attempt.attemptNumber === 1 && attempt.result === 'INVALID', ...(attempt.source === 'AI' ? { score: attempt.performanceScore, explanation: attempt.explanation, suggestion: attempt.suggestion } : {}), ...(attempt.feedbackCodes ? { codes: JSON.parse(attempt.feedbackCodes) } : {}) };
+  return { outcome: attempt.result, attemptNumber: attempt.attemptNumber, canRetry: false, ...(attempt.source === 'AI' ? { score: attempt.performanceScore, explanation: attempt.explanation, suggestion: attempt.suggestion } : {}), ...(attempt.feedbackCodes ? { codes: JSON.parse(attempt.feedbackCodes) } : {}) };
 }
 
 function summarizeSession(items: any[], attempts: any[], totalWords: number) {
