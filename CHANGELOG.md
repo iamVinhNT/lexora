@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-06
+
 ### Added
 - Vocabulary form picks part of speech from a localized select box; values outside the list on existing words are kept.
 - Desktop app shows a bell in the sidebar header when a newer Lexora release is available. Its popover downloads the AppImage or `.deb` into your Downloads folder after verifying its SHA-256 checksum; nothing is installed or run automatically. Requires the repository to be public.
