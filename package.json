@@ -14,7 +14,7 @@
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
     "test:changed": "node scripts/test-changed.mjs",
-    "verify": "pnpm run typecheck && pnpm test",
+    "verify": "pnpm --filter @lexora/backend build && pnpm run typecheck && pnpm test",
     "desktop:dev": "pnpm --filter @lexora/backend build && pnpm --filter @lexora/frontend build && pnpm --filter @lexora/desktop dev",
     "desktop:local": "pnpm run desktop:dev",
     "desktop:build": "pnpm --filter @lexora/backend build && pnpm --filter @lexora/frontend build && pnpm --filter @lexora/desktop build",
